@@ -10,6 +10,7 @@ export interface DocumentOptions {
   keyword?: string | null;
   agenda?: string | null;
   topic?: string | null;
+  year?: string | null;
   sort?: string;
   order?: string;
   docTypes?: string; // Add docTypes option to filter by document type (all, compiled, single)
@@ -125,6 +126,7 @@ export async function fetchDocuments(
       keyword = null,
       agenda = null,
       topic = null,
+      year = null,
       sort = 'id',
       order = 'ASC',
       docTypes = 'all', // Default to showing all document types
@@ -219,6 +221,21 @@ export async function fetchDocuments(
     if (topic && typedTopicId !== null) {
       topicParamIndex = paramIndex;
       params.push(typedTopicId);
+      paramIndex++;
+    }
+    const typedYear = year && /^\d{4}$/u.test(year) ? Number(year) : null;
+    const yearWhereClause = year
+      ? typedYear === null
+        ? 'AND FALSE'
+        : `AND EXTRACT(YEAR FROM d.publication_date) = $${paramIndex}`
+      : '';
+    const compiledYearWhereClause = year
+      ? typedYear === null
+        ? 'AND FALSE'
+        : `AND cd.start_year <= $${paramIndex} AND (cd.end_year IS NULL OR cd.end_year >= $${paramIndex})`
+      : '';
+    if (year && typedYear !== null) {
+      params.push(typedYear);
       paramIndex++;
     }
 
@@ -396,6 +413,7 @@ export async function fetchDocuments(
             ${keywordWhereClause}
             ${agendaDocWhereClause}
             ${topicDocWhereClause}
+            ${yearWhereClause}
             ${categoryDocWhereClause}
       `;
     }
@@ -464,6 +482,7 @@ export async function fetchDocuments(
           ${compiledSearchWhereClause}
           ${compiledAgendaWhereClause}
           ${compiledTopicWhereClause}
+          ${compiledYearWhereClause}
           ${categoryCompWhereClause}
       `;
     }

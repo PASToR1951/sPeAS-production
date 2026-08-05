@@ -1,6 +1,6 @@
 import { apiFetch } from "./http";
 
-export type SearchSuggestionType = "work" | "author" | "topic" | "keyword" | "agenda";
+export type SearchSuggestionType = "work" | "news" | "author" | "topic" | "keyword" | "agenda";
 
 export interface SearchSuggestion {
   key: string;

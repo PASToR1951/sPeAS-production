@@ -5,11 +5,21 @@ import type { DocumentCategory } from "../../lib/constants/categories";
 
 const GROUPS: Array<{ type: SearchSuggestionType; label: string }> = [
   { type: "work", label: "Works" },
+  { type: "news", label: "News" },
   { type: "author", label: "Authors" },
   { type: "topic", label: "Topics" },
   { type: "keyword", label: "Keywords" },
   { type: "agenda", label: "Research agendas" },
 ];
+
+function emptySuggestions(): Record<SearchSuggestionType, SearchSuggestion[]> {
+  return { work: [], news: [], author: [], topic: [], keyword: [], agenda: [] };
+}
+
+function normalizeSuggestions(value: Partial<Record<SearchSuggestionType, SearchSuggestion[]>> | undefined) {
+  const empty = emptySuggestions();
+  return { ...empty, ...value };
+}
 
 interface Props {
   value: string;
@@ -19,13 +29,14 @@ interface Props {
   onSubmit: () => void;
   placeholder: string;
   ariaLabel: string;
+  onFocus?: () => void;
 }
 
-export function PublicSearchCombobox({ value, category, source, onChange, onSubmit, placeholder, ariaLabel }: Props) {
+export function PublicSearchCombobox({ value, category, source, onChange, onSubmit, placeholder, ariaLabel, onFocus }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [suggestions, setSuggestions] = useState<Record<SearchSuggestionType, SearchSuggestion[]>>({ work: [], author: [], topic: [], keyword: [], agenda: [] });
+  const [suggestions, setSuggestions] = useState<Record<SearchSuggestionType, SearchSuggestion[]>>(emptySuggestions);
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const comboboxRef = useRef<HTMLDivElement>(null);
@@ -41,13 +52,13 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
     const query = value.trim().replace(/[\s]+/gu, " ");
     abortRef.current?.abort();
     if (query.length < 2) {
-      setSuggestions({ work: [], author: [], topic: [], keyword: [], agenda: [] });
+      setSuggestions(emptySuggestions());
       setOpen(false);
       setLoading(false);
       setError("");
       return;
     }
-    setSuggestions({ work: [], author: [], topic: [], keyword: [], agenda: [] });
+    setSuggestions(emptySuggestions());
     setActiveIndex(-1);
     setError("");
     setLoading(true);
@@ -58,14 +69,14 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
       fetchSearchSuggestions(query, category, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
-          setSuggestions(result.suggestions);
+          setSuggestions(normalizeSuggestions(result.suggestions));
           setOpen(isInputFocused());
           setActiveIndex(-1);
         })
         .catch((caughtError) => {
           if (controller.signal.aborted) return;
           setError(caughtError instanceof Error ? caughtError.message : "Suggestions are temporarily unavailable.");
-          setSuggestions({ work: [], author: [], topic: [], keyword: [], agenda: [] });
+          setSuggestions(emptySuggestions());
           setOpen(isInputFocused());
         })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -127,7 +138,7 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
       placeholder={placeholder}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
-      onFocus={() => { if (value.trim().length >= 2) setOpen(true); }}
+      onFocus={() => { onFocus?.(); if (value.trim().length >= 2) setOpen(true); }}
       onKeyDown={onKeyDown}
     />
     {loading ? <LoaderCircle className="peas-public-search-combobox__status" aria-label="Loading suggestions" /> : value ? <button type="button" className="peas-public-search-combobox__clear" aria-label="Clear search" onClick={() => { onChange(""); inputRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}

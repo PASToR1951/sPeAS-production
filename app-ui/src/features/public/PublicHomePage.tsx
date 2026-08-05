@@ -279,7 +279,6 @@ export function PublicHomePage() {
               const meta = getCategoryMeta(item);
               const count = categoryCounts.find((row) => row.name === item)?.count ?? 0;
               const countLabel = `${count} ${count === 1 ? "entry" : "entries"}`;
-              const share = totalWorks > 0 ? Math.round((count / totalWorks) * 100) : 0;
               return (
                 <motion.a
                   aria-label={`Explore ${meta.label} collection, ${countLabel}`}
@@ -288,15 +287,24 @@ export function PublicHomePage() {
                   key={item}
                   initial={{ opacity: 0, y: 14 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  whileHover={{ y: -6 }}
-                  whileTap={{ scale: 0.985 }}
+                  whileHover={{ y: -2 }}
                   viewport={{ once: true, amount: 0.4 }}
                   transition={{ delay: index * 0.05 }}
                 >
                   <span className="peas-public-category-card__topline">
-                    <span className="peas-public-category-card__index">0{index + 1} / COLLECTION</span>
                     <span className="peas-public-category-card__icon">
                       <CategoryIcon category={item} />
+                    </span>
+                    <span className="peas-public-category-card__count">
+                      <motion.strong
+                        key={`${item}-${count}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {count}
+                      </motion.strong>
+                      <small>{count === 1 ? "entry" : "entries"}</small>
                     </span>
                   </span>
                   <span className="peas-public-category-card__copy">
@@ -304,23 +312,9 @@ export function PublicHomePage() {
                     <span>{categoryDescription(item)}</span>
                   </span>
                   <span className="peas-public-category-card__footer">
-                    <span className="peas-public-category-card__count">
-                      <motion.strong
-                        key={`${item}-${count}`}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.24 }}
-                      >
-                        {count}
-                      </motion.strong>
-                      <small>{count === 1 ? "entry" : "entries"}</small>
-                    </span>
                     <span className="peas-public-category-card__action">
                       Explore <ArrowUpRight aria-hidden="true" />
                     </span>
-                  </span>
-                  <span className="peas-public-category-card__share" aria-hidden="true">
-                    <span className="peas-public-category-card__share-fill" style={{ width: `${share}%` }} />
                   </span>
                 </motion.a>
               );
@@ -483,6 +477,7 @@ export function PublicHomePage() {
           <div className="peas-public-contact-cta__content"><span>Connect</span><h2 id="public-contact-cta-title">{String(contactCta.title || "Contact the Office of Research & Publications")}</h2><p>{String(contactCta.body || "Questions about research, publications, or repository access? Send the office an inquiry.")}</p></div>
           <SpecularButton href="/contact.html" className="peas-public-contact-cta__button">{String(contactCta.label || "Get in touch")}</SpecularButton>
         </section>
+        <div className="peas-public-contact-transition" aria-hidden="true" />
     </PublicPageShell>
   );
 }

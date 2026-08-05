@@ -1,14 +1,21 @@
 # PeAS production operations
 
-`peas-deploy` is the only supported server entry point. It operates on an
-immutable GHCR image and never builds application source on the production
-host.
+`install.sh` is the interactive operator entry point. It calls `peas-deploy`,
+which operates on an immutable GHCR image and never builds application source
+on the production host.
 
 ## First installation
 
-Run this from a reviewed checkout on Ubuntu 24.04 (22.04 is accepted only when
-the institutional baseline explicitly permits it). Use a real DNS name whose
-TCP ports 80 and 443 reach this host.
+Run the menu from a reviewed checkout on Ubuntu 24.04 (22.04 is accepted only
+when the institutional baseline explicitly permits it). Use a real DNS name
+whose TCP ports 80 and 443 reach this host.
+
+```bash
+./install.sh
+```
+
+Choose **Install PeAS on a new server**. For automation, the equivalent
+lower-level command is:
 
 ```bash
 sudo ./ops/peas-deploy.sh install \
@@ -25,10 +32,10 @@ The installer:
    `/usr/local/sbin/peas-deploy`.
 4. Creates `/opt/peas`, `/etc/peas`, `/etc/peas/secrets`, backup staging, and
    audit/state directories with restrictive modes.
-5. Prompts for pinned PostgreSQL, Caddy, and ClamAV image digests, SMTP, and
-   the S3-compatible Restic repository. It generates database, Better Auth,
-   and Restic secrets with mode `0600`; operator-supplied credentials are
-   never committed or printed.
+5. Prompts for pinned PostgreSQL, Caddy, ClamAV, and Alpine utility image
+   digests, Microsoft Entra, SMTP, and the S3-compatible Restic repository. It
+   generates database, Better Auth, and Restic secrets with mode `0600`;
+   operator-supplied credentials are never committed or printed.
 6. Initializes and verifies the encrypted Restic repository, installs daily
    backup and 15-minute health-check timers, logs in to GHCR using a token read
    from standard input, and deploys the selected image.
@@ -43,12 +50,26 @@ history:
 sudo peas-deploy bootstrap-admin
 ```
 
+The Entra Web redirect URI is
+`https://<PRODUCTION_DOMAIN>/api/auth/callback/microsoft`. Its client secret
+and the SMTP password are separate Docker secret files. Run
+`sudo peas-deploy configure-integrations` (or choose the matching menu option)
+to rotate both integrations later.
+
+`SMTP_TLS` selects implicit TLS: use `true` with port 465, or `false` with port
+587 so the client negotiates STARTTLS. Do not use an Exchange Online mailbox
+password or app password. Use an approved SMTP relay, Azure Communication
+Services SMTP credentials, or another compatible service.
+
 ## Routine commands
 
 ```bash
 sudo peas-deploy status
 sudo peas-deploy doctor
 sudo peas-deploy verify
+sudo peas-deploy configure-integrations
+sudo peas-deploy configure-microsoft
+sudo peas-deploy configure-email
 sudo peas-deploy logs app
 sudo peas-deploy backup
 sudo peas-deploy deploy ghcr.io/OWNER/REPOSITORY@sha256:NEW_DIGEST

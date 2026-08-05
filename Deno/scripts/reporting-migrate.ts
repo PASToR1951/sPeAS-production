@@ -5,6 +5,7 @@ const migrationPaths = [
   new URL("../db/migrations/2026-08_reporting_v2.sql", import.meta.url),
   new URL("../db/migrations/2026-08_reporting_v3.sql", import.meta.url),
   new URL("../db/migrations/2026-08_search_analytics.sql", import.meta.url),
+  new URL("../db/migrations/2026-08_search_news.sql", import.meta.url),
 ];
 
 if (!apply) {

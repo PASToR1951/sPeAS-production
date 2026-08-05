@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookMarked, ChevronDown, Clock3, Highlighter, LayoutDashboard, LogOut, Menu, UserRound, X } from "lucide-react";
 import { Button } from "../ui/button";
 import {
@@ -9,10 +9,15 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { usePublicSession } from "./PublicSessionProvider";
+import { PublicSearchCombobox } from "./PublicSearchCombobox";
+import { PublicSearchOverlay } from "./PublicSearchOverlay";
+import { searchResultsUrl } from "../../lib/api/public";
+import { markPendingSearch } from "../../lib/api/search";
 
 const links = [
   { label: "Home", href: "/index.html" },
   { label: "News", href: "/news.html" },
+  { label: "FAQ", href: "/faq.html" },
   { label: "Contact", href: "/contact.html" },
 ];
 
@@ -20,6 +25,9 @@ const repositoryLink = { label: "Browse Repository", href: "/pages/searchResults
 
 export function PublicNavbar() {
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const suppressSearchFocusRef = useRef(false);
+  const suppressSearchFocusTimerRef = useRef<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const alwaysGreen = usesAlwaysGreenNavbar();
   const { session, signOut } = usePublicSession();
@@ -41,6 +49,10 @@ export function PublicNavbar() {
     return () => window.removeEventListener("scroll", updateScrolled);
   }, [alwaysGreen]);
 
+  useEffect(() => () => {
+    if (suppressSearchFocusTimerRef.current !== null) window.clearTimeout(suppressSearchFocusTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
 
@@ -61,6 +73,16 @@ export function PublicNavbar() {
     await signOut();
   }, [signOut]);
 
+  const closeSearch = useCallback(() => {
+    suppressSearchFocusRef.current = true;
+    setSearchOpen(false);
+    if (suppressSearchFocusTimerRef.current !== null) window.clearTimeout(suppressSearchFocusTimerRef.current);
+    suppressSearchFocusTimerRef.current = window.setTimeout(() => {
+      suppressSearchFocusRef.current = false;
+      suppressSearchFocusTimerRef.current = null;
+    }, 300);
+  }, []);
+
   return (
     <header className={`peas-public-navbar${alwaysGreen || scrolled ? " is-scrolled" : ""}`}>
       <a className="peas-public-brand" href="/index.html" aria-label="PeAS home">
@@ -72,12 +94,10 @@ export function PublicNavbar() {
       </a>
 
       <nav className="peas-public-navlinks" aria-label="Public navigation">
-        {links.map((link) => (
-          <a href={link.href} key={link.href} aria-current={isActivePath(link.href) ? "page" : undefined}>
-            {link.label}
-          </a>
-        ))}
+        {links.map((link) => <a href={link.href} key={link.href} aria-current={isActivePath(link.href) ? "page" : undefined}>{link.label}</a>)}
       </nav>
+
+      <NavbarSearch className="peas-public-navbar-search" onFocus={() => { if (!suppressSearchFocusRef.current) setSearchOpen(true); }} />
 
       <div className="peas-public-nav-actions">
         <a
@@ -113,6 +133,7 @@ export function PublicNavbar() {
                 <X aria-hidden="true" />
               </button>
             </div>
+            <NavbarSearch className="peas-public-mobile-search" />
             {links.map((link) => (
               <a
                 href={link.href}
@@ -149,7 +170,39 @@ export function PublicNavbar() {
           </div>
         </div>
       ) : null}
+      {searchOpen ? <PublicSearchOverlay onClose={closeSearch} /> : null}
     </header>
+  );
+}
+
+function NavbarSearch({ className, onFocus }: { className: string; onFocus?: () => void }) {
+  const [query, setQuery] = useState("");
+
+  const submitSearch = useCallback(() => {
+    window.location.href = searchResultsUrl(query, "All");
+  }, [query]);
+
+  return (
+    <form
+      className={className}
+      role="search"
+      onSubmit={(event) => {
+        event.preventDefault();
+        markPendingSearch(query, "results");
+        submitSearch();
+      }}
+    >
+      <PublicSearchCombobox
+        value={query}
+        category="All"
+        source="results"
+        onChange={setQuery}
+        onSubmit={submitSearch}
+        ariaLabel="Search the repository from navigation"
+        placeholder="Search the repository"
+        onFocus={onFocus}
+      />
+    </form>
   );
 }
 
@@ -241,7 +294,7 @@ function getInitials(name: string) {
 }
 
 function usesAlwaysGreenNavbar() {
-  return ["/news.html", "/contact", "/contact.html"].includes(window.location.pathname);
+  return ["/news.html", "/faq.html", "/contact", "/contact.html"].includes(window.location.pathname);
 }
 
 function isActivePath(href: string) {

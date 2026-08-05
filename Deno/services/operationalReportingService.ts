@@ -15,6 +15,7 @@ const PUBLIC_PAGE_KEYS: Record<string, string> = {
   "/": "/",
   "/index.html": "/",
   "/news.html": "/news",
+  "/faq.html": "/faq",
   "/pages/searchResultsPage.html": "/search",
   "/contact.html": "/contact",
   "/log-in.html": "/login",

@@ -213,6 +213,7 @@ app.use(async (ctx, next) => {
 const publicAliases: Record<string, string> = {
   "/index": "/index.html",
   "/news": "/news.html",
+  "/faq": "/faq.html",
   "/search": "/pages/searchResultsPage.html",
   "/contact": "/contact.html",
   "/terms": "/pages/miscellaneous/T&A-Public.html",
@@ -1293,7 +1294,7 @@ async function startServer() {
     
     // Connect to the database. Production must fail fast rather than serving
     // a partially initialized application.
-        await connectToDb();
+    await connectToDb();
     if (isProduction) await client.queryObject("SELECT 1");
         
     // Run database diagnostics

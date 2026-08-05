@@ -30,6 +30,8 @@ interface FetchDocumentsParams {
   keyword?: string;
   agenda?: string;
   topic?: string;
+  year?: string;
+  includeReview?: boolean;
 }
 
 export async function fetchCategories(status: DocumentFilterState["status"] = "approved"): Promise<CategoryCount[]> {
@@ -46,6 +48,14 @@ export async function fetchCategories(status: DocumentFilterState["status"] = "a
   });
 }
 
+export async function fetchAvailablePublicationYears(): Promise<string[]> {
+  const payload = await apiFetch<{ years?: unknown[] }>("/api/documents/years");
+  return [...new Set((payload.years ?? [])
+    .map((year) => String(year))
+    .filter((year) => /^\d{4}$/u.test(year)))]
+    .sort((left, right) => Number(right) - Number(left));
+}
+
 export async function fetchDocuments(params: FetchDocumentsParams): Promise<DocumentsPageResult> {
   const searchParams = new URLSearchParams({
     page: String(params.page),
@@ -55,11 +65,12 @@ export async function fetchDocuments(params: FetchDocumentsParams): Promise<Docu
 
   if (params.category !== "All") searchParams.set("category", params.category);
   if (params.status && params.status !== "all") searchParams.set("review_status", params.status);
-  searchParams.set("include_review", "true");
+  if (params.includeReview) searchParams.set("include_review", "true");
   if (params.search?.trim()) searchParams.set("search", params.search.trim());
   if (params.keyword?.trim()) searchParams.set("keyword", params.keyword.trim());
   if (params.agenda?.trim()) searchParams.set("agenda", params.agenda.trim());
   if (params.topic?.trim()) searchParams.set("topic", params.topic.trim());
+  if (/^\d{4}$/u.test(params.year?.trim() ?? "")) searchParams.set("year", params.year!.trim());
 
   const payload = await apiFetch<RawDocumentsResponse>(`/api/documents?${searchParams.toString()}`);
   const documents = (payload.documents ?? []).map(normalizeDocumentRecord);

@@ -1,6 +1,6 @@
 import { pool } from "../config/db.ts";
 
-export type SuggestionType = "work" | "author" | "topic" | "keyword" | "agenda";
+export type SuggestionType = "work" | "news" | "author" | "topic" | "keyword" | "agenda";
 export interface SearchSuggestion {
   key: string;
   type: SuggestionType;
@@ -24,7 +24,7 @@ export function validateSuggestionInput(query: string, category: string) {
 export class SuggestionValidationError extends Error {}
 
 function categoryClause(column: string, category: string, startIndex: number) {
-  return category === "All" ? { sql: "", params: [] as unknown[] } : { sql: `AND ${column} = $${startIndex}`, params: [category] };
+  return category === "All" ? { sql: "", params: [] as unknown[] } : { sql: `AND ${column}::TEXT = $${startIndex}`, params: [category] };
 }
 
 export async function getSearchSuggestions(query: string, category = "All", limit = 8) {
@@ -87,7 +87,18 @@ export async function getSearchSuggestions(query: string, category = "All", limi
       FROM matched ORDER BY match_rank, LENGTH(title), LOWER(title) LIMIT $${workParams.length}
     `, workParams);
 
-    const authorCategory = categoryClause("d.document_type", category, 2);
+    const newsRows = await connection.queryObject<Record<string, unknown>>(`
+      SELECT id::TEXT, title, slug, excerpt, author_name,
+        CASE WHEN LOWER(title) LIKE $2 THEN 0 WHEN LOWER(title) LIKE '% ' || $2 THEN 1 ELSE 2 END AS match_rank
+      FROM news_posts
+      WHERE status = 'published' AND deleted_at IS NULL
+        AND published_at IS NOT NULL AND published_at <= CURRENT_TIMESTAMP
+        AND (LOWER(title) LIKE $1 OR LOWER(excerpt) LIKE $1 OR LOWER(body) LIKE $1)
+      ORDER BY match_rank, LENGTH(title), LOWER(title)
+      LIMIT $3
+    `, [like, prefix, safeLimit]);
+
+    const authorCategory = categoryClause("d.document_type", category, 3);
     const authorRows = await connection.queryObject<Record<string, unknown>>(`
       SELECT a.id::TEXT, a.full_name, a.department, a.affiliation, COUNT(DISTINCT d.id)::BIGINT AS public_work_count,
         CASE WHEN LOWER(a.full_name) LIKE $2 THEN 0 WHEN LOWER(a.full_name) LIKE '% ' || $2 THEN 1 ELSE 2 END AS match_rank
@@ -97,7 +108,7 @@ export async function getSearchSuggestions(query: string, category = "All", limi
       GROUP BY a.id ORDER BY match_rank, public_work_count DESC, LOWER(a.full_name) LIMIT $${authorCategory.params.length + 3}
     `, [like, prefix, ...authorCategory.params, safeLimit]);
 
-    const classificationCategory = categoryClause("d.document_type", category, 2);
+    const classificationCategory = categoryClause("d.document_type", category, 3);
     const topicRows = await connection.queryObject<Record<string, unknown>>(`
       SELECT t.id::TEXT, t.name, COUNT(DISTINCT d.id)::BIGINT AS public_work_count,
         CASE WHEN LOWER(t.name) LIKE $2 THEN 0 WHEN LOWER(t.name) LIKE '% ' || $2 THEN 1 ELSE 2 END AS match_rank
@@ -123,20 +134,21 @@ export async function getSearchSuggestions(query: string, category = "All", limi
 
     const suggestions: Record<SuggestionType, SearchSuggestion[]> = {
       work: workRows.rows.map((row) => ({ key: `work:${row.record_type}:${row.id}`, type: "work", label: String(row.title || "Untitled work"), description: `${String(row.category || "Research")} · ${String(row.authors || "Unknown author")}`, href: `/pages/${row.record_type === "compiled" ? "guest-compiled" : "guest-single"}.html?id=${encodeURIComponent(String(row.id))}` })),
+      news: newsRows.rows.map((row) => ({ key: `news:${row.id}`, type: "news", label: String(row.title || "Untitled article"), description: `News · ${String(row.author_name || "Office of Research & Publications")}`, href: `/news.html?slug=${encodeURIComponent(String(row.slug))}` })),
       author: authorRows.rows.map((row) => ({ key: `author:${row.id}`, type: "author", label: String(row.full_name), description: `${String(row.department || row.affiliation || "Author")} · ${Number(row.public_work_count || 0)} public works`, href: `/pages/authorprofile.html?id=${encodeURIComponent(String(row.id))}` })),
       topic: topicRows.rows.map((row) => ({ key: `topic:${row.id}`, type: "topic", label: String(row.name), description: `Approved topic · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?topic=${encodeURIComponent(String(row.id))}` })),
       keyword: keywordRows.rows.map((row) => ({ key: `keyword:${row.id}`, type: "keyword", label: String(row.term), description: `Keyword · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?keyword=${encodeURIComponent(String(row.term))}` })),
       agenda: agendaRows.rows.map((row) => ({ key: `agenda:${row.id}`, type: "agenda", label: String(row.name), description: `Research agenda · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?agenda=${encodeURIComponent(String(row.id))}`, historical: row.is_active === false })),
     };
-    const caps: Record<SuggestionType, number> = { work: 3, author: 2, topic: 1, keyword: 1, agenda: 1 };
+    const caps: Record<SuggestionType, number> = { work: 3, news: 2, author: 2, topic: 1, keyword: 1, agenda: 1 };
     let remaining = safeLimit;
     const trimmed = {} as Record<SuggestionType, SearchSuggestion[]>;
-    for (const type of ["work", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
+    for (const type of ["work", "news", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
       trimmed[type] = suggestions[type].slice(0, Math.min(caps[type], remaining));
       remaining -= trimmed[type].length;
     }
     if (remaining > 0) {
-      for (const type of ["work", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
+      for (const type of ["work", "news", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
         const extra = suggestions[type].slice(trimmed[type].length, trimmed[type].length + remaining);
         trimmed[type] = [...trimmed[type], ...extra];
         remaining -= extra.length;

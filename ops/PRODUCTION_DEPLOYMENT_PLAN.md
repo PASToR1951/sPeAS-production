@@ -122,21 +122,18 @@ placeholders and must be replaced with institution-owned values.
 
 ## 5. Run the first installation
 
-1. Resolve the release, PostgreSQL, Caddy, and ClamAV images to immutable
-   digests before starting.
-2. Run:
+1. Resolve the release, PostgreSQL, Caddy, ClamAV, and Alpine utility images to
+   immutable digests before starting.
+2. Run the installation menu and choose **Install PeAS on a new server**:
 
    ```bash
-   sudo ./ops/peas-deploy.sh install \
-     --domain <PRODUCTION_DOMAIN> \
-     --acme-email <ACME_EMAIL> \
-     --image ghcr.io/<GITHUB_OWNER>/<NEW_REPOSITORY>@sha256:<DIGEST> \
-     --ssh-port <SSH_PORT>
+   ./install.sh
    ```
 
-3. Read each prompt carefully. Enter SMTP and S3 credentials only at prompts.
-   The script writes them below `/etc/peas/secrets` mode `0600`; it does not
-   print them or put them in Git.
+3. Read each prompt carefully. Enter Microsoft Entra, SMTP, and S3 secrets only
+   at hidden prompts. The script writes them below `/etc/peas/secrets` mode
+   `0600`; it does not print them or put them in Git. Use the displayed Entra
+   redirect URI exactly.
 4. When asked for GHCR authentication, paste the read-only token into the
    hidden prompt. Confirm Docker login succeeded without copying the token into
    shell history.

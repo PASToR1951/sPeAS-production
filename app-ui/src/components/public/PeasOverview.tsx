@@ -20,7 +20,7 @@ const DEFAULT_OVERVIEW = {
     {
       id: "preserve" as const,
       label: "Preserve",
-      description: "Safeguards theses, dissertations, Confluence, Synergy, and other scholarly outputs in one organized repository.",
+      description: "Safeguards Thesis, Dissertation, Confluence, and Synergy collections in one organized repository.",
     },
     {
       id: "discover" as const,
@@ -56,6 +56,7 @@ function PeasSystemLogo({ className }: { className: string }) {
 
 function normalizeOverviewProps(input: PeasOverviewProps): typeof DEFAULT_OVERVIEW {
   const sourcePillars = Array.isArray(input.pillars) ? input.pillars : [];
+  const legacyPreserveDescription = "Safeguards theses, dissertations, Confluence, Synergy, and other scholarly outputs in one organized repository.";
   return {
     eyebrow: typeof input.eyebrow === "string" && input.eyebrow.trim() ? input.eyebrow : DEFAULT_OVERVIEW.eyebrow,
     title: typeof input.title === "string" && input.title.trim() ? input.title : DEFAULT_OVERVIEW.title,
@@ -64,7 +65,7 @@ function normalizeOverviewProps(input: PeasOverviewProps): typeof DEFAULT_OVERVI
       const incoming = sourcePillars.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === fallback.id) as Record<string, unknown> | undefined;
       return {
         ...fallback,
-        description: typeof incoming?.description === "string" && incoming.description.trim()
+        description: typeof incoming?.description === "string" && incoming.description.trim() && incoming.description !== legacyPreserveDescription
           ? incoming.description
           : fallback.description,
       };

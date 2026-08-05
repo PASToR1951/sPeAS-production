@@ -69,7 +69,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("catalog rows use labeled actions and dashboard-aligned metadata", async ({ page }) => {
+  const catalogRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/documents");
   await page.goto("/admin/Components/documents_list.html");
+  expect(new URL((await catalogRequest).url()).searchParams.get("include_review")).toBe("true");
 
   await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Find documents" })).toBeVisible();

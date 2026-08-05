@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EXPERIENCE_SCHEMA_VERSION = 3;
+export const EXPERIENCE_SCHEMA_VERSION = 4;
 
 export const EXPERIENCE_COMPONENT_TYPES = [
   "AnnouncementBanner",
@@ -16,6 +16,7 @@ export const EXPERIENCE_COMPONENT_TYPES = [
   "LoginShellBlock",
   "BrandPanelBlock",
   "HelpPanelBlock",
+  "FaqBlock",
 ] as const;
 
 export const ExperienceComponentTypeSchema = z.enum(EXPERIENCE_COMPONENT_TYPES);
@@ -56,6 +57,69 @@ export const ExperienceOverviewPillarsSchema = z.tuple([
   ExperienceOverviewPillarSchema,
   ExperienceOverviewPillarSchema,
 ]);
+
+export const FAQ_CATEGORY_LIMITS = {
+  min: 1,
+  max: 8,
+  maxItems: 12,
+  maxTotalItems: 60,
+} as const;
+
+const FAQ_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/;
+const FAQ_HTML_PATTERN = /<[^>]*>/;
+const faqPlainText = (label: string, max: number) => z.string().trim().min(1).max(max).refine((value) => !FAQ_HTML_PATTERN.test(value), `${label} must be plain text`);
+
+const FaqItemSchema = z.object({
+  id: z.string().regex(FAQ_ID_PATTERN),
+  question: faqPlainText("FAQ questions", 180),
+  answer: faqPlainText("FAQ answers", 2000),
+}).strict();
+
+const FaqCategorySchema = z.object({
+  id: z.string().regex(FAQ_ID_PATTERN),
+  label: faqPlainText("FAQ category names", 80),
+  items: z.array(FaqItemSchema).min(1).max(FAQ_CATEGORY_LIMITS.maxItems),
+}).strict();
+
+export const FaqBlockPropsSchema = z.object({
+  id: z.literal("faq-content"),
+  eyebrow: faqPlainText("FAQ eyebrow", 80),
+  title: faqPlainText("FAQ title", 140),
+  description: faqPlainText("FAQ description", 600),
+  categories: z.array(FaqCategorySchema).min(FAQ_CATEGORY_LIMITS.min).max(FAQ_CATEGORY_LIMITS.max),
+  contactTitle: faqPlainText("FAQ contact title", 140),
+  contactBody: faqPlainText("FAQ contact body", 400),
+  contactLabel: faqPlainText("FAQ contact label", 80),
+  contactHref: z.literal("/contact.html"),
+}).strict().superRefine((value, context) => {
+  const normalizedCategories = new Set<string>();
+  const normalizedQuestions = new Set<string>();
+  let totalItems = 0;
+  value.categories.forEach((category, categoryIndex) => {
+    const categoryKey = normalizeFaqText(category.label);
+    if (normalizedCategories.has(categoryKey)) {
+      context.addIssue({ code: "custom", path: ["categories", categoryIndex, "label"], message: "FAQ category names must be unique" });
+    }
+    normalizedCategories.add(categoryKey);
+    category.items.forEach((item, itemIndex) => {
+      const questionKey = normalizeFaqText(item.question);
+      if (normalizedQuestions.has(questionKey)) {
+        context.addIssue({ code: "custom", path: ["categories", categoryIndex, "items", itemIndex, "question"], message: "FAQ questions must be unique" });
+      }
+      normalizedQuestions.add(questionKey);
+      totalItems += 1;
+    });
+  });
+  if (totalItems > FAQ_CATEGORY_LIMITS.maxTotalItems) {
+    context.addIssue({ code: "custom", path: ["categories"], message: `FAQ content may contain at most ${FAQ_CATEGORY_LIMITS.maxTotalItems} questions` });
+  }
+});
+
+export type FaqBlockProps = z.infer<typeof FaqBlockPropsSchema>;
+
+function normalizeFaqText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
 
 export const EXPERIENCE_ORGANIZATION_ROLE_IDS = [
   "president",
@@ -277,6 +341,7 @@ export const ExperienceConfigSchema = z.object({
   pages: z.object({
     landing: ExperiencePageSchema,
     login: ExperiencePageSchema,
+    faq: ExperiencePageSchema,
   }),
 });
 
@@ -290,7 +355,11 @@ export type ExperienceConfig = z.infer<typeof ExperienceConfigSchema>;
 export type UserExperiencePreferences = z.infer<typeof UserExperiencePreferencesSchema>;
 
 export function parseExperienceConfig(input: unknown): ExperienceConfig {
-  return ExperienceConfigSchema.parse(migrateExperienceConfigToV3(input));
+  const config = ExperienceConfigSchema.parse(migrateExperienceConfigToV4(input));
+  const faqBlock = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  if (!faqBlock) throw new Error("FAQ page must include its locked FaqBlock");
+  FaqBlockPropsSchema.parse(faqBlock.props);
+  return config;
 }
 
 export function parseUserExperiencePreferences(input: unknown): UserExperiencePreferences {
@@ -335,7 +404,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                 {
                   id: "preserve",
                   label: "Preserve",
-                  description: "Safeguards theses, dissertations, Confluence, Synergy, and other scholarly outputs in one organized repository.",
+                  description: "Safeguards Thesis, Dissertation, Confluence, and Synergy collections in one organized repository.",
                 },
                 {
                   id: "discover",
@@ -373,6 +442,11 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   label: "Research Agenda",
                   href: "#research-agenda",
                   description: "Twenty focus areas aligned with national priorities and global development goals.",
+                },
+                {
+                  label: "FAQ",
+                  href: "/faq.html",
+                  description: "Find quick answers about searching, access, reading, and support.",
                 },
               ],
             },
@@ -428,6 +502,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
               logoUrl: "/Components/images/spud-logo.png",
               links: [
                 { label: "Home", href: "/index.html" },
+                { label: "FAQ", href: "/faq.html" },
                 { label: "Contact", href: "/contact.html" },
                 { label: "Terms & Conditions", href: "/pages/miscellaneous/T&A-Public.html" },
                 { label: "Privacy Policy", href: "/pages/miscellaneous/Privacy.html" },
@@ -468,6 +543,135 @@ export const defaultExperienceConfig: ExperienceConfig = {
         ],
       },
     },
+    faq: {
+      title: "Frequently Asked Questions | PeAS",
+      description: "Find answers about the PeAS repository, accounts, document access, and research support.",
+      data: {
+        root: { props: { title: "Frequently Asked Questions" } },
+        content: [
+          {
+            type: "FaqBlock",
+            props: {
+              id: "faq-content",
+              eyebrow: "Help for readers",
+              title: "Frequently asked questions",
+              description: "Learn how PeAS preserves Paulinian research, helps you find it, and keeps document access clear and controlled.",
+              categories: [
+                {
+                  id: "getting-started",
+                  label: "Getting started",
+                  items: [
+                    {
+                      id: "what-is-peas",
+                      question: "What is PeAS?",
+                      answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It preserves academic works, makes scholarship easier to discover, and controls access to protected files.",
+                    },
+                    {
+                      id: "materials-in-peas",
+                      question: "What materials can I find?",
+                      answer: "PeAS catalogs approved SPUD theses, dissertations, Confluence volumes, Synergy collections, and their related authors, abstracts, classifications, and publication details. Department News is available separately from repository records.",
+                    },
+                    {
+                      id: "browse-without-signing-in",
+                      question: "Can I browse without signing in?",
+                      answer: "Yes. Guests can browse approved public records, read metadata and abstracts, and view eligible page previews. Full PDF reading and downloads are controlled by account and document access rules.",
+                    },
+                  ],
+                },
+                {
+                  id: "search-and-discovery",
+                  label: "Search and discovery",
+                  items: [
+                    {
+                      id: "how-to-search",
+                      question: "How do I search?",
+                      answer: "Use the search box on Home or the Repository page. Search by title, author, topic, keyword, or research agenda, then narrow results by document type, year, and other available filters.",
+                    },
+                    {
+                      id: "classification-terms",
+                      question: "What are research agendas, topics, and keywords?",
+                      answer: "Research agendas are official institutional priorities. Topics are curated subject headings. Keywords are normalized search terms supplied for a work. They are separate vocabularies so each classification keeps its intended meaning.",
+                    },
+                    {
+                      id: "compiled-collections",
+                      question: "What are Confluence and Synergy collections?",
+                      answer: "Confluence and Synergy are compiled collections. A collection has its own overview and contains ordered child studies; classifications shown for the collection are aggregated from its eligible public studies.",
+                    },
+                  ],
+                },
+                {
+                  id: "accounts-and-access",
+                  label: "Accounts and access",
+                  items: [
+                    {
+                      id: "how-to-sign-in",
+                      question: "How do I sign in?",
+                      answer: "Open Sign in and use your provisioned School ID and password. If Microsoft sign-in is enabled for the deployment, eligible SPUD accounts can use the Microsoft option.",
+                    },
+                    {
+                      id: "forgot-password",
+                      question: "What if I forgot my password?",
+                      answer: "Select Forgot password on the sign-in page, enter your registered email address, and follow the time-limited reset link sent to you.",
+                    },
+                    {
+                      id: "full-paper-access",
+                      question: "Why can't I open or download a full paper?",
+                      answer: "PeAS does not expose protected files through direct storage links. Guests receive approved metadata and previews; signed-in readers can open or download a full file only when the backend confirms their session and the document's access policy.",
+                    },
+                    {
+                      id: "outsider-access-request",
+                      question: "How do outside researchers request access?",
+                      answer: "On an eligible document detail page, choose Request access and submit your name, email, affiliation, and reason. If an administrator approves the request, PeAS sends a time-limited secure download link that can expire or be revoked.",
+                    },
+                  ],
+                },
+                {
+                  id: "reading-and-personal-tools",
+                  label: "Reading and personal tools",
+                  items: [
+                    {
+                      id: "signed-in-tools",
+                      question: "What can signed-in readers do?",
+                      answer: "Signed-in readers can use the full PDF reader where permitted, save items, review their history, mark records as read, and create private bookmarks, highlights, notes, and tags.",
+                    },
+                    {
+                      id: "private-annotations",
+                      question: "Are annotations private?",
+                      answer: "Yes. Annotations are owner-scoped and are not visible to other readers. They are stored separately from saved items, operational history, and Mark as Read state.",
+                    },
+                    {
+                      id: "saved-history-read-state",
+                      question: "How do Saved Items, History, and Mark as Read differ?",
+                      answer: "Saved Items is your intentional collection. History records successful repository activity. Mark as Read is an explicit reading state and does not change analytics. PeAS stores these states separately.",
+                    },
+                  ],
+                },
+                {
+                  id: "submissions-and-support",
+                  label: "Submissions and support",
+                  items: [
+                    {
+                      id: "who-can-upload",
+                      question: "Who can upload documents or publish news?",
+                      answer: "Authorized administrators and content publishers can upload documents or manage Department News. Publisher uploads are private and remain pending review until an administrator approves them.",
+                    },
+                    {
+                      id: "contact-office",
+                      question: "How do I contact the office?",
+                      answer: "Use the Contact page for questions about research documents, submissions, access, technical concerns, or Office of Research & Publications matters. After you submit an inquiry, keep the reference code shown in the confirmation dialog.",
+                    },
+                  ],
+                },
+              ],
+              contactTitle: "Still have a question?",
+              contactBody: "Send the Office of Research & Publications an inquiry and keep your reference code for follow-up.",
+              contactLabel: "Contact the office",
+              contactHref: "/contact.html",
+            },
+          },
+        ],
+      },
+    },
   },
 };
 
@@ -486,13 +690,13 @@ const EDITABLE_STRING_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
- * Canonicalizes legacy v1/v2 documents and v3 drafts into the locked v3 layout. Only approved copy and image fields survive. Component
+ * Canonicalizes legacy v1/v2/v3 documents and v4 drafts into the locked v4 layout. Only approved copy and image fields survive. Component
  * order, component types, link destinations, form semantics, theme, and
- * personalization are not stored in the v3 content document.
+ * personalization are not stored in the v4 content document.
  */
-export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
+export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
   const source = asRecord(input);
-  if (typeof source.schemaVersion === "number" && ![1, 2, 3].includes(source.schemaVersion)) {
+  if (typeof source.schemaVersion === "number" && ![1, 2, 3, 4].includes(source.schemaVersion)) {
     throw new Error(`Unsupported Experience schema version: ${source.schemaVersion}`);
   }
   const output = clone(defaultExperienceConfig);
@@ -502,7 +706,7 @@ export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
     : defaultExperienceConfig.title;
   if (typeof source.updatedAt === "string") output.updatedAt = source.updatedAt;
 
-  for (const pageKey of ["landing", "login"] as const) {
+  for (const pageKey of ["landing", "login", "faq"] as const) {
     const sourcePage = asRecord(asRecord(asRecord(source.pages)[pageKey]));
     const sourceData = asRecord(sourcePage.data);
     const sourceBlocks = Array.isArray(sourceData.content) ? sourceData.content.map(asRecord) : [];
@@ -519,17 +723,26 @@ export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
       };
     });
   }
+  const faqBlock = output.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  if (!faqBlock || !FaqBlockPropsSchema.safeParse(faqBlock.props).success) {
+    throw new Error("The canonical FAQ configuration is invalid");
+  }
   return output;
 }
 
-/** @deprecated Use migrateExperienceConfigToV3. Kept for compatibility with recovery scripts. */
+/** @deprecated Use migrateExperienceConfigToV4. Kept for compatibility with recovery scripts. */
+export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
+  return migrateExperienceConfigToV4(input);
+}
+
+/** @deprecated Kept for compatibility with recovery scripts. */
 export function migrateExperienceConfigV1ToV2(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV3(input);
+  return migrateExperienceConfigToV4(input);
 }
 
 export function getExperiencePublishErrors(config: ExperienceConfig): string[] {
   const errors: string[] = [];
-  for (const page of [config.pages.landing, config.pages.login]) {
+  for (const page of [config.pages.landing, config.pages.login, config.pages.faq]) {
     for (const block of page.data.content) {
       const props = asRecord(block.props);
       if (typeof props.imageUrl === "string" && props.imageUrl.trim() && !String(props.imageAlt ?? "").trim()) {
@@ -551,6 +764,10 @@ export function getExperiencePublishErrors(config: ExperienceConfig): string[] {
             errors.push(`${roleLabel} photo requires alternative text.`);
           }
         });
+      }
+      if (block.type === "FaqBlock") {
+        const result = FaqBlockPropsSchema.safeParse(props);
+        if (!result.success) errors.push("FAQ content has missing, duplicate, or invalid plain-text fields.");
       }
     }
   }
@@ -621,6 +838,21 @@ function migrateBlockProps(type: string, defaults: Record<string, unknown>, sour
         group: locked.group,
       };
     }));
+  }
+
+  if (type === "FaqBlock") {
+    const requiredFields = ["eyebrow", "title", "description", "categories", "contactTitle", "contactBody", "contactLabel"];
+    const missingField = requiredFields.find((field) => !(field in source));
+    if (missingField) throw new Error(`FAQ content is missing required field: ${missingField}`);
+    const candidate = {
+      ...asRecord(defaults),
+      ...source,
+      id: "faq-content",
+      contactHref: "/contact.html",
+    };
+    const parsed = FaqBlockPropsSchema.safeParse(candidate);
+    if (parsed.success) return parsed.data;
+    throw new Error("FAQ content contains invalid, duplicate, or non-plain-text fields");
   }
 
   for (const field of ["imageUrl", "backgroundImageUrl", "graphicLogoUrl", "logoUrl"]) {

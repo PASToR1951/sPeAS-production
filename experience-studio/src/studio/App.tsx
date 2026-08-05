@@ -4,13 +4,14 @@ import XHRUpload from "@uppy/xhr-upload";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultExperienceConfig,
+  FAQ_CATEGORY_LIMITS,
   EXPERIENCE_FIXED_THEME,
   ExperienceConfig,
   ExperienceConfigSchema,
 } from "../../../Deno/shared/experienceConfig";
 import { experiencePuckConfig } from "../shared/puckConfig";
 
-type PageKey = "landing" | "login";
+type PageKey = "landing" | "login" | "faq";
 type DeviceKey = "desktop" | "tablet" | "mobile";
 type InspectorTab = "content" | "checks" | "assets";
 
@@ -63,6 +64,9 @@ type HeroImage = {
   alt?: string;
 };
 
+type FaqItem = { id: string; question: string; answer: string };
+type FaqCategory = { id: string; label: string; items: FaqItem[] };
+
 const landingBlocks = [
   "AnnouncementBanner",
   "HeroBlock",
@@ -77,6 +81,7 @@ const landingBlocks = [
 ];
 
 const loginBlocks = ["LoginShellBlock", "BrandPanelBlock", "HelpPanelBlock"];
+const faqBlocks = ["FaqBlock"];
 
 const cloneConfig = (config: ExperienceConfig): ExperienceConfig =>
   JSON.parse(JSON.stringify(config));
@@ -86,6 +91,7 @@ const componentMap = experiencePuckConfig.components as Record<string, any>;
 const pageNames: Record<PageKey, string> = {
   landing: "Home page",
   login: "Sign-in page",
+  faq: "FAQ page",
 };
 
 // Plain-language names and one-line explanations for every section type,
@@ -104,6 +110,7 @@ const sectionMeta: Record<string, { name: string; description: string }> = {
   LoginShellBlock: { name: "Sign-in Box", description: "The form where users enter their School ID and password." },
   BrandPanelBlock: { name: "Side Brand Panel", description: "A decorative panel shown beside the sign-in box." },
   HelpPanelBlock: { name: "Help Panel", description: "Help text and links for users who can't sign in." },
+  FaqBlock: { name: "FAQ Content", description: "Searchable questions and answers for public readers." },
 };
 
 const sectionName = (type: string) =>
@@ -118,6 +125,7 @@ const editableFields: Record<string, readonly string[]> = {
   ResearchAgendaBlock: ["eyebrow", "title", "body", "imageUrl", "imageAlt"],
   CtaBlock: ["title", "body", "label"],
   LoginShellBlock: ["brandText", "title", "subtitle", "forgotPasswordTitle", "forgotPasswordSubtitle", "footerText", "backgroundImageUrl", "graphicLogoUrl", "logoUrl"],
+  FaqBlock: ["eyebrow", "title", "description", "categories", "contactTitle", "contactBody", "contactLabel"],
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -675,6 +683,111 @@ function OverviewPillarsField(props: {
   );
 }
 
+function createFaqId(prefix: string) {
+  const uuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().replace(/-/g, "")
+    : `${Date.now()}${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${uuid}`.slice(0, 96);
+}
+
+function FaqCategoriesField(props: {
+  value: unknown;
+  onChange: (value: FaqCategory[]) => void;
+}) {
+  const categories = Array.isArray(props.value) ? props.value as FaqCategory[] : [];
+  const totalItems = categories.reduce((sum, category) => sum + (category.items?.length || 0), 0);
+
+  const updateCategory = (index: number, update: Partial<FaqCategory>) => {
+    props.onChange(categories.map((category, categoryIndex) => categoryIndex === index ? { ...category, ...update } : category));
+  };
+  const updateItem = (categoryIndex: number, itemIndex: number, update: Partial<FaqItem>) => {
+    props.onChange(categories.map((category, currentCategoryIndex) => currentCategoryIndex === categoryIndex
+      ? { ...category, items: category.items.map((item, currentItemIndex) => currentItemIndex === itemIndex ? { ...item, ...update } : item) }
+      : category));
+  };
+  const moveCategory = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= categories.length) return;
+    const next = [...categories];
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    props.onChange(next);
+  };
+  const moveItem = (categoryIndex: number, itemIndex: number, direction: -1 | 1) => {
+    const category = categories[categoryIndex];
+    if (!category) return;
+    const target = itemIndex + direction;
+    if (target < 0 || target >= category.items.length) return;
+    const items = [...category.items];
+    const [item] = items.splice(itemIndex, 1);
+    items.splice(target, 0, item);
+    updateCategory(categoryIndex, { items });
+  };
+  const addCategory = () => {
+    if (categories.length >= FAQ_CATEGORY_LIMITS.max) return;
+    props.onChange([...categories, { id: createFaqId("faq-category"), label: "New category", items: [{ id: createFaqId("faq-item"), question: "New question", answer: "Write a plain-text answer here." }] }]);
+  };
+  const addItem = (categoryIndex: number) => {
+    if (totalItems >= FAQ_CATEGORY_LIMITS.maxTotalItems || (categories[categoryIndex]?.items.length || 0) >= FAQ_CATEGORY_LIMITS.maxItems) return;
+    const category = categories[categoryIndex];
+    if (!category) return;
+    updateCategory(categoryIndex, { items: [...category.items, { id: createFaqId("faq-item"), question: "New question", answer: "Write a plain-text answer here." }] });
+  };
+
+  return (
+    <section className="xp-array-field xp-faq-editor" aria-labelledby="xp-faq-categories-title">
+      <div className="xp-array-heading">
+        <span id="xp-faq-categories-title">FAQ categories and questions</span>
+        <small>{categories.length} categories · {totalItems} questions</small>
+      </div>
+      <p className="xp-help-text">Answers are plain text. Categories and questions can be reordered; their IDs stay stable so public links and saved drafts remain consistent.</p>
+      <div className="xp-faq-editor__categories">
+        {categories.map((category, categoryIndex) => (
+          <details className="xp-array-item xp-faq-editor__category" key={category.id}>
+            <summary>
+              <strong>{category.label || `Category ${categoryIndex + 1}`}</strong>
+              <small>{category.items.length} questions</small>
+            </summary>
+            <div className="xp-faq-editor__category-body">
+              <label>
+                <span>Category name</span>
+                <input value={category.label} maxLength={80} onChange={(event) => updateCategory(categoryIndex, { label: event.currentTarget.value })} />
+              </label>
+              <div className="xp-faq-editor__controls" aria-label={`Move or remove ${category.label || "category"}`}>
+                <button type="button" className="xp-array-control" onClick={() => moveCategory(categoryIndex, -1)} disabled={categoryIndex === 0}>Move up</button>
+                <button type="button" className="xp-array-control" onClick={() => moveCategory(categoryIndex, 1)} disabled={categoryIndex === categories.length - 1}>Move down</button>
+                <button type="button" className="xp-array-control is-danger" onClick={() => props.onChange(categories.filter((_, index) => index !== categoryIndex))} disabled={categories.length <= FAQ_CATEGORY_LIMITS.min}>Remove category</button>
+              </div>
+              <div className="xp-faq-editor__items">
+                {category.items.map((item, itemIndex) => (
+                  <div className="xp-array-item xp-faq-editor__item" key={item.id}>
+                    <div className="xp-faq-editor__item-heading"><strong>Question {itemIndex + 1}</strong><small>Plain text</small></div>
+                    <label>
+                      <span>Question</span>
+                      <input value={item.question} maxLength={180} onChange={(event) => updateItem(categoryIndex, itemIndex, { question: event.currentTarget.value })} />
+                    </label>
+                    <label>
+                      <span>Answer</span>
+                      <textarea value={item.answer} maxLength={2000} rows={5} onChange={(event) => updateItem(categoryIndex, itemIndex, { answer: event.currentTarget.value })} />
+                    </label>
+                    <div className="xp-faq-editor__controls">
+                      <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, -1)} disabled={itemIndex === 0}>Move up</button>
+                      <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, 1)} disabled={itemIndex === category.items.length - 1}>Move down</button>
+                      <button type="button" className="xp-array-control is-danger" onClick={() => updateCategory(categoryIndex, { items: category.items.filter((_, index) => index !== itemIndex) })} disabled={category.items.length <= 1}>Remove question</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="xp-studio-button" onClick={() => addItem(categoryIndex)} disabled={totalItems >= FAQ_CATEGORY_LIMITS.maxTotalItems || category.items.length >= FAQ_CATEGORY_LIMITS.maxItems}>Add question</button>
+            </div>
+          </details>
+        ))}
+      </div>
+      <button type="button" className="xp-studio-button" onClick={addCategory} disabled={categories.length >= FAQ_CATEGORY_LIMITS.max}>Add category</button>
+    </section>
+  );
+}
+
 function FieldEditor(props: {
   name: string;
   field: any;
@@ -701,6 +814,10 @@ function FieldEditor(props: {
 
   if (field.type === "array" && name === "pillars") {
     return <OverviewPillarsField value={value} onChange={onChange} />;
+  }
+
+  if (field.type === "array" && name === "categories") {
+    return <FaqCategoriesField value={value} onChange={onChange} />;
   }
 
   if (field.type === "textarea") {
@@ -926,7 +1043,7 @@ export default function App() {
   const canUndo = historyRef.current.past.length > 0;
   const canRedo = historyRef.current.future.length > 0;
 
-  const allowedBlocks = activePage === "landing" ? landingBlocks : loginBlocks;
+  const allowedBlocks = activePage === "landing" ? landingBlocks : activePage === "login" ? loginBlocks : faqBlocks;
   const page = config.pages[activePage];
   const pageBlocks = page.data.content as BlockData[];
   const selectedBlock = pageBlocks[selectedIndex];
@@ -1046,7 +1163,9 @@ export default function App() {
   const canvasRef = useRef<HTMLIFrameElement>(null);
   const canvasSrc = activePage === "login"
     ? "/log-in.html?experienceCanvas=1"
-    : "/index.html?experienceCanvas=1";
+    : activePage === "faq"
+      ? "/faq.html?experienceCanvas=1"
+      : "/index.html?experienceCanvas=1";
 
   const postConfigToCanvas = () => {
     canvasRef.current?.contentWindow?.postMessage(
@@ -1170,7 +1289,7 @@ export default function App() {
   const publish = () => {
     const pageWarnings = (page: PageKey) =>
       getGuardrails(config, page).filter((warning) => !warning.startsWith("No issues"));
-    const allWarnings = [...pageWarnings("landing"), ...pageWarnings("login")];
+    const allWarnings = [...pageWarnings("landing"), ...pageWarnings("login"), ...pageWarnings("faq")];
 
     setConfirmState({
       title: "Publish to the live site?",
@@ -1218,7 +1337,7 @@ export default function App() {
     try {
       await persistDraft();
       setStatus("All changes saved");
-      const target = activePage === "login" ? "/log-in.html" : "/index.html";
+      const target = activePage === "login" ? "/log-in.html" : activePage === "faq" ? "/faq.html" : "/index.html";
       window.open(`${target}?experiencePreview=draft`, "_blank");
     } catch (error) {
       console.error("Preview failed:", error);
@@ -1307,6 +1426,7 @@ export default function App() {
           <div className="xp-studio-segment" aria-label="Page">
             <button className={activePage === "landing" ? "is-active" : ""} onClick={() => setActivePage("landing")}>{pageNames.landing}</button>
             <button className={activePage === "login" ? "is-active" : ""} onClick={() => setActivePage("login")}>{pageNames.login}</button>
+            <button className={activePage === "faq" ? "is-active" : ""} onClick={() => setActivePage("faq")}>{pageNames.faq}</button>
           </div>
           <div className="xp-studio-segment" aria-label="Device preview">
             {(["desktop", "tablet", "mobile"] as DeviceKey[]).map((item) => (
@@ -1386,7 +1506,7 @@ export default function App() {
           <div className="xp-preview-toolbar">
             <div>
               <strong>{page.title}</strong>
-              <span>{activePage === "landing" ? "This is your public home page" : "This is your public sign-in page"}</span>
+              <span>{activePage === "landing" ? "This is your public home page" : activePage === "faq" ? "This is your public FAQ page" : "This is your public sign-in page"}</span>
             </div>
             <span className="xp-layout-locked-badge">Layout locked</span>
           </div>

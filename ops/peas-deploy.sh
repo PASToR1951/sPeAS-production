@@ -23,6 +23,7 @@ info() { PHASE="$*"; printf '[peas] %s\n' "$*"; }
 warn() { printf '[peas] WARNING: %s\n' "$*" >&2; }
 require_root() { [[ "$(id -u)" == 0 ]] || die "run with sudo/root"; }
 require_command() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
+is_image_digest() { [[ "$1" =~ ^[^[:space:]@]+@sha256:[0-9A-Fa-f]{64}$ ]]; }
 audit_event() {
   install -d -m 750 "$STATE_DIR"
   printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${1:-unknown}" "${2:-success}" >>"$AUDIT_LOG"
@@ -31,9 +32,10 @@ audit_event() {
 
 usage() {
   cat <<'EOF'
-Usage: peas-deploy <install|configure|deploy|rollback|backup|restore|bootstrap-admin|doctor|status|logs|verify>
+Usage: peas-deploy <install|configure|configure-integrations|configure-microsoft|configure-email|deploy|rollback|backup|restore|bootstrap-admin|doctor|status|logs|verify>
   install --domain DOMAIN --acme-email EMAIL --image IMAGE@sha256:DIGEST [--ssh-port PORT]
   configure --set KEY=VALUE [--set KEY=VALUE ...]
+  configure-integrations | configure-microsoft | configure-email
   deploy IMAGE@sha256:DIGEST
   rollback [IMAGE@sha256:DIGEST]
   backup | restore SNAPSHOT | bootstrap-admin | doctor | status | logs [SERVICE] | verify
@@ -42,9 +44,19 @@ EOF
 
 load_config() {
   [[ -f "$CONFIG_FILE" ]] || die "missing $CONFIG_FILE"
-  set -a
-  source "$CONFIG_FILE"
-  set +a
+  local line key value line_number=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || die "invalid configuration line $line_number in $CONFIG_FILE"
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || die "invalid configuration key on line $line_number in $CONFIG_FILE"
+    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || die "invalid newline in $key"
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done <"$CONFIG_FILE"
   SECRETS_DIR="${PEAS_SECRETS_DIR:-$SECRETS_DIR}"
   REPO_ROOT="${PEAS_REPO_ROOT:-$REPO_ROOT}"
   [[ -f "$REPO_ROOT/docker-compose.production.yml" ]] || die "missing production Compose file"
@@ -52,12 +64,15 @@ load_config() {
 
 compose() {
   local files=(--project-name peas-prod --env-file "$CONFIG_FILE" -f "$REPO_ROOT/docker-compose.production.yml")
-  [[ -n "${RESTORE_COMPOSE_FILE:-}" ]] && files+=( -f "$RESTORE_COMPOSE_FILE" )
   docker compose "${files[@]}" "$@"
 }
 
 set_config_value() {
   local key="$1" value="$2" tmp
+  [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || die "invalid configuration key: $key"
+  if [[ -n "$value" && ! "$value" =~ ^[A-Za-z0-9._:/@%+,=-]+$ ]]; then
+    die "$key contains unsupported characters"
+  fi
   tmp="$(mktemp "$CONFIG_FILE.XXXXXX")"
   awk -v key="$key" -v value="$value" '
     BEGIN { replaced = 0 }
@@ -84,13 +99,22 @@ generate_secret_if_missing() {
 }
 
 validate_config() {
-  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_RELEASE_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY)
-  local key
+  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL AUTH_ALLOWED_EMAIL_DOMAIN PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE PEAS_RELEASE_ID MICROSOFT_CLIENT_ID MICROSOFT_TENANT_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY)
+  local key smtp_port="${SMTP_PORT:-465}" smtp_tls="${SMTP_TLS:-true}"
   for key in "${required[@]}"; do [[ -n "${!key:-}" ]] || die "missing configuration: $key"; done
   [[ "$PUBLIC_APP_URL" == https://* ]] || die "PUBLIC_APP_URL must use HTTPS"
   [[ "$BETTER_AUTH_URL" == "$PUBLIC_APP_URL" ]] || die "BETTER_AUTH_URL must equal PUBLIC_APP_URL"
-  [[ "$PEAS_IMAGE" == *@sha256:* ]] || die "PEAS_IMAGE must be an immutable digest"
-  for key in db_admin_password db_app_password better_auth_secret smtp_password restic_password; do
+  for key in PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE; do
+    is_image_digest "${!key}" || die "$key must end in a complete @sha256 image digest"
+  done
+  [[ "$MICROSOFT_CLIENT_ID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || die "MICROSOFT_CLIENT_ID must be an Entra application UUID"
+  [[ "$MICROSOFT_TENANT_ID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || die "MICROSOFT_TENANT_ID must be an Entra tenant UUID"
+  [[ "$AUTH_ALLOWED_EMAIL_DOMAIN" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "AUTH_ALLOWED_EMAIL_DOMAIN is invalid"
+  [[ "$SMTP_USERNAME" == *@* ]] || die "SMTP_USERNAME must be an email address"
+  [[ "$CONTACT_RECIPIENT_EMAIL" == *@* ]] || die "CONTACT_RECIPIENT_EMAIL must be an email address"
+  [[ "$smtp_port" =~ ^[0-9]+$ ]] && ((smtp_port >= 1 && smtp_port <= 65535)) || die "SMTP_PORT must be between 1 and 65535"
+  [[ "$smtp_tls" == true || "$smtp_tls" == false ]] || die "SMTP_TLS must be true or false"
+  for key in db_admin_password db_app_password better_auth_secret microsoft_client_secret smtp_password restic_password; do
     [[ -s "$SECRETS_DIR/$key" ]] || die "missing secret: $key"
   done
 }
@@ -136,7 +160,8 @@ backup() {
   require_command restic
   load_restic_credentials
   install -d -m 750 "$STAGING_DIR"
-  local stamp dump storage_archive manifest
+  local stamp dump storage_archive manifest migration_version host_identifier rc=0
+  local running_services=() service container_id
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   dump="$STAGING_DIR/peas-db-$stamp.dump"
   storage_archive="$STAGING_DIR/peas-storage-$stamp.tar.gz"
@@ -145,19 +170,40 @@ backup() {
   info "stopping application writers for a consistent backup"
   compose up -d db >/dev/null
   wait_for_health db 180
-  compose stop app media-worker abstract-worker >/dev/null 2>&1 || true
-  compose exec -T db pg_dump -U postgres -d peas_db --format=custom --no-owner >"$dump"
-  docker run --rm -v "${PEAS_STORAGE_VOLUME:-peas-prod-storage}:/data:ro" -v "$STAGING_DIR:/backup" "${PEAS_UTILITY_IMAGE:-alpine:3.21}" \
-    tar -czf "/backup/$(basename "$storage_archive")" -C /data .
-  {
-    printf 'created_at=%s\n' "$stamp"
-    printf 'release=%s\n' "${PEAS_IMAGE:-unknown}"
-    sha256sum "$dump" "$storage_archive"
-  } >"$manifest"
-  restic backup "$dump" "$storage_archive" "$manifest"
-  restic check
-  rm -f "$dump" "$storage_archive" "$manifest"
-  compose start app media-worker abstract-worker >/dev/null 2>&1 || true
+  for service in app media-worker abstract-worker; do
+    container_id="$(compose ps -q "$service" 2>/dev/null || true)"
+    if [[ -n "$container_id" && "$(docker inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)" == true ]]; then
+      running_services+=("$service")
+    fi
+  done
+  ((${#running_services[@]} == 0)) || compose stop "${running_services[@]}" >/dev/null
+
+  migration_version="$(compose exec -T db psql -U postgres -d peas_db -Atc "SELECT COALESCE(MAX(migration_id), 'uninitialized') FROM public.schema_migrations" 2>/dev/null || true)"
+  migration_version="${migration_version:-uninitialized}"
+  host_identifier="$(hostname)"
+
+  if compose exec -T db pg_dump -U postgres -d peas_db --format=custom --no-owner >"$dump" \
+    && docker run --rm -v "${PEAS_STORAGE_VOLUME:-peas-prod-storage}:/data:ro" -v "$STAGING_DIR:/backup" "$PEAS_UTILITY_IMAGE" \
+      tar -czf "/backup/$(basename "$storage_archive")" -C /data . \
+    && {
+      printf 'created_at=%s\n' "$stamp"
+      printf 'host=%s\n' "$host_identifier"
+      printf 'release=%s\n' "${PEAS_IMAGE:-unknown}"
+      printf 'release_id=%s\n' "${PEAS_RELEASE_ID:-unknown}"
+      printf 'migration=%s\n' "$migration_version"
+      printf '%s  %s\n' "$(sha256sum "$dump" | awk '{print $1}')" "$(basename "$dump")"
+      printf '%s  %s\n' "$(sha256sum "$storage_archive" | awk '{print $1}')" "$(basename "$storage_archive")"
+    } >"$manifest" \
+    && restic backup "$dump" "$storage_archive" "$manifest" \
+    && restic check; then
+    rm -f "$dump" "$storage_archive" "$manifest"
+  else
+    rc=$?
+    warn "backup failed; staging artifacts were retained in $STAGING_DIR"
+  fi
+
+  ((${#running_services[@]} == 0)) || compose start "${running_services[@]}" >/dev/null
+  ((rc == 0)) || return "$rc"
   info "backup completed"
 }
 
@@ -173,11 +219,10 @@ deploy() {
   require_root
   load_config
   local image="${1:-${PEAS_IMAGE:-}}"
-  [[ "$image" == *@sha256:* ]] || die "deploy requires an immutable image digest"
-  local previous=""
-  if [[ -f "$STATE_FILE" ]]; then
-    previous="$(tail -n 1 "$STATE_FILE" | awk -F '\t' '{print $2}')"
-  fi
+  is_image_digest "$image" || die "deploy requires a complete @sha256 image digest"
+  validate_config
+  local previous="${PEAS_IMAGE:-}"
+  backup
   [[ -z "$previous" || "$previous" != "$image" ]] && set_config_value PEAS_IMAGE_PREVIOUS "$previous"
   set_config_value PEAS_IMAGE "$image"
   load_config
@@ -186,7 +231,6 @@ deploy() {
   compose up -d db clamav
   wait_for_health db 180
   wait_for_health clamav 300
-  backup
   compose run --rm migrate
   compose up -d app media-worker abstract-worker caddy
   wait_for_health app 240
@@ -199,7 +243,7 @@ rollback() {
   require_root
   load_config
   local image="${1:-${PEAS_IMAGE_PREVIOUS:-}}"
-  [[ "$image" == *@sha256:* ]] || die "no previous immutable image recorded"
+  is_image_digest "$image" || die "no previous complete @sha256 image digest recorded"
   deploy "$image"
 }
 
@@ -250,12 +294,17 @@ logs() {
 restore() {
   require_root
   load_config
+  validate_config
   require_command restic
   load_restic_credentials
   local snapshot="${1:-}"
   [[ -n "$snapshot" ]] || die "restore requires an exact snapshot ID"
   [[ "$snapshot" =~ ^[A-Za-z0-9]+$ ]] || die "snapshot must be an exact Restic snapshot ID"
-  [[ "${CONFIRM_YES:-false}" == true || "${PEAS_CONFIRM_RESTORE:-}" == "RESTORE $snapshot" ]] || die "pass --yes or set PEAS_CONFIRM_RESTORE='RESTORE $snapshot'"
+  if [[ "${CONFIRM_YES:-false}" != true && "${PEAS_CONFIRM_RESTORE:-}" != "RESTORE $snapshot" ]]; then
+    local confirmation=""
+    read -r -p "Type RESTORE $snapshot to continue: " confirmation </dev/tty || true
+    [[ "$confirmation" == "RESTORE $snapshot" ]] || die "restore confirmation did not match"
+  fi
   local target="$APP_ROOT/restore/$snapshot"
   [[ ! -e "$target" ]] || die "restore target already exists: $target"
   install -d -m 750 "$target"
@@ -264,23 +313,32 @@ restore() {
   dump="$(find "$target" -type f -name 'peas-db-*.dump' -print -quit)"
   storage_archive="$(find "$target" -type f -name 'peas-storage-*.tar.gz' -print -quit)"
   manifest="$(find "$target" -type f -name 'manifest-*.txt' -print -quit)"
-  [[ -s "$dump" && -s "$storage_archive" ]] || die "snapshot does not contain the required database and storage artifacts"
+  [[ -s "$dump" && -s "$storage_archive" && -s "$manifest" ]] || die "snapshot does not contain the required database, storage, and manifest artifacts"
+
+  local expected actual artifact artifact_name
+  for artifact in "$dump" "$storage_archive"; do
+    artifact_name="$(basename "$artifact")"
+    expected="$(awk -v name="$artifact_name" '$2 == name || $2 ~ ("/" name "$") { print $1; exit }' "$manifest")"
+    [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || die "manifest has no valid checksum for $artifact_name"
+    actual="$(sha256sum "$artifact" | awk '{print $1}')"
+    [[ "$actual" == "$expected" ]] || die "checksum mismatch for $artifact_name"
+  done
+  info "backup manifest checksums passed"
 
   if [[ -n "$manifest" ]]; then
     local recorded_image
     recorded_image="$(awk -F= '$1 == "release" {print $2; exit}' "$manifest")"
-    if [[ "$recorded_image" == *@sha256:* ]]; then
+    if is_image_digest "$recorded_image"; then
       PEAS_IMAGE="$recorded_image"
       export PEAS_IMAGE
     fi
   fi
 
-  local stamp temp_db new_db new_storage override_file
+  local stamp temp_db new_db new_storage
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   temp_db="peas-restore-db-$stamp"
   new_db="peas-prod-postgres-restore-$stamp"
   new_storage="peas-prod-storage-restore-$stamp"
-  override_file="$target/restore-compose.yml"
   docker volume create "$new_db" >/dev/null
   docker volume create "$new_storage" >/dev/null
 
@@ -298,8 +356,6 @@ restore() {
     sleep 2
   done
   docker exec "$temp_db" pg_isready -U postgres -d peas_db >/dev/null
-  docker cp "$dump" "$temp_db:/restore.dump"
-  docker exec "$temp_db" pg_restore --exit-on-error --no-owner --dbname=peas_db --username=postgres /restore.dump
   docker cp "$SECRETS_DIR/db_app_password" "$temp_db:/run/db_app_password"
   docker exec "$temp_db" psql -v ON_ERROR_STOP=1 --username=postgres --dbname=peas_db <<'SQL'
 DO $$
@@ -312,26 +368,19 @@ BEGIN
 END
 $$;
 SQL
+  docker cp "$dump" "$temp_db:/restore.dump"
+  docker exec "$temp_db" pg_restore --exit-on-error --no-owner --dbname=peas_db --username=postgres /restore.dump
   docker exec "$temp_db" rm -f /restore.dump /run/db_app_password
   docker run --rm \
     --volume "$new_storage:/data" \
     --volume "$(dirname "$storage_archive"):/restore:ro" \
-    "${PEAS_UTILITY_IMAGE:-alpine:3.21}" \
+    "$PEAS_UTILITY_IMAGE" \
     tar -xzf "/restore/$(basename "$storage_archive")" -C /data
   cleanup_restore_db
   trap - RETURN
 
-  cat >"$override_file" <<EOF
-services: {}
-volumes:
-  $new_db:
-    name: $new_db
-  $new_storage:
-    name: $new_storage
-EOF
   export PEAS_POSTGRES_VOLUME="$new_db"
   export PEAS_STORAGE_VOLUME="$new_storage"
-  export RESTORE_COMPOSE_FILE="$override_file"
   compose stop app media-worker abstract-worker caddy db >/dev/null 2>&1 || true
   compose up -d db
   wait_for_health db 180
@@ -341,6 +390,9 @@ EOF
   verify
   set_config_value PEAS_POSTGRES_VOLUME "$new_db"
   set_config_value PEAS_STORAGE_VOLUME "$new_storage"
+  if is_image_digest "${recorded_image:-}"; then
+    set_config_value PEAS_IMAGE "$recorded_image"
+  fi
   info "restore validated; previous volumes remain untouched for manual recovery"
 }
 
@@ -391,12 +443,99 @@ prompt_secret_if_missing() {
   unset value
 }
 
+prompt_config_value() {
+  local key="$1" prompt="$2" fallback="${3:-}" current="${!key:-}" value
+  current="${current:-$fallback}"
+  value="$(prompt_value "$prompt" "$current")"
+  [[ -n "$value" ]] || die "$key is required"
+  set_config_value "$key" "$value"
+  printf -v "$key" '%s' "$value"
+  export "$key"
+}
+
+prompt_secret_update() {
+  local key="$1" prompt="$2" path="$SECRETS_DIR/$1" answer value
+  if [[ -s "$path" ]]; then
+    read -r -p "$prompt is already stored. Replace it? [y/N] " answer </dev/tty || true
+    [[ "${answer:-N}" =~ ^[Yy]$ ]] || return 0
+  fi
+  value="$(prompt_secret "$prompt")"
+  write_secret "$key" "$value"
+  unset value
+}
+
+configure_microsoft_values() {
+  info "Microsoft Entra sign-in configuration"
+  printf '%s\n' "Register a Web application first and set its redirect URI to:"
+  printf '  %s/api/auth/callback/microsoft\n' "${BETTER_AUTH_URL:-${PUBLIC_APP_URL:-https://YOUR_DOMAIN}}"
+  prompt_config_value AUTH_ALLOWED_EMAIL_DOMAIN "Allowed institutional email domain" "spud.edu.ph"
+  prompt_config_value MICROSOFT_CLIENT_ID "Microsoft Entra application (client) ID"
+  prompt_config_value MICROSOFT_TENANT_ID "Microsoft Entra directory (tenant) ID"
+  prompt_secret_update microsoft_client_secret "Microsoft Entra client secret value"
+}
+
+configure_email_values() {
+  info "outgoing email configuration"
+  printf '%s\n' "Use an institutional relay or a provider that accepts SMTP username/password authentication."
+  printf '%s\n' "For Microsoft 365, use an approved OAuth-capable relay or Azure Communication Services SMTP; Exchange Online basic SMTP passwords are not supported."
+  prompt_config_value SMTP_HOST "SMTP host"
+  prompt_config_value SMTP_PORT "SMTP port" "587"
+  prompt_config_value SMTP_TLS "Use implicit TLS (true for port 465; false for STARTTLS on port 587)" "false"
+  prompt_config_value SMTP_USERNAME "SMTP username / sender email"
+  prompt_config_value CONTACT_RECIPIENT_EMAIL "Contact form recipient email" "${SMTP_USERNAME:-}"
+  prompt_secret_update smtp_password "SMTP password"
+}
+
+restart_app_after_configuration() {
+  if [[ -n "$(compose ps -q app 2>/dev/null || true)" ]]; then
+    info "restarting the application to load the updated credentials"
+    compose up -d --force-recreate app
+    wait_for_health app 240
+    verify
+  else
+    info "credentials saved; they will be loaded on the next deployment"
+  fi
+}
+
+configure_integrations() {
+  require_root
+  load_config
+  configure_microsoft_values
+  configure_email_values
+  load_config
+  validate_config
+  restart_app_after_configuration
+  info "Microsoft sign-in and email configuration completed"
+}
+
+configure_microsoft() {
+  require_root
+  load_config
+  configure_microsoft_values
+  load_config
+  validate_config
+  restart_app_after_configuration
+  info "Microsoft sign-in configuration completed"
+}
+
+configure_email() {
+  require_root
+  load_config
+  configure_email_values
+  load_config
+  validate_config
+  restart_app_after_configuration
+  info "email configuration completed"
+}
+
 install_host() {
   require_root
   require_command apt-get
   [[ -n "$DOMAIN" && -n "$ACME_EMAIL" && -n "$IMAGE" ]] || die "install requires --domain, --acme-email, and --image"
-  [[ "$IMAGE" == *@sha256:* ]] || die "install requires an immutable image digest"
-  [[ "$SSH_PORT" =~ ^[1-9][0-9]{1,4}$ && "$SSH_PORT" -le 65535 ]] || die "SSH port must be a valid TCP port"
+  [[ "$DOMAIN" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}$ && "$DOMAIN" != *".."* ]] || die "domain must be a DNS hostname without a scheme or path"
+  [[ "$ACME_EMAIL" == *@*.* ]] || die "ACME email must be a valid email address"
+  is_image_digest "$IMAGE" || die "install requires a complete @sha256 image digest"
+  [[ "$SSH_PORT" =~ ^[1-9][0-9]{0,4}$ && "$SSH_PORT" -le 65535 ]] || die "SSH port must be a valid TCP port"
   [[ -r /etc/os-release ]] || die "cannot identify the operating system"
   . /etc/os-release
   [[ "$ID" == ubuntu && ("${VERSION_ID:-}" == "24.04" || "${VERSION_ID:-}" == "22.04") ]] || die "Ubuntu 24.04 (or approved 22.04) is required"
@@ -434,11 +573,10 @@ install_host() {
   prompt_config_if_missing PEAS_POSTGRES_IMAGE "Pinned PostgreSQL image (for example postgres:17-alpine@sha256:...)"
   prompt_config_if_missing PEAS_CADDY_IMAGE "Pinned Caddy image (for example caddy:2-alpine@sha256:...)"
   prompt_config_if_missing PEAS_CLAMAV_IMAGE "Pinned ClamAV image (for example clamav/clamav@sha256:...)"
-  prompt_config_if_missing SMTP_HOST "SMTP host"
-  prompt_config_if_missing SMTP_USERNAME "SMTP username"
-  prompt_config_if_missing CONTACT_RECIPIENT_EMAIL "Contact recipient email"
+  prompt_config_if_missing PEAS_UTILITY_IMAGE "Pinned backup utility image (for example alpine:3.21@sha256:...)"
+  configure_microsoft_values
+  configure_email_values
   prompt_config_if_missing RESTIC_REPOSITORY "Restic S3 repository URL"
-  prompt_secret_if_missing smtp_password "SMTP password"
   prompt_secret_if_missing restic_password "Restic repository password"
   prompt_secret_if_missing s3_access_key_id "S3 access key ID"
   prompt_secret_if_missing s3_secret_access_key "S3 secret access key"
@@ -506,17 +644,19 @@ ACME_EMAIL=""
 IMAGE=""
 SSH_PORT="22"
 SET_VALUES=()
+POSITIONAL=()
 while (($#)); do
   case "$1" in
-    --domain) DOMAIN="${2:-}"; shift 2 ;;
-    --acme-email) ACME_EMAIL="${2:-}"; shift 2 ;;
-    --image) IMAGE="${2:-}"; shift 2 ;;
-    --ssh-port) SSH_PORT="${2:-}"; shift 2 ;;
-    --set) SET_VALUES+=("${2:-}"); shift 2 ;;
+    --domain) (($# >= 2)) || die "--domain requires a value"; DOMAIN="$2"; shift 2 ;;
+    --acme-email) (($# >= 2)) || die "--acme-email requires a value"; ACME_EMAIL="$2"; shift 2 ;;
+    --image) (($# >= 2)) || die "--image requires a value"; IMAGE="$2"; shift 2 ;;
+    --ssh-port) (($# >= 2)) || die "--ssh-port requires a value"; SSH_PORT="$2"; shift 2 ;;
+    --set) (($# >= 2)) || die "--set requires a value"; SET_VALUES+=("$2"); shift 2 ;;
     --yes) CONFIRM_YES=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) die "unknown option: $1" ;;
+    --*) die "unknown option: $1" ;;
+    *) POSITIONAL+=("$1"); shift ;;
   esac
 done
 
@@ -545,8 +685,13 @@ failure_handler() {
 trap failure_handler ERR
 
 case "$command" in
-  install) install_host; audit_event install ;;
+  install)
+    ((${#POSITIONAL[@]} == 0)) || die "install accepts options only; see --help"
+    install_host
+    audit_event install
+    ;;
   configure)
+    ((${#POSITIONAL[@]} == 0)) || die "configure accepts only --set KEY=VALUE"
     require_root
     load_config
     for assignment in "${SET_VALUES[@]}"; do
@@ -554,7 +699,7 @@ case "$command" in
       key="${assignment%%=*}"
       value="${assignment#*=}"
       case "$key" in
-        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|AUTH_ALLOWED_EMAIL_DOMAIN|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|RESTIC_REPOSITORY|DOCUMENT_ACCESS_TOKEN_TTL_HOURS|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES)
+        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|AUTH_ALLOWED_EMAIL_DOMAIN|MICROSOFT_CLIENT_ID|MICROSOFT_TENANT_ID|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|RESTIC_REPOSITORY|DOCUMENT_ACCESS_TOKEN_TTL_HOURS|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES)
           [[ -n "$value" ]] || die "$key cannot be empty"
           set_config_value "$key" "$value"
           ;;
@@ -566,15 +711,66 @@ case "$command" in
     info "configuration updated without printing secret values"
     audit_event configure
     ;;
-  deploy) deploy "${IMAGE:-${1:-}}"; audit_event deploy ;;
-  rollback) rollback "${1:-}"; audit_event rollback ;;
-  backup) backup; audit_event backup ;;
-  restore) restore "${1:-}"; audit_event restore ;;
-  bootstrap-admin) bootstrap_admin; audit_event bootstrap-admin ;;
-  doctor) doctor; audit_event doctor ;;
-  status) status; audit_event status ;;
-  logs) logs "${1:-}"; audit_event logs ;;
-  verify) verify; audit_event verify ;;
+  configure-integrations)
+    ((${#POSITIONAL[@]} == 0)) || die "configure-integrations takes no arguments"
+    configure_integrations
+    audit_event configure-integrations
+    ;;
+  configure-microsoft)
+    ((${#POSITIONAL[@]} == 0)) || die "configure-microsoft takes no arguments"
+    configure_microsoft
+    audit_event configure-microsoft
+    ;;
+  configure-email)
+    ((${#POSITIONAL[@]} == 0)) || die "configure-email takes no arguments"
+    configure_email
+    audit_event configure-email
+    ;;
+  deploy)
+    ((${#POSITIONAL[@]} <= 1)) || die "deploy accepts one image digest"
+    deploy "${IMAGE:-${POSITIONAL[0]:-}}"
+    audit_event deploy
+    ;;
+  rollback)
+    ((${#POSITIONAL[@]} <= 1)) || die "rollback accepts at most one image digest"
+    rollback "${POSITIONAL[0]:-}"
+    audit_event rollback
+    ;;
+  backup)
+    ((${#POSITIONAL[@]} == 0)) || die "backup takes no arguments"
+    backup
+    audit_event backup
+    ;;
+  restore)
+    ((${#POSITIONAL[@]} == 1)) || die "restore requires one exact snapshot ID"
+    restore "${POSITIONAL[0]}"
+    audit_event restore
+    ;;
+  bootstrap-admin)
+    ((${#POSITIONAL[@]} == 0)) || die "bootstrap-admin takes no arguments"
+    bootstrap_admin
+    audit_event bootstrap-admin
+    ;;
+  doctor)
+    ((${#POSITIONAL[@]} == 0)) || die "doctor takes no arguments"
+    doctor
+    audit_event doctor
+    ;;
+  status)
+    ((${#POSITIONAL[@]} == 0)) || die "status takes no arguments"
+    status
+    audit_event status
+    ;;
+  logs)
+    ((${#POSITIONAL[@]} <= 1)) || die "logs accepts at most one service name"
+    logs "${POSITIONAL[0]:-}"
+    audit_event logs
+    ;;
+  verify)
+    ((${#POSITIONAL[@]} == 0)) || die "verify takes no arguments"
+    verify
+    audit_event verify
+    ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

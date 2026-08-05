@@ -63,25 +63,26 @@ ClamAV, and Restic. Only Caddy publishes ports 80 and 443.
 1. Build and publish a signed semantic release through
    `.github/workflows/release.yml`.
 2. Resolve the published GHCR image to its immutable `@sha256:` digest.
-3. Copy this repository and `ops/peas-deploy.sh` to the server. Never execute
+3. Copy this repository to the server. Never execute
    an unreviewed `curl | sh` installer.
-4. Run the first installation (all placeholders are operator-owned values):
+4. Open the installation menu:
 
    ```bash
-   sudo ./ops/peas-deploy.sh install \
-     --domain <PRODUCTION_DOMAIN> \
-     --acme-email <ACME_EMAIL> \
-     --image ghcr.io/<GITHUB_OWNER>/<NEW_REPOSITORY>@sha256:<DIGEST>
+   ./install.sh
    ```
 
-5. Supply SMTP, GHCR, S3-compatible Restic, and Entra values at the prompts.
-6. Create the first administrator without placing a password in shell history:
+   Choose **Install PeAS on a new server**. The wizard asks for the domain,
+   immutable images, Microsoft Entra app registration, SMTP relay, Restic, and
+   GHCR credentials. Secret values use hidden prompts and mode-`0600` files
+   below `/etc/peas/secrets`.
+5. Create the first administrator from the menu, or without placing a password
+   in shell history:
 
    ```bash
    sudo peas-deploy bootstrap-admin
    ```
 
-7. Verify the installation:
+6. Verify the installation:
 
    ```bash
    sudo peas-deploy doctor
@@ -90,11 +91,28 @@ ClamAV, and Restic. Only Caddy publishes ports 80 and 443.
    sudo peas-deploy backup
    ```
 
-The complete command contract, rollback rules, maintenance window behavior,
+`install.sh` is the operator's single launch point. The lower-level
+`peas-deploy` command remains available for automation. The complete command
+contract, rollback rules, maintenance window behavior,
 restore confirmation phrase, backup retention, and staging rehearsal are in
 [`ops/README.md`](ops/README.md). The server command is implemented in
 [`ops/peas-deploy.sh`](ops/peas-deploy.sh) and is installed as
 `/usr/local/sbin/peas-deploy`.
+
+The latest codebase comparison, completed checks, and remaining go-live gates
+are recorded in [`ops/RELEASE_READINESS_AUDIT.md`](ops/RELEASE_READINESS_AUDIT.md).
+
+### Microsoft and email credentials
+
+The Entra Web redirect URI is
+`https://<PRODUCTION_DOMAIN>/api/auth/callback/microsoft`. The client secret is
+mounted only into the web container through a Docker secret.
+
+Outgoing email uses SMTP username/password authentication. For port 587,
+choose `SMTP_TLS=false`; the client then negotiates STARTTLS. For implicit TLS
+on port 465, choose `SMTP_TLS=true`. Exchange Online basic SMTP passwords are
+not supported; use an institution-approved SMTP relay, Azure Communication
+Services SMTP credentials, or another compatible relay.
 
 ## Release and legacy-route policy
 

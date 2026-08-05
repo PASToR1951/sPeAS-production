@@ -4,6 +4,7 @@ import {
   EXPERIENCE_DEFAULT_ORGANIZATION_ROLES,
   EXPERIENCE_ORGANIZATION_ROLE_IDS,
   ExperienceOrganizationRolesSchema,
+  FaqBlockPropsSchema,
   getExperiencePublishErrors,
   migrateExperienceConfigToV3,
 } from "../shared/experienceConfig.ts";
@@ -19,7 +20,7 @@ Deno.test("v1 experience content migrates while layout and theme stay locked", (
   input.pages.landing.data.content.push({ type: "AnnouncementBanner", props: { text: "Injected" } });
 
   const migrated = migrateExperienceConfigToV3(input);
-  assertEquals(migrated.schemaVersion, 3);
+  assertEquals(migrated.schemaVersion, 4);
   assertEquals("theme" in migrated, false);
   assertEquals(migrated.pages.landing.data.content.map((block) => block.type), defaultExperienceConfig.pages.landing.data.content.map((block) => block.type));
   const migratedHero = migrated.pages.landing.data.content.find((block) => block.type === "HeroBlock")!;
@@ -34,7 +35,7 @@ Deno.test("v2 content receives exactly one overview immediately after the hero",
   input.pages.landing.data.content = input.pages.landing.data.content.filter((block: any) => block.type !== "OverviewBlock");
 
   const migrated = migrateExperienceConfigToV3(input);
-  assertEquals(migrated.schemaVersion, 3);
+  assertEquals(migrated.schemaVersion, 4);
   const landingTypes = migrated.pages.landing.data.content.map((block) => block.type);
   assertEquals(landingTypes.filter((type) => type === "OverviewBlock").length, 1);
   assertEquals(landingTypes.slice(0, 2), ["HeroBlock", "OverviewBlock"]);
@@ -231,4 +232,48 @@ Deno.test("publishing requires alt text for organization role photos", () => {
       "University President photo requires alternative text.",
     ),
   );
+});
+
+Deno.test("legacy experience versions receive the seeded FAQ page", () => {
+  const input = structuredClone(defaultExperienceConfig) as any;
+  input.schemaVersion = 3;
+  delete input.pages.faq;
+
+  const migrated = migrateExperienceConfigToV3(input);
+  assertEquals(migrated.schemaVersion, 4);
+  const faq = migrated.pages.faq.data.content.find((block) => block.type === "FaqBlock")!;
+  const props = FaqBlockPropsSchema.parse(faq.props);
+  assertEquals(props.categories.length, 5);
+  assertEquals(props.categories.reduce((sum, category) => sum + category.items.length, 0), 15);
+  assertEquals(props.contactHref, "/contact.html");
+});
+
+Deno.test("FAQ schema rejects duplicate questions and HTML answers", () => {
+  const faq = structuredClone(defaultExperienceConfig.pages.faq.data.content[0].props) as any;
+  faq.categories[1].items[0].question = faq.categories[0].items[0].question;
+  faq.categories[1].items[0].answer = "<strong>Unsafe markup</strong>";
+  assert(!FaqBlockPropsSchema.safeParse(faq).success);
+});
+
+Deno.test("FAQ schema enforces limits, IDs, duplicate categories, and plain-text headings", () => {
+  const base = structuredClone(defaultExperienceConfig.pages.faq.data.content[0].props) as any;
+  const tooManyCategories = structuredClone(base);
+  tooManyCategories.categories = Array.from({ length: 9 }, (_, index) => ({
+    id: `category-${index}`,
+    label: `Category ${index}`,
+    items: [{ id: `item-${index}`, question: `Question ${index}`, answer: "Answer" }],
+  }));
+  assert(!FaqBlockPropsSchema.safeParse(tooManyCategories).success);
+
+  const duplicateCategory = structuredClone(base);
+  duplicateCategory.categories[1].label = `  ${duplicateCategory.categories[0].label.toUpperCase()}  `;
+  assert(!FaqBlockPropsSchema.safeParse(duplicateCategory).success);
+
+  const unsupportedId = structuredClone(base);
+  unsupportedId.categories[0].items[0].id = "not valid";
+  assert(!FaqBlockPropsSchema.safeParse(unsupportedId).success);
+
+  const markupTitle = structuredClone(base);
+  markupTitle.title = "<em>Unsafe</em>";
+  assert(!FaqBlockPropsSchema.safeParse(markupTitle).success);
 });

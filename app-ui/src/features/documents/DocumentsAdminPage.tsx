@@ -103,7 +103,7 @@ export function DocumentsAdminPage() {
     setError(null);
 
     try {
-      const result = await fetchDocuments(queryFilter);
+      const result = await fetchDocuments({ ...queryFilter, includeReview: true });
       if (requestId !== requestIdRef.current) return;
       setDocuments(result.documents);
       setTotalCount(result.totalCount);

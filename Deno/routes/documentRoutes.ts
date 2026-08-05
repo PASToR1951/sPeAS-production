@@ -58,7 +58,9 @@ function removeDocumentFileFields(value: unknown): unknown {
 const getDocuments = async (ctx: RouterContext<any, any, any>) => {
     const sessionData = await getSessionFromHeaders(ctx.request.headers);
     const requestUrl = new URL(ctx.request.url);
-    if (sessionData?.role === "admin") {
+    const requestsAdminCatalog = sessionData?.role === "admin"
+        && requestUrl.searchParams.get("include_review") === "true";
+    if (requestsAdminCatalog) {
         requestUrl.searchParams.set("include_review", "true");
         requestUrl.searchParams.delete("public_only");
     } else {
@@ -78,6 +80,56 @@ const getDocuments = async (ctx: RouterContext<any, any, any>) => {
     ctx.response.status = response.status;
     ctx.response.headers = response.headers;
     ctx.response.body = await response.json();
+};
+
+const getAvailablePublicationYears = async (ctx: RouterContext<any, any, any>) => {
+    const result = await client.queryObject<{ year: number }>(`
+        WITH available_years AS (
+            SELECT EXTRACT(YEAR FROM d.publication_date)::INTEGER AS year
+            FROM documents d
+            WHERE d.deleted_at IS NULL
+              AND d.compiled_parent_id IS NULL
+              AND d.review_status = 'approved'
+              AND d.is_public IS TRUE
+              AND d.publication_date IS NOT NULL
+
+            UNION
+
+            SELECT generated.year::INTEGER
+            FROM compiled_documents cd
+            CROSS JOIN LATERAL generate_series(
+                cd.start_year,
+                COALESCE(cd.end_year, cd.start_year)
+            ) AS generated(year)
+            WHERE cd.deleted_at IS NULL
+              AND cd.review_status = 'approved'
+              AND cd.start_year IS NOT NULL
+              AND COALESCE(cd.end_year, cd.start_year) >= cd.start_year
+              AND EXISTS (
+                  SELECT 1
+                  FROM documents child
+                  WHERE child.deleted_at IS NULL
+                    AND child.review_status = 'approved'
+                    AND child.is_public IS TRUE
+                    AND (
+                        child.compiled_parent_id = cd.id
+                        OR EXISTS (
+                            SELECT 1
+                            FROM compiled_document_items link
+                            WHERE link.compiled_document_id = cd.id
+                              AND link.document_id = child.id
+                        )
+                    )
+              )
+        )
+        SELECT DISTINCT year
+        FROM available_years
+        WHERE year IS NOT NULL
+        ORDER BY year DESC
+    `);
+
+    ctx.response.status = 200;
+    ctx.response.body = { years: result.rows.map((row) => Number(row.year)) };
 };
 
 const getDocumentById = async (ctx: RouterContext<any, any, any>) => {
@@ -1105,6 +1157,7 @@ const verifyDocumentFile = async (ctx: RouterContext<any, any, any>) => {
 // Export an array of routes
 export const documentRoutes: Route[] = [
     { method: "GET", path: "/documents", handler: getDocuments },
+    { method: "GET", path: "/documents/years", handler: getAvailablePublicationYears },
     { method: "GET", path: "/documents/:id", handler: getDocumentById },
     { method: "GET", path: "/documents/:id/download", handler: downloadDocument },
     { method: "GET", path: "/documents/:id/authors", handler: getDocumentAuthorsById },

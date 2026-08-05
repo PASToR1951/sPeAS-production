@@ -9,7 +9,7 @@ services:
       - db_admin_password
       - db_app_password
     volumes:
-      - ${PEAS_POSTGRES_VOLUME:-peas-prod-postgres}:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
       - ./ops/postgres-init:/docker-entrypoint-initdb.d:ro
     networks: [backend]
     restart: unless-stopped
@@ -57,6 +57,9 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL}
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       AUTH_ALLOWED_EMAIL_DOMAIN: ${AUTH_ALLOWED_EMAIL_DOMAIN:-spud.edu.ph}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET_FILE: /run/secrets/microsoft_client_secret
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
       STORAGE_ROOT: /app/storage
       NEWS_MEDIA_WORKER_ENABLED: "false"
@@ -74,10 +77,11 @@ services:
     secrets:
       - db_app_password
       - better_auth_secret
+      - microsoft_client_secret
       - smtp_password
     volumes:
-      - ${PEAS_STORAGE_VOLUME:-peas-prod-storage}:/app/storage
-      - ${PEAS_LOGS_VOLUME:-peas-prod-logs}:/app/Deno/logs
+      - storage-data:/app/storage
+      - logs-data:/app/Deno/logs
     networks: [edge, backend]
     restart: unless-stopped
     init: true
@@ -113,7 +117,7 @@ services:
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       NEWS_MEDIA_CLAMAV_ENABLED: "true"
     secrets: [db_app_password, better_auth_secret]
-    volumes: ["${PEAS_STORAGE_VOLUME:-peas-prod-storage}:/app/storage"]
+    volumes: ["storage-data:/app/storage"]
     networks: [backend]
     restart: unless-stopped
     init: true
@@ -137,7 +141,7 @@ services:
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
       ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
     secrets: [db_app_password]
-    volumes: ["${PEAS_STORAGE_VOLUME:-peas-prod-storage}:/app/storage"]
+    volumes: ["storage-data:/app/storage"]
     networks: [backend]
     restart: unless-stopped
     init: true
@@ -168,8 +172,8 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
     volumes:
       - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${PEAS_CADDY_DATA_VOLUME:-peas-prod-caddy-data}:/data
-      - ${PEAS_CADDY_CONFIG_VOLUME:-peas-prod-caddy-config}:/config
+      - caddy-data:/data
+      - caddy-config:/config
     networks: [edge]
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
@@ -182,16 +186,16 @@ networks:
     internal: true
 
 volumes:
-  peas-prod-postgres:
-    name: peas-prod-postgres
-  peas-prod-storage:
-    name: peas-prod-storage
-  peas-prod-logs:
-    name: peas-prod-logs
-  peas-prod-caddy-data:
-    name: peas-prod-caddy-data
-  peas-prod-caddy-config:
-    name: peas-prod-caddy-config
+  postgres-data:
+    name: ${PEAS_POSTGRES_VOLUME:-peas-prod-postgres}
+  storage-data:
+    name: ${PEAS_STORAGE_VOLUME:-peas-prod-storage}
+  logs-data:
+    name: ${PEAS_LOGS_VOLUME:-peas-prod-logs}
+  caddy-data:
+    name: ${PEAS_CADDY_DATA_VOLUME:-peas-prod-caddy-data}
+  caddy-config:
+    name: ${PEAS_CADDY_CONFIG_VOLUME:-peas-prod-caddy-config}
 
 secrets:
   db_admin_password:
@@ -200,5 +204,7 @@ secrets:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/db_app_password
   better_auth_secret:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/better_auth_secret
+  microsoft_client_secret:
+    file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/microsoft_client_secret
   smtp_password:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/smtp_password

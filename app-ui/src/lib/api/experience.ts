@@ -6,10 +6,11 @@ export interface PublicExperienceConfig {
   pages: {
     landing: { data: { content: ExperienceBlock[] } };
     login: { data: { content: ExperienceBlock[] } };
+    faq: { data: { content: ExperienceBlock[] } };
   };
 }
 
-export function usePublicExperience(page: "landing" | "login") {
+export function usePublicExperience(page: "landing" | "login" | "faq") {
   const [config, setConfig] = useState<PublicExperienceConfig | null>(null);
   const params = new URLSearchParams(window.location.search);
   const canvasMode = window.parent !== window && params.get("experienceCanvas") === "1";
@@ -56,12 +57,12 @@ function preventCanvasLinkNavigation(event: Event) {
   if ((event.target as HTMLElement | null)?.closest("a[href]")) event.preventDefault();
 }
 
-export function experienceBlockProps(config: PublicExperienceConfig | null, page: "landing" | "login", type: string) {
-  return config?.pages[page].data.content.find((block) => block.type === type)?.props ?? {};
+export function experienceBlockProps(config: PublicExperienceConfig | null, page: "landing" | "login" | "faq", type: string) {
+  return config?.pages?.[page]?.data?.content.find((block) => block.type === type)?.props ?? {};
 }
 
 function isExperienceConfig(value: unknown): value is PublicExperienceConfig {
   if (!value || typeof value !== "object") return false;
   const candidate = value as PublicExperienceConfig;
-  return (candidate.schemaVersion === 2 || candidate.schemaVersion === 3) && Array.isArray(candidate.pages?.landing?.data?.content) && Array.isArray(candidate.pages?.login?.data?.content);
+  return (candidate.schemaVersion === 2 || candidate.schemaVersion === 3 || candidate.schemaVersion === 4) && Array.isArray(candidate.pages?.landing?.data?.content) && Array.isArray(candidate.pages?.login?.data?.content);
 }

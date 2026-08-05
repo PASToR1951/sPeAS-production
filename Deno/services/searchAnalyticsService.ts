@@ -3,7 +3,7 @@ import { isReportRange, resolveReportWindow, REPORTING_TIMEZONE, type ReportRang
 
 export type SearchAnalyticsAction = "submit" | "suggestion_select";
 export type SearchAnalyticsSource = "home" | "results";
-export type SearchAnalyticsTermType = "work" | "author" | "topic" | "keyword" | "agenda" | "free_text";
+export type SearchAnalyticsTermType = "work" | "news" | "author" | "topic" | "keyword" | "agenda" | "free_text";
 
 export function normalizeSearchTerm(value: unknown): string {
   return String(value ?? "").normalize("NFKC").trim().replace(/[\s]+/gu, " ").toLocaleLowerCase();
@@ -34,6 +34,7 @@ export async function recordSearchActivity(input: { term: string; displayTerm?: 
           UNION ALL SELECT 'topic'::TEXT FROM topics t JOIN document_topics dt ON dt.topic_id = t.id JOIN documents d ON d.id = dt.document_id WHERE t.status = 'approved' AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND t.normalized_name = $1 LIMIT 1
           UNION ALL SELECT 'keyword'::TEXT FROM keywords k JOIN document_keywords dk ON dk.keyword_id = k.id JOIN documents d ON d.id = dk.document_id WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND k.normalized_term = $1 LIMIT 1
           UNION ALL SELECT 'agenda'::TEXT FROM research_agenda ra JOIN document_research_agenda dra ON dra.research_agenda_id = ra.id JOIN documents d ON d.id = dra.document_id WHERE ra.is_official = TRUE AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND ra.normalized_name = $1 LIMIT 1
+          UNION ALL SELECT 'news'::TEXT FROM news_posts n WHERE n.status = 'published' AND n.deleted_at IS NULL AND n.published_at IS NOT NULL AND n.published_at <= CURRENT_TIMESTAMP AND LOWER(BTRIM(n.title)) = $1 LIMIT 1
         ) resolved LIMIT 1
       `, [normalized]);
       type = resolved.rows[0]?.term_type ?? "free_text";
@@ -133,7 +134,7 @@ export async function getSearchAnalyticsReport(query: SearchAnalyticsQuery) {
     const selectedKey = query.selected || rows[0]?.key;
     const selected = selectedKey ? rows.find((row) => row.key === selectedKey) ?? null : null;
     await connection.queryArray("COMMIT");
-    return { meta: { dataVersion: 1, generatedAt: new Date().toISOString(), timezone: REPORTING_TIMEZONE, range: { key: window.key, label: window.label, bucket: window.bucket, startInclusive: window.startInclusive?.toISOString() ?? null, endExclusive: window.endExclusive.toISOString() }, coverage: { warning: total ? null : "Search analytics are available after explicit visitor searches are recorded." } }, summary: { ...summary, uniqueTerms: total, selectionRate: summary.submissions ? summary.selections / summary.submissions : 0, suppressedActivity }, series: seriesResult.rows.map((row) => ({ bucket: String(row.bucket), submissions: Number(row.submissions ?? 0), selections: Number(row.selections ?? 0) })), pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) }, rows, selected, filters: { termTypes: ["work", "author", "topic", "keyword", "agenda", "free_text"], actions: ["submit", "suggestion_select"], sources: ["home", "results"] } };
+    return { meta: { dataVersion: 1, generatedAt: new Date().toISOString(), timezone: REPORTING_TIMEZONE, range: { key: window.key, label: window.label, bucket: window.bucket, startInclusive: window.startInclusive?.toISOString() ?? null, endExclusive: window.endExclusive.toISOString() }, coverage: { warning: total ? null : "Search analytics are available after explicit visitor searches are recorded." } }, summary: { ...summary, uniqueTerms: total, selectionRate: summary.submissions ? summary.selections / summary.submissions : 0, suppressedActivity }, series: seriesResult.rows.map((row) => ({ bucket: String(row.bucket), submissions: Number(row.submissions ?? 0), selections: Number(row.selections ?? 0) })), pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) }, rows, selected, filters: { termTypes: ["work", "news", "author", "topic", "keyword", "agenda", "free_text"], actions: ["submit", "suggestion_select"], sources: ["home", "results"] } };
   } catch (error) {
     await connection.queryArray("ROLLBACK").catch(() => undefined);
     throw error;

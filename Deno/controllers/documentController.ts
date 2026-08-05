@@ -114,6 +114,7 @@ export async function fetchDocuments(request: Request): Promise<Response> {
     const keyword = url.searchParams.get("keyword");
     const agenda = url.searchParams.get("agenda");
     const topic = url.searchParams.get("topic");
+    const year = url.searchParams.get("year");
     const sort = url.searchParams.get("sort") || "latest";
     // Get doc_types parameter to support showing both single and compiled documents
     const docTypes = url.searchParams.get("doc_types") || "all";
@@ -179,6 +180,7 @@ export async function fetchDocuments(request: Request): Promise<Response> {
       keyword,
       agenda,
       topic,
+      year,
       sort: sortField,
       order,
       docTypes: docTypes, // Pass doc_types parameter to service layer

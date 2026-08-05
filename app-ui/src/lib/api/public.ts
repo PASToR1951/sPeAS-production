@@ -7,12 +7,21 @@ export interface PublicResearchAgenda {
   historical?: boolean;
 }
 
+export interface PublicTopic {
+  id: number;
+  name: string;
+}
+
 export function fetchPublicResearchAgendas(includeHistorical = false) {
   return apiFetch<PublicResearchAgenda[]>(`/api/research-agendas${includeHistorical ? "?include_historical=true" : ""}`);
 }
 
 export function fetchPublicTopic(id: number) {
   return apiFetch<{ id: number; name: string }>(`/api/topics/${encodeURIComponent(String(id))}`);
+}
+
+export function fetchPublicTopics(query: string) {
+  return apiFetch<PublicTopic[]>(`/api/topics?q=${encodeURIComponent(query.trim())}`);
 }
 import { fetchCategories, fetchDocuments } from "./documents";
 import type { CategoryCount, DashboardStats, DocumentRecord } from "./types";
@@ -99,11 +108,15 @@ export async function fetchPublicStats(): Promise<DashboardStats> {
   };
 }
 
-export function searchResultsUrl(query: string, category?: string) {
+export function searchResultsUrl(query: string, category?: string, filters: { agenda?: string; topic?: string; year?: string; sort?: "latest" | "earliest" } = {}) {
   const url = new URL("/pages/searchResultsPage.html", window.location.origin);
   const trimmed = query.trim();
   if (trimmed) url.searchParams.set("q", trimmed);
   if (category && category !== "All") url.searchParams.set("category", category);
+  if (filters.agenda?.trim()) url.searchParams.set("agenda", filters.agenda.trim());
+  if (filters.topic?.trim()) url.searchParams.set("topic", filters.topic.trim());
+  if (/^\d{4}$/u.test(filters.year?.trim() ?? "")) url.searchParams.set("year", filters.year!.trim());
+  if (filters.sort === "earliest") url.searchParams.set("sort", "earliest");
   return url.toString();
 }
 
