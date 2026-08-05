@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms & Conditions - PeAS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        :root {
+            --theme-gold: #FDB813;
+            --theme-gold-darker: #EAA10F;
+            --theme-gold-light-bg: rgba(253, 184, 19, 0.2);
+            --theme-gold-lighter-bg: rgba(253, 184, 19, 0.1);
+            --theme-gold-highlight: rgba(253, 184, 19, 0.4);
+            --theme-green-dark: #006A4E;
+            --theme-green-darker-text: #00523D;
+            --theme-green-light-bg: rgba(0, 106, 78, 0.3);
+            --theme-green-lighter-bg: rgba(0, 106, 78, 0.15);
+            --theme-green-border: rgba(0, 106, 78, 0.7);
+            --theme-page-bg: #F9F6EE;
+            --neutral-border-color: #e5e7eb;
+            --input-border-color: #d1d5db;
+            --placeholder-text-color: #9ca3af;
+            --text-on-gold: #060606;
+            --text-on-green: #E6E6E6;
+            --primary-text-color: #1f2937;
+            --secondary-text-color: #4b5563;
+            --tertiary-text-color: #6b7280;
+            --theme-accent-gray: #6b7280;
+            --pastel-gold: #FFF5CC;
+            --pastel-green: #D0EAD0;
+            --footer-glass-bg-color: rgba(255, 255, 255, 0.25);
+            --footer-glass-border-color: rgba(255, 255, 255, 0.4);
+            --footer-glass-blur-radius: 6px;
+            --success-color: #28a745;
+            --success-light-bg: rgba(40, 167, 69, 0.1);
+            --progress-bar-height: 8px; 
+            --progress-bar-height-completed: 12px; 
+            --stamp-color: var(--theme-green-dark);
+        }
+
+        html {
+            height: 100%;
+            box-sizing: border-box;
+            scroll-behavior: smooth;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+
+        body {
+            font-family: Inter;
+            background-color: var(--theme-page-bg);
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23D3CBBF' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            color: var(--primary-text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            line-height: 1.6;
+            padding-top: var(--progress-bar-height); 
+        }
+
+        .page-wrapper {
+            flex-grow: 1;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: Inter;
+            color: var(--primary-text-color);
+            font-weight: 600;
+            margin-top: 0;
+            line-height: 1.3;
+        }
+
+        .font-libre { font-family: Inter; }
+        .font-inter { font-family: Inter; }
+
+        .container {
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        @media (min-width: 640px) { .container { max-width: 640px; padding-left: 1.5rem; padding-right: 1.5rem; } }
+        @media (min-width: 768px) { .container { max-width: 768px; } }
+        @media (min-width: 1024px) { .container { max-width: 900px; } }
+
+        .page-header {
+            position: relative;
+            overflow: hidden;
+            background-color: var(--theme-green-dark);
+            color: var(--text-on-green);
+            padding-top: 2.5rem; 
+            padding-bottom: 2.5rem;
+            margin-bottom: 2.5rem;
+            text-align: center;
+        }
+
+        @keyframes headerGradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .page-header::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 0;
+            background-image: linear-gradient(135deg,
+                rgba(220, 38, 38, 0.15), rgba(253, 184, 19, 0.15),
+                rgba(220, 38, 38, 0.20), rgba(253, 184, 19, 0.20));
+            background-size: 400% 400%;
+            animation: headerGradientAnimation 25s ease infinite;
+            opacity: 0.6;
+        }
+        .page-header .header-content {
+            position: relative;
+            z-index: 1;
+        }
+        .page-header .header-content h1 {
+            color: var(--text-on-green);
+            font-weight: 700;
+            font-size: 1.875rem;
+            line-height: 1.2;
+            margin-bottom: 0.5rem;
+        }
+        .page-header .header-content p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.0rem;
+            margin-bottom: 0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        @media (min-width: 640px) {
+            .page-header .header-content h1 { font-size: 2.25rem; }
+            .page-header .header-content p { font-size: 1.125rem; }
+        }
+
+        .terms-section, .terms-final-agreement-section {
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px) saturate(120%);
+            -webkit-backdrop-filter: blur(12px) saturate(120%);
+            border: 1px solid rgba(229, 231, 235, 0.45);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: max-height 0.4s ease-out, opacity 0.3s ease-out, transform 0.3s ease-out;
+            position: relative; 
+            overflow: hidden; 
+        }
+
+        .terms-section {
+            opacity: 0.5;
+            transform: translateY(10px);
+            max-height: 120px; 
+        }
+
+        .terms-section.is-active {
+            opacity: 1;
+            transform: translateY(0);
+            max-height: 1200px; 
+            padding-bottom: 2rem;
+        }
+         .terms-section.is-completed {
+            border-left: 5px solid var(--theme-green-dark);
+            background-color: var(--theme-green-lighter-bg);
+            max-height: 120px; 
+        }
+        .terms-section.is-completed .terms-header h2 {
+             color: var(--theme-green-darker-text);
+        }
+         .terms-section.is-completed .agree-button {
+            background-color: var(--success-color);
+            border-color: var(--success-color);
+            color: #E6E6E6;
+            cursor: default;
+        }
+        .terms-section.is-completed .agree-button:hover {
+            background-color: var(--success-color);
+            opacity: 0.9;
+        }
+        .terms-section.is-completed .agree-button .fas {
+            color: #E6E6E6;
+        }
+
+        .terms-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem; 
+            cursor: pointer;
+        }
+        .terms-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0;
+            color: var(--primary-text-color);
+        }
+        .terms-header .status-icon { 
+            font-size: 1.1rem; 
+            color: var(--theme-gold);
+            transition: transform 0.3s ease;
+            padding: 0.25rem; 
+        }
+        .terms-section.is-active .terms-header .status-icon {
+            transform: rotate(180deg);
+        }
+         .terms-section.is-completed .terms-header .status-icon {
+            color: var(--success-color);
+            transform: rotate(0deg); 
+        }
+
+        .terms-content {
+            color: var(--secondary-text-color);
+            line-height: 1.625;
+            font-size: 0.95rem;
+            padding-top: 0.5rem;
+        }
+        .terms-content p, .terms-content ul {
+            margin-bottom: 1rem;
+        }
+        .terms-content ul {
+            padding-left: 1.5rem;
+        }
+        .terms-content li {
+            margin-bottom: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem; 
+            border-radius: 0.5rem;
+            font-weight: 500; 
+            text-align: center;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.3s ease, transform 0.3s ease, box-shadow 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            font-size: 0.9375rem;
+            line-height: 1.375rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            text-decoration: none;
+            border: 1px solid transparent;
+        }
+        .btn:hover:not(:disabled) {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background-color: var(--theme-green-dark);
+            color: var(--text-on-green);
+            border-color: var(--theme-green-dark);
+        }
+        .btn-primary:hover:not(:disabled) {
+            background-color: var(--theme-green-darker-text);
+            border-color: var(--theme-green-darker-text);
+        }
+        .btn-secondary {
+            background-color: var(--theme-gold);
+            color: var(--text-on-gold);
+            border-color: var(--theme-gold);
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: var(--theme-gold-darker);
+            border-color: var(--theme-gold-darker);
+        }
+        .btn .fas {
+            font-size: 1em; 
+            line-height: 1; 
+        }
+
+        .agree-button-container {
+            margin-top: 1.5rem;
+            text-align: right;
+        }
+        .agree-button {
+            min-width: 240px; 
+        }
+
+        .progress-bar-container {
+            position: fixed; 
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--theme-gold-lighter-bg); 
+            z-index: 1000; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            transition: height 0.3s ease-in-out; 
+        }
+        .progress-bar {
+            width: 0%;
+            height: var(--progress-bar-height); 
+            background-color: var(--theme-gold);
+            transition: width 0.4s ease-in-out, height 0.3s ease-in-out, background-color 0.3s ease-in-out;
+        }
+
+        .progress-bar-container.completed .progress-bar {
+            height: var(--progress-bar-height-completed);
+            background-color: var(--success-color); 
+        }
+
+        .terms-final-agreement-section {
+            display: none; 
+            opacity: 0; 
+            transform: scale(0.8) translateY(20px); 
+        }
+        .terms-final-agreement-section.animate-appear {
+            display: block; 
+            animation: exaggeratedAppear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        @keyframes exaggeratedAppear {
+            0% {
+                opacity: 0;
+                transform: scale(0.8) translateY(20px);
+            }
+            60% {
+                opacity: 1;
+                transform: scale(1.05) translateY(-5px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .terms-final-agreement-section h2 {
+            font-size: 1.35rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--primary-text-color);
+            border-bottom: 1px solid var(--neutral-border-color);
+            padding-bottom: 0.75rem;
+        }
+        .final-agreement-controls {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: center;
+        }
+         .final-agreement-controls .btn {
+            min-width: 220px; 
+        }
+
+        .stamp-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10; 
+            opacity: 0;
+            pointer-events: none; 
+        }
+        .stamp {
+            width: 120px;
+            height: 120px;
+            background-color: var(--stamp-color);
+            color: #E6E6E6;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: Inter;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-align: center;
+            line-height: 1.2;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            opacity: 0;
+            transform: scale(0.5) rotate(-15deg); 
+            transition: opacity 0.5s ease-out 0.1s, transform 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.1s; 
+        }
+        .stamp.stamped {
+            opacity: 0.9;
+            transform: scale(1) rotate(-10deg); 
+        }
+        .stamp .fas {
+            font-size: 2.5rem;
+            margin-bottom: 0.3rem;
+        }
+
+        /* Modal for "Agreement Finalized" */
+        .agreement-finalized-overlay {
+            position: fixed;
+            inset: 0; /* Cover entire viewport */
+            background-color: rgba(0, 0, 0, 0.65); /* Darken background */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000; /* Higher than progress bar and other elements */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            padding: 1rem;
+        }
+        .agreement-finalized-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .agreement-finalized-box {
+            background-color: #E6E6E6;
+            padding: 2.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 90%;
+            width: 450px;
+            position: relative; /* For confetti container */
+            overflow: hidden; /* To contain confetti if it tries to escape box bounds */
+            transform: scale(0.9);
+            opacity: 0;
+            animation: modalPopIn 0.4s 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; /* Animation for the box itself */
+        }
+        @keyframes modalPopIn {
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .agreement-finalized-box h3 {
+            font-size: 1.75rem;
+            color: var(--theme-green-dark);
+            margin-top: 0;
+            margin-bottom: 0.75rem;
+        }
+        .agreement-finalized-box p {
+            font-size: 1.1rem;
+            color: var(--secondary-text-color);
+            margin-bottom: 1.5rem;
+        }
+        .agreement-finalized-box .completion-icon { 
+            font-size: 3rem;
+            color: var(--theme-gold-darker);
+            margin-bottom: 1rem;
+            display: block;
+        }
+        .agreement-finalized-box .btn-close-modal {
+            margin-top: 1rem;
+            background-color: var(--theme-gold);
+            color: var(--text-on-gold);
+            border-color: var(--theme-gold);
+        }
+         .agreement-finalized-box .btn-close-modal:hover {
+            background-color: var(--theme-gold-darker);
+            border-color: var(--theme-gold-darker);
+        }
+
+        /* Confetti Styles */
+        .confetti-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: var(--theme-gold); /* Default color */
+            opacity: 0;
+            animation: fall 3s ease-out forwards;
+        }
+        .confetti.c1 { background-color: var(--theme-gold); }
+        .confetti.c2 { background-color: var(--theme-green-dark); }
+        .confetti.c3 { background-color: #FFD700; } /* Brighter gold */
+        .confetti.c4 { background-color: #3CB371; } /* Medium sea green */
+        .confetti.c5 { background-color: #FFA500; } /* Orange */
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-20px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(120vh) rotate(720deg); /* Fall off screen */
+                opacity: 0;
+            }
+        }
+
+
+        @keyframes subtleGradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .footer-wrapper {
+            margin-top: auto;
+            width: 100%;
+        }
+        .site-footer {
+            position: relative;
+            overflow: hidden;
+            background-color: var(--footer-glass-bg-color);
+            -webkit-backdrop-filter: blur(var(--footer-glass-blur-radius));
+            backdrop-filter: blur(var(--footer-glass-blur-radius));
+            border-top: 1px solid var(--footer-glass-border-color);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+            color: #374151;
+        }
+        .site-footer::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: -1;
+            background: linear-gradient(45deg, var(--pastel-gold), var(--pastel-green), var(--pastel-gold));
+            background-size: 200% 200%;
+            animation: subtleGradientAnimation 18s ease infinite;
+            opacity: 0.7;
+        }
+        .footer-content-padding {
+            position: relative;
+            z-index: 1;
+            padding: 2rem 1.5rem;
+            max-width: 80rem;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        @media (min-width: 640px) { .footer-content-padding { padding-left: 2rem; padding-right: 2rem; } }
+        @media (min-width: 1024px) { .footer-content-padding { padding-left: 2.5rem; padding-right: 2.5rem; } }
+
+        .footer-layout {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            text-align: center;
+        }
+        @media (min-width: 1024px) {
+            .footer-layout {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: flex-start;
+                text-align: left;
+            }
+        }
+
+        .footer-logo-section { flex-shrink: 0; }
+        .footer-logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-bottom: 0.75rem;
+        }
+        @media (min-width: 640px) {
+            .footer-logo-container { align-items: flex-start; text-align: left; }
+        }
+        @media (min-width: 1024px) {
+             .footer-logo-container { align-items: flex-start; }
+        }
+        .footer-logo-container img {
+            height: 3rem;
+            width: auto;
+            margin-bottom: 0.5rem;
+        }
+        @media (min-width: 640px) { .footer-logo-container img { height: 3.5rem; margin-bottom: 0; } }
+
+        .footer-nav {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+        @media (min-width: 1024px) { .footer-nav { align-items: flex-start; } }
+
+        .footer-link {
+            color: var(--theme-green-dark);
+            transition: color 0.2s ease-in-out, opacity 0.2s ease-in-out;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .footer-link:hover {
+            color: var(--theme-gold);
+            opacity: 0.85;
+        }
+        .copyright-text {
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+
+        /* Message Box Overlay (for general messages, distinct from agreement finalized) */
+        .message-box-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000; /* Lower than agreement finalized overlay */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .message-box-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .message-box-content {
+            background-color: #E6E6E6;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            max-width: 90%;
+            width: 400px;
+            text-align: center;
+            position: relative;
+        }
+        .message-box-text {
+            font-size: 1.125rem;
+            color: var(--primary-text-color);
+            margin-bottom: 1rem;
+        }
+        .message-box-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: transparent;
+            border: none;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            color: #9ca3af;
+            padding: 0.25rem;
+        }
+        .message-box-close-btn:hover { color: #6b7280; }
+
+    </style>
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div id="progress-bar-container" class="progress-bar-container">
+            <div id="terms-progress-bar" class="progress-bar"></div>
+        </div>
+
+        <header class="page-header" role="banner">
+            <div class="header-content container">
+                <h1 class="font-libre">Terms & Conditions</h1>
+                <p>Please review the following terms and conditions. Your use of our services constitutes your agreement to these terms.</p>
+            </div>
+        </header>
+
+        <main class="container" role="main">
+            <section id="terms-section-1" class="terms-section" data-section-id="1">
+                <div class="terms-header">
+                    <h2>1. Introduction & Acceptance of Terms</h2>
+                    <i class="fas fa-chevron-down status-icon"></i>
+                </div>
+                <div class="terms-content">
+                    <p>Welcome to PeAS (Paulinian electronic Archiving System)! These Terms and Conditions ("Terms") govern your access to and use of our website, services, and applications (collectively, the "Service"). By accessing or using the Service, you signify your agreement to be bound by these Terms. If you do not agree to these Terms, you may not access or use the Service.</p>
+                    <div class="agree-button-container">
+                        <button class="btn btn-secondary agree-button">
+                            <i class="fas fa-gavel"></i> Acknowledge and Continue
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="terms-section-2" class="terms-section" data-section-id="2">
+                <div class="terms-header">
+                    <h2>2. Account Registration and Security</h2>
+                    <i class="fas fa-chevron-down status-icon"></i>
+                </div>
+                <div class="terms-content">
+                    <p>To access certain features of the Service, you may be required to register for an account. You agree to provide accurate, current, and complete information during the registration process and to update such information to keep it accurate, current, and complete. You are responsible for safeguarding your password and for all activities that occur under your account. You agree to notify PeAS immediately of any unauthorized use of your account.</p>
+                    <ul>
+                        <li>Ensure your account information is accurate and up-to-date.</li>
+                        <li>Maintain the confidentiality of your account password.</li>
+                        <li>Report any suspected unauthorized account activity promptly.</li>
+                    </ul>
+                    <div class="agree-button-container">
+                        <button class="btn btn-secondary agree-button">
+                            <i class="fas fa-gavel"></i> Acknowledge and Continue
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="terms-section-3" class="terms-section" data-section-id="3">
+                <div class="terms-header">
+                    <h2>3. User Content and Intellectual Property Rights</h2>
+                     <i class="fas fa-chevron-down status-icon"></i>
+                </div>
+                <div class="terms-content">
+                    <p>Our Service may allow you to post, link, store, share, and otherwise make available certain information, text, graphics, videos, or other material ("User Content"). You retain all rights in, and are solely responsible for, the User Content you post to the Service.</p>
+                    <p>By making any User Content available through the Service, you grant to PeAS a non-exclusive, transferable, sublicensable, worldwide, royalty-free license to use, copy, modify, create derivative works based upon, distribute, publicly display, and publicly perform your User Content in connection with operating and providing the Service.</p>
+                    <div class="agree-button-container">
+                        <button class="btn btn-secondary agree-button">
+                           <i class="fas fa-gavel"></i> Acknowledge and Continue
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="terms-section-4" class="terms-section" data-section-id="4">
+                <div class="terms-header">
+                    <h2>4. Prohibited Activities and User Conduct</h2>
+                     <i class="fas fa-chevron-down status-icon"></i>
+                </div>
+                <div class="terms-content">
+                    <p>You agree not to engage in any of the following prohibited activities:</p>
+                    <ul>
+                        <li>Using the Service for any illegal purpose or in violation of any local, state, national, or international law.</li>
+                        <li>Violating or encouraging others to violate the rights of third parties, including intellectual property rights.</li>
+                        <li>Posting, uploading, or distributing any User Content that is unlawful, defamatory, libelous, inaccurate, or that a reasonable person could deem to be objectionable, profane, indecent, pornographic, harassing, threatening, embarrassing, hateful, or otherwise inappropriate.</li>
+                        <li>Interfering with security-related features of the Service.</li>
+                        <li>Transmitting any viruses, adware, spyware, worms, or other malicious code.</li>
+                    </ul>
+                    <div class="agree-button-container">
+                        <button class="btn btn-secondary agree-button">
+                            <i class="fas fa-gavel"></i> Acknowledge and Continue
+                        </button>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="terms-section-5" class="terms-section" data-section-id="5">
+                <div class="terms-header">
+                    <h2>5. Disclaimers and Limitation of Liability</h2>
+                    <i class="fas fa-chevron-down status-icon"></i>
+                </div>
+                <div class="terms-content">
+                    <p>The Service is provided "AS IS" and "AS AVAILABLE" without warranties of any kind, either express or implied, including, but not limited to, implied warranties of merchantability, fitness for a particular purpose, and non-infringement. PeAS makes no warranty that the Service will meet your requirements or be available on an uninterrupted, secure, or error-free basis.</p>
+                    <p>To the maximum extent permitted by applicable law, PeAS shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses, resulting from your access to or use of or inability to access or use the Service.</p>
+                    <div class="agree-button-container">
+                        <button class="btn btn-secondary agree-button">
+                            <i class="fas fa-gavel"></i> Acknowledge and Continue
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="terms-final-agreement-section" class="terms-final-agreement-section">
+                <h2>Final Agreement & Completion</h2>
+                <p>By clicking "Agree & Complete" below, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined above. This action finalizes your agreement.</p>
+                
+                <div class="stamp-container">
+                    <div id="agreement-stamp" class="stamp">
+                        <i class="fas fa-check-circle"></i> AGREED
+                    </div>
+                </div>
+
+                <div class="final-agreement-controls">
+                    <button id="agree-and-complete-btn" class="btn btn-primary" disabled>
+                        <i class="fas fa-check-double"></i> Agree & Complete
+                    </button>
+                </div>
+            </section>
+
+            <div id="agreement-finalized-overlay" class="agreement-finalized-overlay">
+                <div class="agreement-finalized-box">
+                    <div class="confetti-container" id="confetti-container"></div>
+                    <i class="fas fa-award completion-icon"></i>
+                    <h3>Agreement Finalized!</h3>
+                    <p>You have successfully reviewed and agreed to all terms. Thank you for completing the process.</p>
+                    <button id="close-finalized-modal-btn" class="btn btn-close-modal">Close</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div class="footer-wrapper">
+        <footer id="site-footer-element" class="site-footer" role="contentinfo">
+            <div class="footer-content-padding">
+                <div class="footer-layout">
+                    <div class="footer-logo-section">
+                        <div class="footer-logo-container">
+                             <img
+                                src="https://placehold.co/180x70/006A4E/FFFFFF?text=PeAS+Legal"
+                                alt="PeAS Legal Logo"
+                                onerror="this.onerror=null; this.src='https://placehold.co/180x70/cccccc/ffffff?text=Logo+Error';">
+                        </div>
+                        <p class="copyright-text">&copy; <span id="footerCurrentYear"></span> PeAS. All Rights Reserved.</p>
+                    </div>
+                    <nav class="footer-nav">
+                        <a href="/index.html" class="footer-link">Home</a>
+                        <a href="/contact.html" class="footer-link">Contact</a>
+                        <a href="#top" class="footer-link">Back to Terms & Conditions</a>
+                        <a href="/pages/miscellaneous/Privacy.html" class="footer-link">Privacy Policy</a>
+                    </nav>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <div id="message-box-overlay" class="message-box-overlay" aria-hidden="true">
+        <div class="message-box-content" role="alertdialog" aria-labelledby="message-box-text">
+            <button id="message-box-close" class="message-box-close-btn" aria-label="Close message">&times;</button>
+            <p id="message-box-text" class="message-box-text"></p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = Array.from(document.querySelectorAll('.terms-section'));
+            const progressBarContainer = document.getElementById('progress-bar-container');
+            const progressBar = document.getElementById('terms-progress-bar');
+            
+            const finalAgreementSection = document.getElementById('terms-final-agreement-section');
+            const agreeAndCompleteBtn = document.getElementById('agree-and-complete-btn');
+            const agreementStamp = document.getElementById('agreement-stamp');
+
+            const agreementFinalizedOverlay = document.getElementById('agreement-finalized-overlay');
+            const closeFinalizedModalBtn = document.getElementById('close-finalized-modal-btn');
+            const confettiContainer = document.getElementById('confetti-container');
+            
+            const totalAgreementSteps = sections.length + 1; 
+            let acknowledgedSteps = 0; 
+            let allSectionsAcknowledged = false;
+            let agreementIsFinalized = false; // Renamed for clarity
+
+
+            function updateOverallProgress() {
+                if (agreementIsFinalized) return;
+
+                const percentage = totalAgreementSteps > 0 ? (acknowledgedSteps / totalAgreementSteps) * 100 : 0;
+                progressBar.style.width = percentage + '%';
+
+                if (acknowledgedSteps === totalAgreementSteps && !agreementIsFinalized) {
+                    agreementIsFinalized = true;
+                    progressBarContainer.classList.add('completed');
+                    
+                    setTimeout(() => { // Delay showing modal until after stamp animation
+                        agreementFinalizedOverlay.classList.add('visible');
+                        triggerConfetti();
+                        // No scrollIntoView needed as it's a full-screen modal
+                    }, 700); // Slightly longer than stamp animation
+
+
+                    sections.forEach(s => {
+                        const btn = s.querySelector('.agree-button');
+                        if(btn) btn.disabled = true;
+                        const header = s.querySelector('.terms-header');
+                        if(header) header.style.cursor = 'default';
+                    });
+                    if(agreeAndCompleteBtn) agreeAndCompleteBtn.disabled = true;
+                }
+            }
+            
+            function checkAllSectionsAcknowledged() {
+                if (agreementIsFinalized) return;
+                allSectionsAcknowledged = sections.every(s => s.classList.contains('is-completed'));
+                if (agreeAndCompleteBtn) {
+                    agreeAndCompleteBtn.disabled = !allSectionsAcknowledged;
+                }
+
+                if (allSectionsAcknowledged && finalAgreementSection.style.display !== 'block') {
+                    finalAgreementSection.style.display = 'block'; 
+                    setTimeout(() => {
+                        finalAgreementSection.classList.add('animate-appear');
+                        requestAnimationFrame(() => {
+                            finalAgreementSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        });
+                    }, 50); 
+                }
+            }
+
+            function expandSection(section) {
+                section.classList.add('is-active');
+                requestAnimationFrame(() => {
+                    section.style.maxHeight = section.scrollHeight + "px";
+                });
+            }
+
+            function collapseSection(section) {
+                section.classList.remove('is-active');
+                section.style.maxHeight = "120px";
+            }
+
+            if (sections.length > 0) {
+                expandSection(sections[0]);
+            }
+            updateOverallProgress();
+
+
+            sections.forEach((section, index) => {
+                const header = section.querySelector('.terms-header');
+                const agreeButton = section.querySelector('.agree-button');
+                const statusIcon = section.querySelector('.status-icon'); 
+
+                if(header) {
+                    header.addEventListener('click', () => {
+                        if (agreementIsFinalized || section.classList.contains('is-completed')) return;
+                        if (section.classList.contains('is-active')) {
+                            collapseSection(section);
+                        } else {
+                            expandSection(section);
+                        }
+                    });
+                }
+
+                if (agreeButton) {
+                    agreeButton.addEventListener('click', () => {
+                        if (agreementIsFinalized || section.classList.contains('is-completed')) return;
+                        
+                        section.classList.add('is-completed');
+                        collapseSection(section);
+                        
+                        agreeButton.innerHTML = '<i class="fas fa-check-circle"></i> Acknowledged'; 
+                        agreeButton.disabled = true; 
+                        
+                        if(statusIcon){
+                            statusIcon.classList.remove('fa-chevron-down');
+                            statusIcon.classList.add('fa-check-double'); 
+                        }
+
+                        acknowledgedSteps++;
+                        updateOverallProgress();
+                        checkAllSectionsAcknowledged(); 
+
+                        if (!allSectionsAcknowledged && index < sections.length - 1) {
+                            const nextSection = sections[index + 1];
+                            if (!nextSection.classList.contains('is-completed')) {
+                                expandSection(nextSection);
+                                requestAnimationFrame(() => {
+                                    nextSection.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+            
+            if(agreeAndCompleteBtn) {
+                agreeAndCompleteBtn.addEventListener('click', () => {
+                    if (allSectionsAcknowledged && !agreementIsFinalized) {
+                        agreeAndCompleteBtn.disabled = true; 
+                        
+                        if(agreementStamp) {
+                            agreementStamp.classList.add('stamped');
+                        }
+                        
+                        setTimeout(() => {
+                            acknowledgedSteps++; 
+                            updateOverallProgress(); 
+                            agreeAndCompleteBtn.innerHTML = '<i class="fas fa-lock"></i> Agreement Sealed';
+                        }, 500); 
+                    }
+                });
+            }
+
+            // Confetti Function
+            function triggerConfetti() {
+                if (!confettiContainer) return;
+                confettiContainer.innerHTML = ''; // Clear previous confetti
+
+                const confettiCount = 50;
+                const colors = ['c1', 'c2', 'c3', 'c4', 'c5'];
+
+                for (let i = 0; i < confettiCount; i++) {
+                    const confettiPiece = document.createElement('div');
+                    confettiPiece.classList.add('confetti');
+                    confettiPiece.classList.add(colors[Math.floor(Math.random() * colors.length)]);
+                    
+                    confettiPiece.style.left = Math.random() * 100 + '%';
+                    confettiPiece.style.animationDelay = Math.random() * 1.5 + 's'; // Stagger start times
+                    confettiPiece.style.width = (Math.random() * 8 + 6) + 'px'; // Random size
+                    confettiPiece.style.height = confettiPiece.style.width;
+                    confettiPiece.style.transform = `rotate(${Math.random() * 360}deg)`;
+
+
+                    confettiContainer.appendChild(confettiPiece);
+                }
+            }
+
+            if(closeFinalizedModalBtn) {
+                closeFinalizedModalBtn.addEventListener('click', () => {
+                    agreementFinalizedOverlay.classList.remove('visible');
+                });
+            }
+            // Also close modal on Escape key
+             document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && agreementFinalizedOverlay.classList.contains('visible')) {
+                    agreementFinalizedOverlay.classList.remove('visible');
+                }
+            });
+
+
+            const yearElement = document.getElementById('footerCurrentYear');
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+            
+            const messageBoxOverlay = document.getElementById('message-box-overlay');
+            const messageBoxCloseBtn = document.getElementById('message-box-close');
+            
+            function hideMessage() {
+                if (messageBoxOverlay) {
+                    messageBoxOverlay.classList.remove('visible');
+                    messageBoxOverlay.setAttribute('aria-hidden', 'true');
+                }
+            }
+
+            if (messageBoxCloseBtn) messageBoxCloseBtn.addEventListener('click', hideMessage);
+            if (messageBoxOverlay) {
+                messageBoxOverlay.addEventListener('click', (event) => {
+                    if (event.target === messageBoxOverlay) hideMessage();
+                });
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && messageBoxOverlay.classList.contains('visible')) {
+                        hideMessage();
+                    }
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>

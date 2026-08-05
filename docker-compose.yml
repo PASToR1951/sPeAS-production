@@ -1,0 +1,120 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: peas_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PGPASSWORD:-peas_dev_password}
+      POSTGRES_APP_PASSWORD: ${PGPASSWORD:-peas_dev_password}
+    volumes:
+      - peas-dev-postgres:/var/lib/postgresql/data
+      - ./docker/postgres/init-dev:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d peas_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["task", "db:migrate:apply"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DENO_ENV: development
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
+      PGDATABASE: peas_db
+      PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PORT: "8000"
+      DENO_ENV: development
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
+      PGDATABASE: peas_db
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:18080}
+      BETTER_AUTH_URL: ${PUBLIC_APP_URL:-http://localhost:18080}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      AUTH_ALLOWED_EMAIL_DOMAIN: ${AUTH_ALLOWED_EMAIL_DOMAIN:-spud.edu.ph}
+      PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
+      STORAGE_ROOT: /app/storage
+      NEWS_MEDIA_WORKER_ENABLED: "false"
+      DOCUMENT_ANNOTATIONS_ENABLED: "true"
+      NEWS_MEDIA_CLAMAV_ENABLED: "false"
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      CONTACT_RECIPIENT_EMAIL: ${CONTACT_RECIPIENT_EMAIL:-}
+    ports:
+      - "${APP_PORT:-18080}:8000"
+    volumes:
+      - peas-dev-storage:/app/storage
+      - peas-dev-logs:/app/Deno/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "deno", "eval", "try { const response = await fetch('http://localhost:8000/health/ready'); Deno.exit(response.ok ? 0 : 1); } catch (_) { Deno.exit(1); }"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  media-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["task", "media-worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
+      PGDATABASE: peas_db
+      STORAGE_ROOT: /app/storage
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+    volumes:
+      - peas-dev-storage:/app/storage
+
+  abstract-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["task", "abstract:worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
+      PGDATABASE: peas_db
+      STORAGE_ROOT: /app/storage
+      PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
+      ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
+    volumes:
+      - peas-dev-storage:/app/storage
+
+volumes:
+  peas-dev-postgres:
+  peas-dev-storage:
+  peas-dev-logs:

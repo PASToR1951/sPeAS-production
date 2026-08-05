@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PeAS Experience Studio</title>
+  <script>
+    (function() {
+      const redirectHome = () => {
+        window.location.replace('/index.html?redirected=true&t=' + Date.now());
+      };
+
+      fetch('/api/auth/get-session', {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        const user = data && data.user;
+        const role = String(user && user.role ? user.role : '').toLowerCase();
+        if (!user || role !== 'admin') {
+          redirectHome();
+        }
+      })
+      .catch(redirectHome);
+    })();
+  </script>
+  <link rel="stylesheet" href="/admin/experience-studio/style.css">
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+<body>
+  <div id="experience-studio-root">
+    <div style="min-height:100vh;display:grid;place-items:center;font-family: Inter, system-ui, sans-serif;color:#00543e;">
+      Loading PeAS Experience Studio...
+    </div>
+  </div>
+  <script type="module" src="/admin/experience-studio/studio.js"></script>
+</body>
+</html>

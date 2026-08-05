@@ -1,0 +1,170 @@
+name: PeAS CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cleanliness:
+    name: Repository cleanliness and dependency audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Reject forbidden files and content
+        run: ./scripts/check-repository-clean.sh
+      - name: Audit production dependency graph
+        run: npm audit --audit-level=high
+
+  static:
+    name: Type checks, tests, and frontend builds
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.7.13
+      - name: Install exact Node dependencies
+        run: npm ci
+      - name: Frontend type checks
+        run: npm run check:ui
+      - name: Deno type checks
+        run: npm run check:deno
+      - name: Backend tests
+        run: npm run test:deno
+      - name: Production frontend builds
+        run: npm run build:ui
+
+  database:
+    name: Fresh database and migration contract
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-admin-password
+          POSTGRES_DB: peas_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d peas_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.7.13
+      - name: Create the restricted runtime role
+        env:
+          PGPASSWORD: ci-admin-password
+        run: psql --host=127.0.0.1 --username=postgres --dbname=peas_db --set=ON_ERROR_STOP=1 --command="CREATE ROLE peas_app LOGIN PASSWORD 'ci-runtime-password';"
+      - name: Apply the clean baseline and migrations twice
+        working-directory: Deno
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: ci-admin-password
+          PGDATABASE: peas_db
+          PEAS_RELEASE_ID: ci
+        run: |
+          deno task db:migrate:apply
+          deno task db:migrate:status
+          deno task db:migrate:apply
+      - name: Verify the runtime role cannot perform DDL
+        env:
+          PGPASSWORD: ci-runtime-password
+        run: |
+          if psql --host=127.0.0.1 --username=peas_app --dbname=peas_db --set=ON_ERROR_STOP=1 --command='CREATE TABLE public.ci_must_fail(id integer);' 2>/dev/null; then
+            echo 'peas_app unexpectedly has DDL privileges' >&2
+            exit 1
+          fi
+
+  playwright:
+    name: Public, administrator, and Experience Studio browser suites
+    runs-on: ubuntu-24.04
+    needs: [static, database]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install exact dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Start an empty Compose application
+        env:
+          BETTER_AUTH_SECRET: ci-browser-secret
+          PGPASSWORD: ci-admin-password
+          APP_PORT: 18080
+        run: |
+          docker compose -p peas-browser up -d db
+          until docker inspect --format='{{.State.Health.Status}}' peas-browser-db-1 | grep -q healthy; do sleep 2; done
+          docker exec peas-browser-db-1 psql -U postgres -d peas_db -v ON_ERROR_STOP=1 -c "CREATE ROLE peas_app LOGIN PASSWORD 'ci-runtime-password';"
+          docker compose -p peas-browser run --rm migrate
+          docker compose -p peas-browser up -d app
+          for attempt in $(seq 1 60); do curl --fail --silent http://127.0.0.1:18080/health/ready && break; sleep 2; done
+      - name: Run the browser suites
+        env:
+          PEAS_BASE_URL: http://127.0.0.1:18080
+        run: |
+          npm run test:public -- --project=desktop
+          npm run test:admin -- --project=desktop
+          npm run test:experience -- --project=desktop
+      - name: Collect application logs on failure
+        if: failure()
+        run: docker compose -p peas-browser logs --tail=200 app
+      - name: Stop the test stack
+        if: always()
+        run: docker compose -p peas-browser down
+
+  image:
+    name: Production image, SBOM, and vulnerability gate
+    runs-on: ubuntu-24.04
+    needs: [cleanliness, static, database]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build the production image
+        run: docker build --tag peas-ci:${GITHUB_SHA} .
+      - name: Confirm the image defaults to an unprivileged user
+        run: test "$(docker image inspect --format='{{.Config.User}}' peas-ci:${GITHUB_SHA})" = deno
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@da167eac915b4e86f08b264dbdbc867b61be6f0c # v0.20.5
+        with:
+          image: peas-ci:${{ github.sha }}
+          artifact-name: peas-image-${{ github.sha }}.spdx.json
+          output-file: peas-image-${{ github.sha }}.spdx.json
+      - name: Scan the image for high and critical vulnerabilities
+        uses: docker/scout-action@f8c776824083494ab0d56b8105ba2ca85c86e4de # v1.18.2
+        with:
+          command: cves
+          image: peas-ci:${{ github.sha }}
+          only-severities: critical,high
+          exit-code: true

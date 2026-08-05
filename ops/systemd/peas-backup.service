@@ -1,0 +1,15 @@
+[Unit]
+Description=PeAS encrypted offsite backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-/etc/peas/peas.env
+ExecStart=/usr/local/sbin/peas-deploy backup
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

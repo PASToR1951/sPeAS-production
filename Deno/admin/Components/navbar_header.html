@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="img/logo_2.png" type="image/png">
+    <title>Tabler Header</title>
+    <link rel="stylesheet" href="/admin/Components/css/navbar_header.css">
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <div class="logo-spud" style="background-image: url('/admin/Components/img/logo1.png');"></div>
+            <div class="content">
+                <span class="spud-text">St Paul University Dumaguete</span>
+                <p>CARITAS VERITAS SCIENTIA</p>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <button type="button" class="header-icon-btn" id="header-notification-btn" aria-label="Notifications" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>
+                <span class="notification-dot"></span>
+            </button>
+            <div class="header-divider" aria-hidden="true"></div>
+            <div class="header-profile" id="header-profile">
+                <div class="header-profile-avatar">
+                    <span id="header-user-avatar" class="user-avatar-initials" role="img" aria-label="User Avatar">?</span>
+                </div>
+                <div class="header-profile-meta">
+                    <span class="header-profile-name" id="header-user-name">&mdash;</span>
+                    <span class="header-profile-role" id="header-user-role">&mdash;</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // Identity is resolved from the Better Auth session by side_bar.js.
+        // This call also supports loaders that explicitly execute fragment scripts.
+        if (globalThis.populateAdminIdentity) globalThis.populateAdminIdentity();
+
+        // Add a subtle shadow when the page scrolls
+        const header = document.querySelector('.header');
+        if (!header) return;
+        const onScroll = () => {
+          if (window.scrollY > 4) header.classList.add('is-scrolled');
+          else header.classList.remove('is-scrolled');
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+      });
+    </script>
+</body>
+</html>

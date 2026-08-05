@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refined Footer Example - Edge-to-Edge, Anchored Bottom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --------------------------------------------------------------------------
+          SHARED STYLES (Define these in your global scope or main stylesheet)
+          --------------------------------------------------------------------------
+        */
+        :root {
+            --theme-gold: #FDB813;
+            --theme-green-dark: #006A4E;
+            --neutral-border-color: #e5e7eb; /* Tailwind gray-200 */
+
+            /* Pastel Colors for Gradient */
+            --pastel-gold: #FFF5CC;   
+            --pastel-green: #D0EAD0;
+
+            /* Glassmorphism Variables */
+            --glass-bg-color: rgba(255, 255, 255, 0.25); /* Semi-transparent white for the glass surface */
+            --glass-border-color: rgba(255, 255, 255, 0.4); /* Slightly more opaque border for definition */
+            --glass-blur-radius: 6px; /* Adjust blur intensity */
+        }
+
+        /* --------------------------------------------------------------------------
+          EXAMPLE PAGE STRUCTURE (For standalone testing & sticky footer)
+          To make the footer stick to the bottom of the page:
+          1. The <body> should have display: flex, flex-direction: column, and min-height: 100vh.
+          2. The main content area (e.g., <main> element) should have flex-grow: 1.
+          --------------------------------------------------------------------------
+        */
+        html, body.footer-example-page { /* Apply to html as well for full height */
+            height: 100%; /* Ensures html and body take full viewport height if content is short */
+            margin: 0;
+        }
+        body.footer-example-page {
+            font-family: Inter;
+            background-color: #f3f4f6; /* Tailwind bg-gray-100 */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh; /* Crucial for sticky footer */
+        }
+
+        .main-content-placeholder {
+            flex-grow: 1; /* Crucial for sticky footer: pushes footer down */
+            padding: 2rem;
+            text-align: center;
+        }
+
+        /* --------------------------------------------------------------------------
+          FOOTER-SPECIFIC STYLES (Integrate these into your project's CSS)
+          --------------------------------------------------------------------------
+        */
+
+        /* Gradient Animation (for ::before element) */
+        @keyframes subtleGradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Wrapper for the footer */
+        .footer-wrapper {
+            /* Horizontal padding removed for edge-to-edge footer */
+            /* padding-left: 1.5rem; */  
+            /* padding-right: 1.5rem; */
+            margin-top: 2rem;    /* Vertical space above the footer, can be adjusted or removed */
+            /* margin-bottom removed as it's anchored by flexbox */
+        }
+
+        /* The main footer element with glassmorphism */
+        .site-footer {
+            position: relative; /* For positioning pseudo-elements like the gradient */
+            overflow: hidden;   /* Keeps ::before gradient contained by border-radius */
+            
+            /* Glassmorphism properties */
+            background-color: var(--glass-bg-color);
+            -webkit-backdrop-filter: blur(var(--glass-blur-radius)); /* Safari */
+            backdrop-filter: blur(var(--glass-blur-radius));
+            border: 1px solid var(--glass-border-color);
+            border-radius: 12px; /* Rounded corners for the glass effect. Consider 12px 12px 0 0 for edge-to-edge bottom. */
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); 
+            
+            color: #374151; /* Default text color (Tailwind gray-700) */
+            
+            /* Max width and centering removed for edge-to-edge */
+            /* max-width: 80rem; */
+            /* margin-left: auto; */
+            /* margin-right: auto; */
+        }
+
+        /* Animated gradient background layer, positioned behind content */
+        .site-footer::before { 
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: -1; /* Places gradient behind the main content of the footer */
+            background: linear-gradient(45deg, var(--pastel-gold), var(--pastel-green), var(--pastel-gold));
+            background-size: 200% 200%; /* Gradient size for smooth animation */
+            animation: subtleGradientAnimation 18s ease infinite;
+        }
+        
+        /* Padding and stacking context for the footer's actual content */
+        .footer-content-padding { 
+            position: relative; /* Establishes a stacking context */
+            z-index: 1; /* Ensures content is above the ::before pseudo-element */
+            /* Responsive padding to keep content from screen edges */
+            padding-top: 2rem;    /* py-8 */
+            padding-bottom: 2rem; /* py-8 */
+            padding-left: 1.5rem;   /* px-6 */
+            padding-right: 1.5rem;  /* px-6 */
+            /* Max-width for the content itself, centered */
+            max-width: 80rem; /* Equivalent to Tailwind's max-w-7xl */
+            margin-left: auto;
+            margin-right: auto;
+        }
+        @media (min-width: 640px) { /* sm breakpoint (Tailwind) */
+            .footer-content-padding {
+                padding-left: 2rem; /* sm:px-8 */
+                padding-right: 2rem;/* sm:px-8 */
+            }
+        }
+        @media (min-width: 1024px) { /* lg breakpoint (Tailwind) */
+            .footer-content-padding {
+                padding-left: 2.5rem;  /* lg:px-10 */
+                padding-right: 2.5rem; /* lg:px-10 */
+            }
+        }
+
+        /* Styling for navigation links within the footer */
+        .footer-link {
+            color: var(--theme-green-dark); 
+            transition: color 0.2s ease-in-out, opacity 0.2s ease-in-out;
+            text-decoration: none;
+            font-weight: 500; /* Corresponds to Tailwind's font-medium */
+        }
+        .footer-link:hover {
+            color: var(--theme-gold); 
+            opacity: 1; 
+        }
+
+        /* Styling for the copyright text */
+        .copyright-text { 
+            color: #6b7280; /* Tailwind gray-500 */
+        }
+        /* ---------------- END OF FOOTER-SPECIFIC STYLES ------------------------- */
+    </style>
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+<body class="footer-example-page"> <main class="main-content-placeholder">
+        
+        <div style="height: 300px;"></div> </main>
+
+    <div class="footer-wrapper">
+        <footer class="site-footer">
+            <div class="footer-content-padding">
+                <div class="flex flex-col lg:flex-row justify-between items-center lg:items-start gap-8 text-center lg:text-left">
+                    
+                    <div class="flex-shrink-0"> 
+                        <div class="flex flex-col items-center text-center sm:items-start sm:text-left mb-3">
+                            <img class="h-16 w-auto sm:h-20 mb-2 sm:mb-0" 
+                                 src="images/peas_logo.png" 
+                                 alt="PeAS Logo">
+                        </div>
+                        <p class="text-xs copyright-text">&copy; <span id="footerCurrentYear"></span> PeAS. All Rights Reserved.</p>
+                    </div>
+
+                    <nav class="flex flex-col items-center lg:items-start space-y-2 text-sm">
+                        <a href="index.html" class="footer-link">Home</a>
+                        <a href="contact.html" class="footer-link">Contact</a>
+                        <a href="/pages/miscellaneous/T&A-Public.html" class="footer-link">Terms & Conditions</a>
+                        <a href="/pages/miscellaneous/Privacy.html" class="footer-link">Privacy Policy</a>
+                    </nav>
+                </div>
+            </div>
+        </footer>
+    </div>
+    <script>
+        // JavaScript to set the current year in the copyright notice
+        const yearElement = document.getElementById('footerCurrentYear');
+        if (yearElement) {
+            yearElement.textContent = new Date().getFullYear();
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+# PeAS production repository ignores
+.DS_Store
+**/.DS_Store
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+Deno/.env
+Deno/.env.*
+!Deno/.env.example
+!Deno/.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies and caches
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.deno/
+deno-dir/
+.cache/
+.tmp/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Build and test output
+dist/
+build/
+output/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+Deno/admin/experience-studio/
+Deno/admin/react-ui/
+Deno/Public/react-ui/
+
+# Runtime data
+storage/
+Deno/storage/
+Deno/uploads/
+Deno/logs/
+uploads/
+logs/
+*.log
+
+# Local tooling and obsolete planning material
+.claude/
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+Deno/scratch/
+*.bak
+*.backup
+*.tmp
+*.swp
+*~
+
+# Never commit deployable user data or database dumps
+*.pdf
+*.dump
+*.backup.sql
+*.sqlite
+*.sqlite3

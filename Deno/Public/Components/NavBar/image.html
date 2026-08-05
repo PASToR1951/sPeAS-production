@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRISM Education Diagram</title>
+    <style>
+        :root {
+            --bg: #4d6c70;
+            --orange: #e98131;
+            --yellow: #ffc15d;
+            --green: #7ed957;
+            --ink: #070707;
+            --line: #f5bd43;
+            --white: #E6E6E6;
+            --shadow: rgba(0, 0, 0, 0.18);
+            --page-pad: clamp(12px, 2.5vw, 36px);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            min-height: 100svh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--page-pad) 0;
+            background: #263b3e;
+            font-family: Inter;
+        }
+
+        .stage-wrap {
+            width: min(94vw, 1720px);
+            max-width: 1720px;
+        }
+
+        .diagram {
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(190px, 0.95fr) minmax(280px, 1.25fr) minmax(210px, 0.88fr);
+            gap: clamp(14px, 2.2vw, 44px);
+            align-items: stretch;
+            width: 100%;
+            min-height: clamp(340px, 32vw, 620px);
+            padding: clamp(16px, 2.2vw, 44px);
+            overflow: hidden;
+            background: var(--bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 18px 50px var(--shadow);
+        }
+
+        .prism-stage,
+        .flow-stage {
+            position: relative;
+            min-height: clamp(260px, 26vw, 500px);
+        }
+
+        .prism {
+            position: absolute;
+            left: 0;
+            top: 7%;
+            width: 100%;
+            height: 86%;
+            background: var(--yellow);
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+            border: 0;
+            filter: drop-shadow(0 0 0.6px var(--ink));
+        }
+
+        .prism::before {
+            content: "";
+            position: absolute;
+            inset: 2px;
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+            border: 2px solid var(--ink);
+            opacity: 0.85;
+        }
+
+        .label-box {
+            position: absolute;
+            display: grid;
+            place-items: center;
+            background: var(--orange);
+            color: var(--ink);
+            border: 2px solid #916123;
+            border-radius: 5px;
+            font-weight: 700;
+            text-align: center;
+            box-shadow: 1px 1px 0 rgba(255, 255, 255, 0.35) inset;
+            z-index: 4;
+        }
+
+        .mindset {
+            left: 10%;
+            top: 31%;
+            width: 80%;
+            height: 23%;
+            font-size: clamp(0.88rem, 1.35vw, 1.6rem);
+        }
+
+        .method {
+            left: 3%;
+            top: 4%;
+            width: 56%;
+            height: 19%;
+            font-size: clamp(0.82rem, 1.15vw, 1.35rem);
+        }
+
+        .prism-title {
+            position: absolute;
+            left: 24%;
+            top: 63%;
+            width: 52%;
+            text-align: center;
+            font-size: clamp(2rem, 3.2vw, 4.35rem);
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            color: var(--ink);
+            z-index: 3;
+        }
+
+        .curved-arrow {
+            position: absolute;
+            left: 92%;
+            top: 11%;
+            width: 26%;
+            height: 31%;
+            z-index: 5;
+            overflow: visible;
+        }
+
+        .top-arrow {
+            position: absolute;
+            left: 57%;
+            top: 11.5%;
+            width: 48%;
+            height: 8%;
+            z-index: 3;
+            overflow: visible;
+        }
+
+        .main-arrow {
+            position: absolute;
+            left: 0;
+            top: 30%;
+            width: 94%;
+            height: 48%;
+            background: var(--yellow);
+            clip-path: polygon(0 15%, 67% 15%, 67% 0, 100% 50%, 67% 100%, 67% 76%, 0 76%);
+            z-index: 1;
+        }
+
+        .main-arrow-text {
+            position: absolute;
+            left: 8%;
+            top: 45%;
+            width: 58%;
+            text-align: center;
+            z-index: 2;
+            color: var(--ink);
+            line-height: 1.25;
+            font-size: clamp(0.82rem, 1.15vw, 1.35rem);
+        }
+
+        .main-arrow-text strong {
+            display: block;
+            font-size: clamp(0.92rem, 1.35vw, 1.55rem);
+            letter-spacing: 0.2px;
+        }
+
+        .card {
+            display: grid;
+            grid-template-rows: 14% 61% 25%;
+            align-self: center;
+            justify-self: end;
+            width: 100%;
+            aspect-ratio: 7 / 8;
+            border: 2px solid #10250e;
+            background: var(--green);
+            box-shadow: 2px 2px 0 rgba(255, 255, 255, 0.2) inset;
+            z-index: 4;
+        }
+
+        .card-title,
+        .card-footer {
+            width: 100%;
+            display: grid;
+            place-items: center;
+            color: var(--ink);
+            text-align: center;
+        }
+
+        .card-title {
+            font-style: italic;
+            font-weight: 800;
+            font-size: clamp(0.86rem, 1.18vw, 1.45rem);
+        }
+
+        .image-panel {
+            width: 100%;
+            min-height: 0;
+            border-top: 2px solid #33622b;
+            border-bottom: 2px solid #33622b;
+            overflow: hidden;
+        }
+
+        .gleaners-photo {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+        }
+
+        .card-footer {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1px;
+            padding-bottom: 3%;
+        }
+
+        .card-footer em {
+            font-size: clamp(0.82rem, 1.05vw, 1.3rem);
+            line-height: 1.1;
+        }
+
+        .card-footer strong {
+            font-size: clamp(0.92rem, 1.35vw, 1.6rem);
+            line-height: 1.1;
+        }
+
+        svg path,
+        svg line {
+            vector-effect: non-scaling-stroke;
+        }
+
+        @media (max-width: 840px) {
+            body {
+                align-items: flex-start;
+            }
+
+            .stage-wrap {
+                max-width: 720px;
+            }
+
+            .diagram {
+                grid-template-columns: 1fr;
+                gap: clamp(18px, 5vw, 28px);
+                min-height: auto;
+                padding: clamp(14px, 4vw, 24px);
+                box-shadow: none;
+                overflow: hidden;
+            }
+
+            .prism-stage {
+                min-height: clamp(240px, 66vw, 360px);
+            }
+
+            .flow-stage {
+                min-height: clamp(250px, 64vw, 340px);
+            }
+
+            .curved-arrow,
+            .top-arrow {
+                display: none;
+            }
+
+            .prism {
+                left: 12%;
+                width: 76%;
+            }
+
+            .mindset {
+                left: 22%;
+                width: 56%;
+                height: 20%;
+                font-size: clamp(0.94rem, 4.2vw, 1.3rem);
+            }
+
+            .prism-title {
+                left: 30%;
+                width: 40%;
+                font-size: clamp(2.1rem, 10vw, 3.2rem);
+            }
+
+            .method {
+                left: 50%;
+                top: 0;
+                width: min(78%, 360px);
+                height: 58px;
+                transform: translateX(-50%);
+                font-size: clamp(0.94rem, 4vw, 1.25rem);
+            }
+
+            .main-arrow {
+                left: 50%;
+                top: 76px;
+                width: min(78%, 320px);
+                height: calc(100% - 82px);
+                transform: translateX(-50%);
+                clip-path: polygon(14% 0, 86% 0, 86% 60%, 100% 60%, 50% 100%, 0 60%, 14% 60%);
+            }
+
+            .main-arrow-text {
+                left: 50%;
+                top: 43%;
+                width: min(54%, 240px);
+                transform: translate(-50%, -50%);
+                font-size: clamp(0.86rem, 3.6vw, 1.12rem);
+            }
+
+            .main-arrow-text strong {
+                font-size: clamp(1rem, 4.5vw, 1.32rem);
+            }
+
+            .card {
+                justify-self: center;
+                width: min(100%, 430px);
+            }
+
+            .card-title {
+                font-size: clamp(1rem, 4.4vw, 1.35rem);
+            }
+
+            .card-footer em {
+                font-size: clamp(0.92rem, 4vw, 1.2rem);
+            }
+
+            .card-footer strong {
+                font-size: clamp(1.05rem, 4.8vw, 1.45rem);
+            }
+        }
+    </style>
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+
+<body>
+    <main class="stage-wrap">
+        <section class="diagram" aria-label="PRISM transformative outcome-based education diagram">
+            <div class="prism-stage">
+                <div class="prism"></div>
+                <div class="label-box mindset">Right Mindset</div>
+                <div class="prism-title">PRISM</div>
+
+                <svg class="curved-arrow" viewBox="0 0 120 110" aria-hidden="true">
+                    <path d="M0 82 C42 88 38 21 84 21" fill="none" stroke="#f1b940" stroke-width="6"
+                        stroke-linecap="round" />
+                    <path d="M0 79 C42 85 38 18 84 18" fill="none" stroke="#050505" stroke-width="5"
+                        stroke-linecap="round" />
+                    <path d="M82 5 L111 18 L82 34 Z" fill="#050505" />
+                </svg>
+            </div>
+
+            <div class="flow-stage">
+                <div class="label-box method">Right Method</div>
+
+                <svg class="top-arrow" viewBox="0 0 260 38" aria-hidden="true">
+                    <line x1="0" y1="20" x2="221" y2="20" stroke="#f1b940" stroke-width="6" stroke-linecap="round" />
+                    <line x1="0" y1="17" x2="221" y2="17" stroke="#050505" stroke-width="5"
+                        stroke-linecap="round" />
+                    <path d="M218 3 L253 17 L218 34 Z" fill="#050505" />
+                </svg>
+
+                <div class="main-arrow"></div>
+                <div class="main-arrow-text">
+                    Transformative Outcome-base
+                    <strong>EDUCATION</strong>
+                </div>
+            </div>
+
+            <aside class="card" aria-label="Right Motivation, 21st Paulinian Graduates and Gleaners">
+                <div class="card-title">Right Motivation</div>
+                <div class="image-panel">
+                    <img class="gleaners-photo" src="bbdeb17ba03f3f996fb0418177d07d64.jpg"
+                        alt="The Gleaners painting">
+                </div>
+                <div class="card-footer">
+                    <em>21st Paulinian</em>
+                    <strong>Graduates &amp; Gleaners</strong>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+</body>
+
+</html>

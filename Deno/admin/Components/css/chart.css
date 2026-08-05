@@ -1,0 +1,93 @@
+/* ============================================================
+   Chart Container — Modern Refresh
+   ============================================================ */
+
+.chart-wrapper h3 {
+    color: #0f172a;
+    padding: 0;
+    font-weight: 600;
+}
+
+.chart-container {
+    background-color: #E6E6E6;
+    border: 1px solid #eef0f3;
+    min-height: 240px;
+    width: 100%;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+    padding: 20px 22px 22px;
+    box-sizing: border-box;
+    margin-top: 0;
+    transition: box-shadow 0.25s ease;
+}
+
+.chart-container:hover {
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding: 0;
+    gap: 8px;
+}
+
+.chart-header h3 {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.chart-header > div,
+.chart-header .chart-toggle {
+    display: inline-flex;
+    gap: 4px;
+    background-color: #f1f5f9;
+    padding: 4px;
+    border-radius: 999px;
+    position: relative;
+}
+
+.chart-header button {
+    background-color: transparent;
+    color: #64748b;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.8em;
+    font-weight: 600;
+    transition: background-color 0.25s cubic-bezier(.16,1,.3,1), color 0.25s ease, box-shadow 0.25s ease;
+    letter-spacing: 0.01em;
+}
+
+.chart-header button.active {
+    background-color: #E6E6E6;
+    color: #006A4E;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.10);
+}
+
+.chart-header button:hover:not(.active) {
+    color: #0f172a;
+}
+
+.chart-header button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.18);
+}
+
+.chart-container canvas {
+    width: 100% !important;
+    height: 260px !important;
+    max-height: 260px;
+    display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chart-container,
+    .chart-header button { transition: none; }
+}

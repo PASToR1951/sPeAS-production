@@ -1,0 +1,108 @@
+@import url("./_tokens.css");
+@import url("./_components.css");
+@import url("./_toast.css");
+
+body {
+    font-family: Inter;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+}
+
+/* Style for the drag-over state */
+.drag-over {
+    border-color: var(--brand-green);
+    background-color: var(--brand-green-mist);
+    box-shadow: var(--ring-focus);
+}
+
+/* Hide default file input visually */
+.hidden-file-input {
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+/* Tab styles */
+.tab-active {
+    background-color: var(--brand-green);
+    color: #E6E6E6;
+}
+
+.tab-inactive {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #d1d5db;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+    border-color: var(--brand-green);
+    box-shadow: var(--ring-focus);
+    outline: none;
+}
+
+.progress-bar {
+    background-color: var(--brand-green);
+}
+
+.status-message {
+    color: var(--brand-green);
+}
+
+.file-input-label,
+.upload-button {
+    background-color: var(--brand-green);
+}
+
+.file-input-label:hover,
+.upload-button:hover {
+    background-color: var(--brand-green-dark);
+}
+
+/* Form section visibility */
+.form-section,
+.preview-section {
+    display: none;
+}
+
+.form-section.active,
+.preview-section.active {
+    display: block;
+}
+
+/* Add some space at the bottom of forms for better scrolling experience */
+.form-section {
+    padding-bottom: 30px;
+}
+
+/* Enhanced sticky preview behavior */
+.preview-section {
+    position: relative;
+    height: 100%;
+}
+
+.preview-section > div {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+}
+
+/* Icon styling */
+[data-lucide] {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1em;
+}
+
+.icon-lg [data-lucide] {
+    width: 2.5rem;
+    height: 2.5rem;
+}

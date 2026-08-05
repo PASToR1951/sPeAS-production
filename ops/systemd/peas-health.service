@@ -1,0 +1,13 @@
+[Unit]
+Description=PeAS production health check
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-/etc/peas/peas.env
+ExecStart=/usr/local/sbin/peas-deploy doctor
+NoNewPrivileges=true
+PrivateTmp=true

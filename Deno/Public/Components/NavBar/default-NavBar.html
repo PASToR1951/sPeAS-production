@@ -1,0 +1,3450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Default NavBar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- Base Styles --- */
+        html, body {
+            min-height: 100%;
+            font-family: Inter;
+            background-color: #f3f4f6; /* bg-gray-100 */
+            overflow-x: hidden; /* Prevent horizontal scrollbar */
+        }
+        canvas { /* Confetti canvas styling */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* --- Theme Colors --- */
+        :root {
+            --theme-gold: #FDB813;
+            --theme-gold-darker: #EAA10F;
+            --theme-gold-light-bg: rgba(253, 184, 19, 0.2);
+            --theme-gold-lighter-bg: rgba(253, 184, 19, 0.1);
+            --theme-gold-highlight: rgba(253, 184, 19, 0.4);
+
+            --theme-green-dark: #006A4E;
+            --theme-green-darker-text: #00523D;
+            --theme-green-light-bg: rgba(0, 106, 78, 0.3);
+            --theme-green-lighter-bg: rgba(0, 106, 78, 0.15);
+            --theme-green-border: rgba(0, 106, 78, 0.7);
+            --theme-navbar-bg: #F9F6EE;
+            --neutral-border-color: #e5e7eb;
+            --input-border-color: #d1d5db;
+            --placeholder-text-color: #9ca3af;
+
+            --theme-blue-light-bg: rgba(59, 130, 246, 0.15);
+            --theme-blue-border: rgba(59, 130, 246, 0.4);
+            --theme-blue-text: #2563eb;
+
+            --conveyor-bg-base-rgb: 248, 249, 247;
+
+            /* Category Tile Colors */
+            --category-tile-off-white-text: #E6E6E6;
+            --category-tile-dark-text: #1f2937; /* Dark gray for lighter backgrounds */
+
+            /* --- "All" Category Inactive State --- */
+            --category-tile-all-muted-gradient: linear-gradient(105deg,
+                rgba(239, 68, 68, 0.7),  /* Muted Red */
+                rgba(234, 179, 8, 0.7),  /* Muted Yellow */
+                rgba(59, 130, 246, 0.7), /* Muted Blue */
+                rgba(0, 106, 78, 0.7)   /* Muted Green */
+            );
+
+            /* All - Inactive (Uses muted gradient) */
+            --category-tile-all-bg-image: var(--category-tile-all-muted-gradient);
+            --category-tile-all-text: #E6E6E6;
+            --category-tile-all-count-bg: rgba(0, 0, 0, 0.25);
+            --category-tile-all-count-text: #E6E6E6;
+            --category-tile-all-border: rgba(0,0,0,0.1);
+
+            /* All - Active (Original vibrant gradient) */
+            --category-tile-all-active-gradient: linear-gradient(105deg,
+                #ef4444 0%, /* Tailwind red-500 */
+                #eab308 33%, /* Tailwind yellow-500 */
+                #3b82f6 66%, /* Tailwind blue-500 */
+                var(--theme-green-dark) 100%);
+            --category-tile-all-active-text: #E6E6E6;
+            --category-tile-all-active-count-bg: rgba(0, 0, 0, 0.3);
+            --category-tile-all-active-count-text: #E6E6E6;
+            --category-tile-all-active-border: var(--theme-gold);
+
+
+            /* --- Thesis Tile (Red) --- */
+            --category-tile-red-bg: #FEE2E2;
+            --category-tile-red-text: #991B1B;
+            --category-tile-red-count-bg: rgba(220, 38, 38, 0.15);
+            --category-tile-red-count-text: #991B1B;
+            --category-tile-red-border: #FECACA;
+
+            /* Thesis (Red) - Active */
+            --category-tile-red-active-bg: #DC2626;
+            --category-tile-red-active-text: var(--category-tile-off-white-text);
+            --category-tile-red-active-border: #B91C1C;
+            --category-tile-red-active-count-bg: rgba(255, 255, 255, 0.25);
+            --category-tile-red-active-count-text: var(--category-tile-off-white-text);
+
+            /* --- Dissertation Tile (Green) --- */
+            --category-tile-green-bg: #D1FAE5;
+            --category-tile-green-text: #065F46;
+            --category-tile-green-count-bg: rgba(0, 106, 78, 0.15);
+            --category-tile-green-count-text: #065F46;
+            --category-tile-green-border: #A7F3D0;
+
+            /* Dissertation (Green) - Active */
+            --category-tile-green-active-bg: var(--theme-green-dark);
+            --category-tile-green-active-text: var(--category-tile-off-white-text);
+            --category-tile-green-active-border: #064E3B;
+            --category-tile-green-active-count-bg: rgba(255, 255, 255, 0.25);
+            --category-tile-green-active-count-text: var(--category-tile-off-white-text);
+
+            /* --- Confluence Tile (Yellow) --- */
+            --category-tile-yellow-bg: #FEF9C3;
+            --category-tile-yellow-text: #713F12;
+            --category-tile-yellow-count-bg: rgba(234, 179, 8, 0.15);
+            --category-tile-yellow-count-text: #713F12;
+            --category-tile-yellow-border: #FEF08A;
+
+            /* Confluence (Yellow) - Active */
+            --category-tile-yellow-active-bg: #EAB308;
+            --category-tile-yellow-active-text: var(--category-tile-dark-text);
+            --category-tile-yellow-active-border: #CA8A04;
+            --category-tile-yellow-active-count-bg: rgba(0,0,0,0.15);
+            --category-tile-yellow-active-count-text: var(--category-tile-dark-text);
+
+            /* --- Synergy Tile (Blue) --- */
+            --category-tile-blue-bg: #DBEAFE;
+            --category-tile-blue-text: #1E40AF;
+            --category-tile-blue-count-bg: rgba(59, 130, 246, 0.15);
+            --category-tile-blue-count-text: #1E40AF;
+            --category-tile-blue-border: #BFDBFE;
+
+            /* Synergy (Blue) - Active */
+            --category-tile-blue-active-bg: #2563EB;
+            --category-tile-blue-active-text: var(--category-tile-off-white-text);
+            --category-tile-blue-active-border: #1D4ED8;
+            --category-tile-blue-active-count-bg: rgba(255, 255, 255, 0.25);
+            --category-tile-blue-active-count-text: var(--category-tile-off-white-text);
+
+            /* --- Enhanced Active State Colors (Generic) --- */
+            --category-active-box-shadow: inset 0 2px 6px rgba(0,0,0,0.25);
+            --category-active-transform: translateY(1px) scale(0.97);
+        }
+
+        /* --- Keyframes for color shifting --- */
+        @keyframes colorShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* --- Navbar Styling --- */
+        nav.sticky {
+            background-color: var(--theme-navbar-bg) !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1) !important;
+            border-bottom: 1px solid var(--neutral-border-color) !important;
+        }
+        .md\\:block .ml-10 a.nav-link-desktop,
+        #mobile-menu a.nav-link-mobile,
+        #mobile-menu button.nav-link-mobile {
+            color: var(--theme-green-dark) !important;
+            transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, font-weight 0.2s ease;
+            position: relative; overflow: visible !important; padding-bottom: 5px;
+        }
+        .md\\:block .ml-10 a.nav-link-desktop:hover,
+        #mobile-menu a.nav-link-mobile:hover,
+        #mobile-menu button.nav-link-mobile:hover {
+            background-color: var(--theme-gold-light-bg) !important;
+            color: var(--theme-gold) !important;
+            transform: translateY(-2px); font-weight: 600 !important;
+        }
+        .md\\:block .ml-10 a.nav-link-desktop::after,
+        #mobile-menu a.nav-link-mobile::after {
+            content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 3px;
+            background-color: var(--theme-gold); transform: scaleX(0);
+            transform-origin: left; transition: transform 0.3s ease-out;
+        }
+        .md\\:block .ml-10 a.nav-link-desktop:hover::after,
+        #mobile-menu a.nav-link-mobile:hover::after { transform: scaleX(1); }
+        #mobile-menu button.nav-link-mobile::after { content: none !important; }
+        #mobile-menu button.nav-link-mobile { padding-bottom: 0; }
+        .flex-shrink-0 img.h-20 { transition: transform 0.3s ease, opacity 0.3s ease; }
+        .flex-shrink-0 img.h-20:hover { transform: scale(1.08); opacity: 0.85; }
+        #search-open-button {
+            background-color: #FDFCF9; border: 1px solid var(--theme-green-light-bg);
+            border-radius: 0.375rem; padding: 0.4rem 0.75rem; max-width: 300px;
+            display: flex; align-items: center; text-align: left;
+            font-size: 0.875rem; line-height: 1.25rem; color: var(--placeholder-text-color);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+            -webkit-appearance: none; -moz-appearance: none; appearance: none; cursor: pointer;
+        }
+        #search-open-button:hover { background-color: var(--theme-navbar-bg); border-color: var(--theme-green-dark); }
+        #search-open-button:focus {
+            outline: none; border-color: var(--theme-gold) !important;
+            box-shadow: 0 0 0 2px var(--theme-gold-lighter-bg) !important;
+        }
+        #search-open-button .search-bar-icon { color: var(--theme-green-dark); margin-right: 0.5rem; flex-shrink: 0; height: 1.25rem; width: 1.25rem; transition: color 0.2s ease; }
+        #search-open-button:hover .search-bar-icon { color: var(--theme-gold); }
+        #search-open-button .search-bar-placeholder-text { color: inherit; font-size: inherit; font-weight: normal; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .kbd-shortcut {
+            display: inline-flex; align-items: center; justify-content: center;
+            font-family: Inter; background-color: #e5e7eb;
+            color: #4b5563; border: 1px solid #9ca3af; border-bottom-width: 2px;
+            border-radius: 0.25rem; padding: 0.1rem 0.35rem; font-size: 0.7em;
+            font-weight: 600; line-height: 1; white-space: nowrap;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        #search-open-button-mobile .kbd-shortcut { background-color: var(--theme-green-dark); color: var(--theme-gold); border-color: var(--theme-gold-darker); }
+        #search-open-button-mobile:hover .kbd-shortcut { background-color: var(--theme-green-darker-text) !important; color: #E6E6E6 !important; border-color: var(--theme-green-dark) !important; }
+        #searchPlaceholderOverlay .kbd-shortcut { background-color: #f3f4f6; color: #6b7280; border-color: #d1d5db; font-size: 0.85em; font-weight: 500; padding: 0.05rem 0.25rem; margin: 0 0.1rem; border-bottom-width: 1px; }
+        #profile-badge-button.bg-green-600 { background-color: var(--theme-gold) !important; transition: background-color 0.2s ease; }
+        #profile-badge-button.hover\\:bg-green-700:hover { background-color: var(--theme-gold-darker) !important; }
+        #profile-badge-button.focus\\:ring-green-600:focus { --tw-ring-color: var(--theme-gold) !important; }
+        #mobile-menu .bg-green-600 { background-color: var(--theme-gold) !important; }
+        .mobile-menu-button { color: var(--theme-green-dark) !important; background-color: transparent !important; transition: color 0.2s ease, background-color 0.2s ease; }
+        .mobile-menu-button:hover { background-color: var(--theme-gold-light-bg) !important; color: var(--theme-gold) !important; }
+        .mobile-menu-button.focus\\:ring-green-500:focus { --tw-ring-color: var(--theme-gold) !important; }
+        .dropdown-menu { transition: opacity 0.2s ease-out, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-origin: top right; background-color: #E6E6E6; border: 1px solid var(--neutral-border-color); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .profile-initials { display: flex; align-items: center; justify-content: center; font-weight: 500; color: #E6E6E6; }
+        .dropdown-divider { height: 1px; margin: 0.5rem 0; overflow: hidden; background-color: rgba(253, 184, 19, 0.25); }
+        .dropdown-greeting-container { padding: 0.5rem 1rem; border-bottom: 1px solid rgba(253, 184, 19, 0.25); margin-bottom: 0.25rem; line-height: 1.4; }
+        .greeting-text { color: #6b7280; font-size: 0.875rem; display: block; }
+        .greeting-name { color: var(--theme-green-dark) !important; font-size: 0.875rem; font-weight: 500; display: block; word-break: break-word; overflow-wrap: break-word; white-space: normal; cursor: pointer; }
+        .dropdown-menu a.group, .dropdown-menu button.group { display: flex; align-items: center; width: 100%; text-align: left; }
+        .dropdown-menu a.group svg, .dropdown-menu button.group svg { margin-right: 0.75rem; width: 1.25rem; height: 1.25rem; color: #9ca3af; transition: color 0.15s ease-in-out; }
+        .dropdown-menu a.group:hover svg, .dropdown-menu button.group:hover svg { color: var(--theme-green-dark); }
+        .dropdown-menu a.text-gray-700.hover\\:bg-amber-100:hover, .dropdown-menu button.text-gray-700.hover\\:bg-amber-100:hover, .dropdown-menu a.group.text-gray-700.hover\\:bg-amber-100:hover, .dropdown-menu button.group.text-gray-700.hover\\:bg-amber-100:hover { background-color: var(--theme-gold-light-bg) !important; color: var(--theme-green-dark) !important; }
+        .dropdown-menu a.group.text-gray-700.hover\\:bg-amber-100:hover svg, .dropdown-menu button.group.text-gray-700.hover\\:bg-amber-100:hover svg { color: var(--theme-green-dark) !important; }
+        .dropdown-menu button.text-red-600.hover\\:bg-red-200:hover { background-color: rgba(220, 38, 38, 0.15) !important; color: #DC2626 !important; }
+        .dropdown-menu button.group.text-red-600 svg { color: #f87171; }
+        .dropdown-menu button.group.text-red-600.hover\\:bg-red-200:hover svg { color: #EF4444 !important; }
+        .count-badge { margin-left: auto; padding: 0.125rem 0.5rem; border-radius: 9999px; background-color: var(--theme-gold-light-bg) !important; font-size: 0.75rem; font-weight: 500; color: var(--theme-green-dark) !important; transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out; }
+        .dropdown-menu a.group:hover .count-badge { background-color: var(--theme-green-dark) !important; color: #E6E6E6 !important; }
+        #mobile-menu a.hover\\:bg-amber-100:hover, #mobile-menu button.hover\\:bg-amber-100:hover { background-color: var(--theme-gold-light-bg) !important; color: var(--theme-green-dark) !important; }
+        #mobile-menu button.text-red-600:hover { background-color: rgba(220, 38, 38, 0.15) !important; color: #DC2626 !important; }
+        #mobile-menu .bg-amber-100.text-green-800 { background-color: var(--theme-gold-light-bg) !important; color: var(--theme-green-dark) !important; }
+
+        /* --- Search Overlay --- */
+        #search-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            background-color: rgba(0, 40, 29, 0.65);
+            z-index: 40; opacity: 0; transition: opacity 0.3s ease-in-out;
+            pointer-events: none; display: flex; padding: 1rem;
+            justify-content: center; align-items: flex-start; overflow-y: auto;
+        }
+        #search-overlay.visible { opacity: 1; pointer-events: auto; }
+        #search-overlay::before, #search-overlay::after { content: ''; position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0; }
+        #search-overlay::before { width: 45vw; height: 45vw; min-width: 280px; max-width: 450px; min-height: 280px; max-height: 450px; background: var(--theme-gold); top: 5%; left: 5%; animation: moveBlob1 20s infinite alternate ease-in-out; }
+        #search-overlay::after { width: 55vw; height: 55vw; min-width: 320px; max-width: 550px; min-height: 320px; max-height: 550px; background: var(--theme-green-dark); bottom: 2%; right: 2%; animation: moveBlob2 24s infinite alternate ease-in-out 2.5s; }
+        @keyframes moveBlob1 { 0% { transform: translate(-15%, -15%) scale(0.8); opacity: 0.25; } 25% { transform: translate(15%, -5%) scale(1.1); opacity: 0.4; } 50% { transform: translate(5%, 15%) scale(0.9); opacity: 0.3; } 75% { transform: translate(-10%, 5%) scale(1.2); opacity: 0.45; } 100% { transform: translate(-15%, -15%) scale(0.8); opacity: 0.25; } }
+        @keyframes moveBlob2 { 0% { transform: translate(10%, 10%) scale(0.9); opacity: 0.3; } 25% { transform: translate(-5%, 15%) scale(0.7); opacity: 0.2; } 50% { transform: translate(-15%, -10%) scale(1.15); opacity: 0.4; } 75% { transform: translate(0%, -15%) scale(0.8); opacity: 0.25; } 100% { transform: translate(10%, 10%) scale(0.9); opacity: 0.3; } }
+        .search-overlay-content {
+            background-color: rgba(var(--conveyor-bg-base-rgb), 0.85);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            width: 100%; max-width: 48rem; margin-top: 2vh; margin-bottom: 2vh;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            border: 1px solid var(--neutral-border-color);
+            transform: translateY(-20px);
+            transition: transform 0.3s ease-in-out, background-color 0.3s ease, backdrop-filter 0.3s ease;
+            position: relative; z-index: 1; max-height: 96vh;
+            display: flex; flex-direction: column;
+        }
+        #search-overlay.visible .search-overlay-content { transform: translateY(0); }
+        .search-input-wrapper-overlay { display: flex; align-items: center; padding: 1rem; border-bottom: 1px solid var(--neutral-border-color); flex-shrink: 0; position: relative; }
+        .search-icon-overlay { width: 1.5rem; height: 1.5rem; color: var(--theme-green-dark); margin-right: 0.75rem; flex-shrink: 0; }
+        #searchInputOverlay { width: 100%; font-size: 1rem; line-height: 1.5rem; color: var(--theme-green-darker-text); background-color: transparent; border: none; outline: none; padding-right: 7.5rem; }
+        #searchInputOverlay::placeholder { color: #6c757d; opacity: 0.8; }
+        #clearSearchInputButton { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background-color: transparent; color: var(--theme-green-dark); font-size: 0.875rem; font-weight: 500; padding: 0.25rem 0.5rem; border-radius: 0.375rem; border: 1px solid transparent; display: none; cursor: pointer; transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease; z-index: 20; white-space: nowrap; }
+        #clearSearchInputButton:hover { color: var(--theme-gold-darker); background-color: var(--theme-gold-lighter-bg); border-color: var(--theme-gold); }
+        #clearSearchInputButton.visible { display: inline-flex; align-items: center; }
+        #loadingSpinnerOverlay { position: absolute; right: 4.5rem; top: 50%; transform: translateY(-50%); display: none; z-index: 10; }
+        #loadingSpinnerOverlay.visible { display: inline-block; }
+        #loadingSpinnerOverlay svg { animation: spin 1s linear infinite; height: 1.25rem; width: 1.25rem; color: var(--theme-green-dark); }
+        .search-overlay-close-btn { position: absolute; top: 0.75rem; right: 0.75rem; padding: 0.5rem; border-radius: 9999px; background-color: rgba(255, 255, 255, 0.1); color: #e5e7eb; transition: background-color 0.2s, color 0.2s; z-index: 50; cursor: pointer; }
+        .search-overlay-close-btn:hover { background-color: rgba(255, 255, 255, 0.25); color: #E6E6E6; }
+        .search-overlay-close-btn svg { width: 1.25rem; height: 1.25rem; }
+
+        /* --- Top Keywords Conveyor --- */
+        .top-keywords-section { padding: 0.75rem 1rem; border-bottom: 1px solid var(--neutral-border-color); background-color: rgba(var(--conveyor-bg-base-rgb), 0.65); flex-shrink: 0; position: relative; }
+        .top-keywords-label { font-size: 0.875rem; color: var(--theme-green-dark); margin-bottom: 0.5rem; font-weight: 500; display: block; }
+        .keywords-conveyor-container { width: 100%; overflow-x: hidden; position: relative; height: auto; padding-top: 4px; padding-bottom: 12px; -webkit-overflow-scrolling: touch; }
+        .keywords-conveyor-container::-webkit-scrollbar { display: none; }
+        .keywords-conveyor-container { scrollbar-width: none; -ms-overflow-style: none; }
+        .conveyor-scroll-btn {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 36px; height: 36px; z-index: 3; display: flex;
+            align-items: center; justify-content: center; cursor: pointer;
+            opacity: 0; transition: opacity 0.3s ease-in-out, background-color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
+            color: var(--theme-green-dark);
+            background-color: rgba(var(--conveyor-bg-base-rgb), 0.5);
+            backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+            border-radius: 50%; border: 1px solid transparent;
+        }
+        #conveyorScrollLeftBtn { left: 8px; }
+        #conveyorScrollRightBtn { right: 8px; }
+        .keywords-conveyor-container:hover .conveyor-scroll-btn { opacity: 0.7; }
+        .conveyor-scroll-btn:hover {
+            opacity: 1 !important; color: var(--theme-gold-darker);
+            background-color: rgba(var(--conveyor-bg-base-rgb), 0.7);
+            border-color: var(--theme-gold-light-bg);
+            filter: drop-shadow(0px 2px 5px rgba(0, 0, 0, 0.3));
+        }
+        .conveyor-scroll-btn svg { width: 1.25rem; height: 1.25rem; }
+        .keywords-conveyor-belt { display: flex; width: max-content; transition: transform 0.3s ease-in-out; cursor: grab; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;}
+        .keywords-conveyor-belt.is-dragging { cursor: grabbing; }
+        .keyword-conveyor-item {
+            font-size: 0.875rem; color: var(--theme-green-dark);
+            background-color: var(--theme-green-lighter-bg);
+            padding: 0.35rem 0.85rem; margin-right: 0.6rem;
+            border-radius: 16px; cursor: pointer;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+            border: 1px solid var(--theme-green-border); white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            filter: none; transform: scale(1); opacity: 1; z-index: 1;
+            user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+        }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item { filter: blur(1px); transform: scale(0.94); opacity: 0.7; }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-focused { background-color: var(--theme-gold-light-bg); color: var(--theme-green-darker-text); border-color: var(--theme-gold); transform: scale(1.12) !important; filter: none !important; opacity: 1 !important; z-index: 10 !important; box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important; }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-neighbor-blur-1 { transform: scale(0.90) !important; filter: blur(3.5px) !important; opacity: 0.5 !important; z-index: 5 !important; }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-neighbor-blur-2 { transform: scale(0.92) !important; filter: blur(2.5px) !important; opacity: 0.6 !important; z-index: 4 !important; }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-distant-blur { transform: scale(0.94) !important; filter: blur(1.5px) !important; opacity: 0.7 !important; z-index: 3 !important; }
+
+        /* --- Category Tiles --- */
+        .category-buttons-container-overlay { padding: 0.75rem 1rem; border-bottom: 1px solid var(--neutral-border-color); display: flex; flex-wrap: wrap; gap: 0.75rem; background-color: rgba(var(--conveyor-bg-base-rgb), 0.65); flex-shrink: 0; justify-content: center; }
+        .category-filter-button {
+            font-weight: 500;
+            padding: 0.6rem 0.5rem 0.5rem;
+            border-radius: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease, background-image 0.2s ease;
+            border: 1px solid transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 90px;
+            min-height: 80px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.07);
+            background-image: none;
+        }
+        .category-filter-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 10px rgba(0,0,0,0.12);
+        }
+        .category-filter-button.active {
+            transform: var(--category-active-transform);
+            box-shadow: var(--category-active-box-shadow);
+        }
+
+        .category-button-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2rem;
+        }
+        .category-icon {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            margin-bottom: 0.25rem;
+        }
+        .category-name {
+            font-size: 0.75rem;
+            line-height: 1.2;
+            display: block;
+        }
+        .category-count {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 0.5rem;
+            margin-top: 0.2rem;
+            font-weight: 500;
+            line-height: 1;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        /* All Categories Tile */
+        .category-tile-all {
+            background-image: var(--category-tile-all-bg-image); /* Default: Muted gradient */
+            background-color: #f0f0f0; /* Fallback */
+            color: var(--category-tile-all-text);
+            border: 1px solid var(--category-tile-all-border);
+            background-size: 200% 200%; /* Essential for gradient animation */
+        }
+        
+        /* Animation on hover for INACTIVE "All" tile */
+        .category-tile-all:not(.active):hover {
+            animation: colorShift 4s ease infinite; /* Animates the muted gradient */
+            border-color: var(--theme-gold); 
+            filter: brightness(1.1); 
+        }
+
+        /* Styles for ACTIVE "All" tile (selected) */
+        .category-tile-all.active {
+            background-image: var(--category-tile-all-active-gradient) !important; /* Vibrant active gradient */
+            background-color: transparent !important; 
+            color: var(--category-tile-all-active-text) !important;
+            border: 2px solid var(--category-tile-all-active-border) !important;
+            filter: none; /* Remove any hover brightness */
+            animation: colorShift 4s ease infinite; /* MODIFIED: Apply animation when active */
+        }
+
+        .category-tile-all .category-count {
+            background-color: var(--category-tile-all-count-bg);
+            color: var(--category-tile-all-count-text);
+        }
+        .category-tile-all.active .category-count {
+            background-color: var(--category-tile-all-active-count-bg) !important;
+            color: var(--category-tile-all-active-count-text) !important;
+        }
+
+        /* Thesis Tile (Red) */
+        .category-tile-thesis {
+            background-color: var(--category-tile-red-bg);
+            color: var(--category-tile-red-text);
+            border: 1px solid var(--category-tile-red-border);
+        }
+        .category-tile-thesis:hover {
+            background-color: #FCA5A5; /* red-300 */
+            border-color: #F87171; /* red-400 */
+        }
+        .category-tile-thesis.active {
+            background-color: var(--category-tile-red-active-bg) !important;
+            color: var(--category-tile-red-active-text) !important;
+            border: 2px solid var(--category-tile-red-active-border) !important;
+        }
+        .category-tile-thesis .category-count {
+            background-color: var(--category-tile-red-count-bg);
+            color: var(--category-tile-red-count-text);
+        }
+        .category-tile-thesis.active .category-count {
+             background-color: var(--category-tile-red-active-count-bg) !important;
+             color: var(--category-tile-red-active-count-text) !important;
+        }
+
+
+        /* Dissertation Tile (Green) */
+        .category-tile-dissertation {
+            background-color: var(--category-tile-green-bg);
+            color: var(--category-tile-green-text);
+            border: 1px solid var(--category-tile-green-border);
+        }
+        .category-tile-dissertation:hover {
+            background-color: #6EE7B7; /* green-300 */
+            border-color: #34D399; /* green-400 */
+        }
+        .category-tile-dissertation.active {
+            background-color: var(--category-tile-green-active-bg) !important;
+            color: var(--category-tile-green-active-text) !important;
+            border: 2px solid var(--category-tile-green-active-border) !important;
+        }
+        .category-tile-dissertation .category-count {
+            background-color: var(--category-tile-green-count-bg);
+            color: var(--category-tile-green-count-text);
+        }
+        .category-tile-dissertation.active .category-count {
+             background-color: var(--category-tile-green-active-count-bg) !important;
+             color: var(--category-tile-green-active-count-text) !important;
+        }
+
+        /* Confluence Tile (Yellow) */
+        .category-tile-confluence {
+            background-color: var(--category-tile-yellow-bg);
+            color: var(--category-tile-yellow-text);
+            border: 1px solid var(--category-tile-yellow-border);
+        }
+        .category-tile-confluence:hover {
+            background-color: #FDE047; /* yellow-300 */
+            border-color: #FACC15; /* yellow-400 */
+        }
+        .category-tile-confluence.active {
+            background-color: var(--category-tile-yellow-active-bg) !important;
+            color: var(--category-tile-yellow-active-text) !important;
+            border: 2px solid var(--category-tile-yellow-active-border) !important;
+        }
+        .category-tile-confluence .category-count {
+            background-color: var(--category-tile-yellow-count-bg);
+            color: var(--category-tile-yellow-count-text);
+        }
+        .category-tile-confluence.active .category-count {
+             background-color: var(--category-tile-yellow-active-count-bg) !important;
+             color: var(--category-tile-yellow-active-count-text) !important;
+        }
+
+        /* Synergy Tile (Blue) */
+        .category-tile-synergy {
+            background-color: var(--category-tile-blue-bg);
+            color: var(--category-tile-blue-text);
+            border: 1px solid var(--category-tile-blue-border);
+        }
+        .category-tile-synergy:hover {
+            background-color: #93C5FD; /* blue-300 */
+            border-color: #60A5FA; /* blue-400 */
+        }
+        .category-tile-synergy.active {
+            background-color: var(--category-tile-blue-active-bg) !important;
+            color: var(--category-tile-blue-active-text) !important;
+            border: 2px solid var(--category-tile-blue-active-border) !important;
+        }
+        .category-tile-synergy .category-count {
+            background-color: var(--category-tile-blue-count-bg);
+            color: var(--category-tile-blue-count-text);
+        }
+        .category-tile-synergy.active .category-count {
+            background-color: var(--category-tile-blue-active-count-bg) !important;
+            color: var(--category-tile-blue-active-count-text) !important;
+        }
+
+        /* --- Filters & Results --- */
+        .filters-container-overlay { padding: 0.75rem 1rem 1rem; background-color: rgba(var(--conveyor-bg-base-rgb), 0.65); border-bottom: 1px solid var(--neutral-border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; flex-shrink: 0; }
+        .filter-item-overlay { display: flex; flex-direction: column; }
+        .filter-item-overlay label { font-size: 0.75rem; font-weight: 500; color: var(--theme-green-dark); margin-bottom: 0.25rem; }
+        .filter-item-overlay select { width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem; border: 1px solid var(--theme-green-border); border-radius: 0.375rem; background-color: rgba(255,255,255,0.8); transition: border-color 0.2s ease, box-shadow 0.2s ease; appearance: none; background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23006A4E' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; }
+        .filter-item-overlay select:focus { outline: none; border-color: var(--theme-gold); box-shadow: 0 0 0 2px var(--theme-gold-lighter-bg); }
+        #search-results-overlay { padding: 0.5rem; overflow-y: auto; flex-grow: 1; }
+        .search-results-category-section { margin-bottom: 1.5rem; }
+        .search-results-category-header { display: flex; flex-direction: column; align-items: center; text-align: center; font-size: 1.125rem; font-weight: 600; padding: 0.75rem; border-bottom-width: 3px; border-bottom-style: solid; margin-bottom: 1rem; border-radius: 0.375rem; }
+        .search-results-category-header .header-icon { width: 1.75rem; height: 1.75rem; margin-bottom: 0.375rem; }
+        .search-results-category-header.documents-header { border-bottom-color: var(--theme-gold); background-color: var(--theme-gold-lighter-bg); color: var(--theme-gold-darker); }
+        .search-results-category-header.documents-header .header-icon { color: var(--theme-gold-darker); }
+        .search-results-category-header.authors-header { border-bottom-color: var(--theme-green-dark); background-color: var(--theme-green-lighter-bg); color: var(--theme-green-darker-text); }
+        .search-results-category-header.authors-header .header-icon { color: var(--theme-green-dark); }
+        .search-results-category-header.keywords-header { border-bottom-color: var(--theme-blue-border); background-color: var(--theme-blue-light-bg); color: var(--theme-blue-text); }
+        .search-results-category-header.keywords-header .header-icon { color: var(--theme-blue-text); }
+        .search-result-item { display: block; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; text-decoration: none; margin-bottom: 0.5rem; border: 1px solid transparent; }
+        .search-result-item:hover { background-color: var(--theme-gold-lighter-bg); border-color: var(--theme-gold); box-shadow: 0 3px 10px rgba(0,0,0,0.05); }
+        .search-result-title { font-weight: 600; font-size: 1rem; color: var(--theme-green-dark); margin-bottom: 0.25rem; transition: color 0.2s ease-in-out; }
+        .search-result-item:hover .search-result-title { color: var(--theme-green-darker-text); }
+        .search-result-meta-primary { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #4b5563; margin-bottom: 0.375rem; }
+        .search-result-item:hover .search-result-meta-primary { color: var(--theme-green-dark); }
+        .search-result-author { font-weight: 500; }
+        .search-result-year { color: #6b7280; }
+        .search-result-item:hover .search-result-year { color: var(--theme-green-dark); }
+        .search-result-category-keywords { margin-bottom: 0.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+        .search-result-category-tag { font-size: 0.7rem; font-weight: 500; padding: 0.125rem 0.5rem; border-radius: 9999px; background-color: var(--theme-green-lighter-bg); color: var(--theme-green-darker-text); text-transform: uppercase; letter-spacing: 0.05em; }
+        .search-result-item:hover .search-result-category-tag { background-color: var(--theme-green-dark); color: #E6E6E6; }
+        .search-result-keywords-container { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+        .keyword-pill { 
+            font-size: 0.7rem; 
+            background-color: #e5e7eb; 
+            color: #4b5563; 
+            padding: 0.125rem 0.625rem; 
+            border-radius: 9999px; 
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            border: 1px solid transparent;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .search-result-item:hover .keyword-pill { 
+            background-color: var(--theme-gold-lighter-bg); 
+            color: var(--theme-green-darker-text);
+            border-color: var(--theme-gold);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+        }
+        .search-result-category-keywords {
+            margin-bottom: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .search-result-author {
+            font-weight: 500;
+            color: #4b5563;
+            transition: color 0.2s ease;
+        }
+        .search-result-item:hover .search-result-author {
+            color: var(--theme-green-dark);
+        }
+        .search-result-year {
+            color: #6b7280;
+            font-weight: 500;
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .search-result-item:hover .search-result-year {
+            background-color: var(--theme-green-lighter-bg);
+            color: var(--theme-green-dark);
+        }
+        .search-result-meta-primary {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            font-size: 0.75rem; 
+            color: #4b5563; 
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.375rem;
+            border-bottom: 1px dotted rgba(203, 213, 225, 0.5);
+        }
+        .search-result-desc { font-size: 0.875rem; color: #6b7280; line-height: 1.5; transition: color 0.2s ease-in-out; }
+        .search-result-item:hover .search-result-desc { color: #374151; }
+        .author-result-item .search-result-title { font-size: 1.1rem; }
+        .author-result-item .search-result-meta-primary { font-size: 0.8rem; color: var(--theme-green-dark); }
+        .author-result-item .article-count { font-style: italic; }
+        .keyword-result-item .search-result-title { font-size: 1rem; font-weight: 500; }
+        .keyword-result-item .related-articles-count { font-size: 0.8rem; color: #4b5563; }
+        .search-no-results { text-align: center; padding: 2rem 1rem; color: #6b7280; font-size: 1rem;}
+        .highlight { background-color: var(--theme-gold-light-bg) !important; color: var(--theme-green-darker-text) !important; font-weight: 600; padding: 0 2px; border-radius: 3px; }
+        #search-results-overlay::-webkit-scrollbar { width: 8px; }
+        #search-results-overlay::-webkit-scrollbar-track { background: rgba(0, 106, 78, 0.05); border-radius: 10px; }
+        #search-results-overlay::-webkit-scrollbar-thumb { background: var(--theme-green-light-bg); border-radius: 10px; }
+        #search-results-overlay::-webkit-scrollbar-thumb:hover { background: var(--theme-green-dark); }
+        .show-all-results-button-container { padding: 1rem; text-align: center; border-top: 1px solid var(--neutral-border-color); flex-shrink: 0; }
+        .show-all-results-btn { background-color: var(--theme-gold); color: var(--theme-green-darker-text); padding: 0.625rem 1.5rem; font-size: 0.875rem; font-weight: 600; border-radius: 0.375rem; border: 1px solid var(--theme-gold-darker); transition: background-color 0.2s ease, transform 0.1s ease; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); }
+        .show-all-results-btn:hover { background-color: var(--theme-gold-darker); transform: translateY(-1px); }
+        .show-all-results-btn:focus { outline: none; box-shadow: 0 0 0 3px var(--theme-gold-light-bg); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (min-width: 768px) { #searchInputOverlay { font-size: 1.125rem; line-height: 1.75rem; } .search-overlay-close-btn svg { width: 1.5rem; height: 1.5rem; } }
+
+        /* --- Search Overlay Polish --- */
+        #search-overlay {
+            background-color: rgba(15, 23, 42, 0.48) !important;
+            backdrop-filter: blur(4px) !important;
+            -webkit-backdrop-filter: blur(4px) !important;
+            padding: clamp(0.75rem, 2vw, 1.25rem) !important;
+            align-items: flex-start !important;
+        }
+        #search-overlay::before,
+        #search-overlay::after {
+            display: none !important;
+        }
+        .search-overlay-content {
+            max-width: 46rem !important;
+            margin-top: clamp(1rem, 5vh, 3.5rem) !important;
+            margin-bottom: 1rem !important;
+            max-height: min(86vh, 760px) !important;
+            border-radius: 8px !important;
+            background: #E6E6E6 !important;
+            border: 1px solid #dbe4df !important;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2), 0 4px 18px rgba(15, 23, 42, 0.08) !important;
+            overflow: hidden !important;
+        }
+        .search-input-wrapper-overlay {
+            min-height: 4rem !important;
+            padding: 0.75rem 1rem !important;
+            background: #E6E6E6 !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+            gap: 0.75rem !important;
+        }
+        .search-icon-overlay {
+            width: 1.25rem !important;
+            height: 1.25rem !important;
+            margin-right: 0 !important;
+            color: #006A4E !important;
+        }
+        #searchInputOverlay {
+            min-width: 0 !important;
+            padding-right: 5rem !important;
+            font-size: 1rem !important;
+            line-height: 1.5rem !important;
+            color: #0f172a !important;
+        }
+        #searchInputOverlay::placeholder {
+            color: #7a8794 !important;
+        }
+        #clearSearchInputButton {
+            right: 0.75rem !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            padding: 0 !important;
+            border-radius: 6px !important;
+            border: 1px solid transparent !important;
+            color: #64748b !important;
+            background: transparent !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        #clearSearchInputButton:hover,
+        #clearSearchInputButton:focus-visible {
+            color: #00523D !important;
+            background: #eef6f3 !important;
+            border-color: #b7d5ca !important;
+            outline: none !important;
+        }
+        #clearSearchInputButton svg {
+            width: 1rem;
+            height: 1rem;
+        }
+        #loadingSpinnerOverlay {
+            right: 3.25rem !important;
+        }
+        .search-overlay-close-btn {
+            top: clamp(0.75rem, 2vw, 1.25rem) !important;
+            right: clamp(0.75rem, 2vw, 1.25rem) !important;
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: 999px !important;
+            background: rgba(15, 23, 42, 0.28) !important;
+            color: #E6E6E6 !important;
+        }
+        .search-overlay-close-btn:hover,
+        .search-overlay-close-btn:focus-visible {
+            background: rgba(15, 23, 42, 0.46) !important;
+            outline: none !important;
+        }
+        .top-keywords-section {
+            padding: 0.75rem 1rem !important;
+            background: #f8faf9 !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+        .top-keywords-label {
+            margin-bottom: 0.5rem !important;
+            color: #00523D !important;
+            font-size: 0.75rem !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+        }
+        .keywords-conveyor-container {
+            height: auto !important;
+            overflow: visible !important;
+            padding: 0 !important;
+        }
+        .keywords-conveyor-belt {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none !important;
+            transform: none !important;
+            transition: none !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 0.5rem !important;
+            cursor: default !important;
+        }
+        .keyword-conveyor-item {
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0.35rem 0.7rem !important;
+            border-radius: 999px !important;
+            background: #eef6f3 !important;
+            border: 1px solid #b7d5ca !important;
+            color: #00523D !important;
+            font-size: 0.8125rem !important;
+            line-height: 1.2 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            box-shadow: none !important;
+            transform: none !important;
+            filter: none !important;
+            opacity: 1 !important;
+        }
+        .keyword-conveyor-item:hover,
+        .keyword-conveyor-item:focus-visible {
+            background: #fff8df !important;
+            border-color: #FDB813 !important;
+            color: #0f3d2e !important;
+            outline: none !important;
+        }
+        .conveyor-scroll-btn {
+            display: none !important;
+        }
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item,
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-focused,
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-neighbor-blur-1,
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-neighbor-blur-2,
+        .keywords-conveyor-container:hover .keywords-conveyor-belt.is-hover-active:not(.suppress-item-effects) .keyword-conveyor-item.is-distant-blur {
+            transform: none !important;
+            filter: none !important;
+            opacity: 1 !important;
+            box-shadow: none !important;
+        }
+        .category-buttons-container-overlay {
+            padding: 0.75rem 1rem !important;
+            gap: 0.5rem !important;
+            justify-content: flex-start !important;
+            background: #E6E6E6 !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+        .category-filter-button {
+            min-width: 0 !important;
+            min-height: 0 !important;
+            flex: 0 1 auto !important;
+            padding: 0.45rem 0.65rem !important;
+            border-radius: 8px !important;
+            flex-direction: row !important;
+            justify-content: center !important;
+            gap: 0.45rem !important;
+            background: #E6E6E6 !important;
+            color: #334155 !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: none !important;
+        }
+        .category-filter-button:hover {
+            transform: none !important;
+            border-color: #8fbfb0 !important;
+            background: #f8faf9 !important;
+            box-shadow: none !important;
+        }
+        .category-filter-button.active {
+            transform: none !important;
+            background: #006A4E !important;
+            color: #E6E6E6 !important;
+            border: 1px solid #006A4E !important;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
+            animation: none !important;
+        }
+        .category-button-content {
+            flex-direction: row !important;
+            gap: 0.45rem !important;
+            min-width: 0 !important;
+        }
+        .category-icon {
+            width: 1.15rem !important;
+            height: 1.15rem !important;
+            margin-bottom: 0 !important;
+        }
+        .category-name {
+            font-size: 0.8125rem !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+        }
+        .category-count {
+            margin-top: 0 !important;
+            padding: 0.08rem 0.38rem !important;
+            border-radius: 999px !important;
+            font-size: 0.6875rem !important;
+            background: #e2e8f0 !important;
+            color: #334155 !important;
+        }
+        .category-filter-button.active .category-count {
+            background: rgba(255, 255, 255, 0.22) !important;
+            color: #E6E6E6 !important;
+        }
+        .filters-container-overlay {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.65rem !important;
+            padding: 0.75rem 1rem !important;
+            background: #f8faf9 !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+        .filter-item-overlay label {
+            margin-bottom: 0.25rem !important;
+            color: #475569 !important;
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+        }
+        .filter-item-overlay select {
+            height: 2.35rem !important;
+            border-radius: 6px !important;
+            border-color: #b7d5ca !important;
+            background-color: #E6E6E6 !important;
+            color: #0f172a !important;
+            font-size: 0.875rem !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        .filter-item-overlay select:focus {
+            border-color: #006A4E !important;
+            box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.12) !important;
+        }
+        #search-results-overlay {
+            padding: 0.5rem !important;
+            background: #E6E6E6 !important;
+        }
+        .search-results-category-section {
+            margin-bottom: 0.75rem !important;
+        }
+        .search-results-category-header {
+            flex-direction: row !important;
+            justify-content: flex-start !important;
+            gap: 0.5rem !important;
+            margin: 0 0 0.35rem !important;
+            padding: 0.45rem 0.5rem !important;
+            border: 0 !important;
+            border-radius: 6px !important;
+            background: #f8faf9 !important;
+            color: #334155 !important;
+            font-size: 0.8125rem !important;
+            font-weight: 700 !important;
+            text-align: left !important;
+        }
+        .search-results-category-header .header-icon {
+            width: 1rem !important;
+            height: 1rem !important;
+            margin: 0 !important;
+            color: #006A4E !important;
+        }
+        .search-result-item {
+            margin-bottom: 0.35rem !important;
+            padding: 0.65rem 0.75rem !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #E6E6E6 !important;
+        }
+        .search-result-item:hover,
+        .search-result-item:focus-visible {
+            background: #fffdf5 !important;
+            border-color: #f3ce67 !important;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06) !important;
+            outline: none !important;
+        }
+        .search-result-title {
+            margin-bottom: 0.35rem !important;
+            color: #0f3d2e !important;
+            font-size: 0.9375rem !important;
+            line-height: 1.35 !important;
+        }
+        .search-result-meta-primary {
+            align-items: flex-start !important;
+            gap: 0.75rem !important;
+            margin-bottom: 0.45rem !important;
+            padding-bottom: 0 !important;
+            border-bottom: 0 !important;
+        }
+        .search-result-author,
+        .search-result-date,
+        .search-result-year {
+            color: #64748b !important;
+            font-size: 0.75rem !important;
+            background: transparent !important;
+            padding: 0 !important;
+        }
+        .search-result-category-keywords {
+            gap: 0.35rem !important;
+            margin-bottom: 0 !important;
+        }
+        .search-result-category-tag,
+        .keyword-pill {
+            border-radius: 999px !important;
+            padding: 0.12rem 0.45rem !important;
+            font-size: 0.6875rem !important;
+            line-height: 1.35 !important;
+            box-shadow: none !important;
+        }
+        .search-no-results {
+            margin: 0 !important;
+            padding: 2.25rem 1rem !important;
+            color: #64748b !important;
+            font-size: 0.9375rem !important;
+        }
+        .show-all-results-button-container {
+            padding: 0.75rem 1rem !important;
+            background: #E6E6E6 !important;
+            border-top: 1px solid #e2e8f0 !important;
+        }
+        .show-all-results-btn {
+            width: 100% !important;
+            border-radius: 6px !important;
+            background: #006A4E !important;
+            border-color: #006A4E !important;
+            color: #E6E6E6 !important;
+            box-shadow: none !important;
+        }
+        .show-all-results-btn:hover,
+        .show-all-results-btn:focus-visible {
+            background: #00523D !important;
+            transform: none !important;
+            outline: none !important;
+        }
+        @media (max-width: 720px) {
+            .search-overlay-content {
+                max-height: calc(100vh - 1.5rem) !important;
+                margin-top: 0 !important;
+            }
+            .search-input-wrapper-overlay {
+                padding: 0.7rem 0.8rem !important;
+            }
+            #searchInputOverlay {
+                padding-right: 4.5rem !important;
+            }
+            .category-buttons-container-overlay,
+            .top-keywords-section,
+            .filters-container-overlay {
+                padding-left: 0.8rem !important;
+                padding-right: 0.8rem !important;
+            }
+            .filters-container-overlay {
+                grid-template-columns: 1fr !important;
+            }
+            .category-filter-button {
+                flex: 1 1 calc(50% - 0.5rem) !important;
+            }
+            .category-name {
+                white-space: normal !important;
+            }
+            .search-result-meta-primary {
+                flex-direction: column !important;
+                gap: 0.2rem !important;
+            }
+        }
+
+        .search-result-author {
+            font-weight: 500;
+            color: #4b5563;
+            transition: color 0.2s ease;
+        }
+        
+        .search-result-item:hover .search-result-author {
+            color: var(--theme-green-dark);
+        }
+        
+        .search-result-date {
+            color: #6b7280;
+            font-weight: 500;
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        
+        .search-result-item:hover .search-result-date {
+            background-color: var(--theme-green-lighter-bg);
+            color: var(--theme-green-dark);
+        }
+
+        /* --- UX polish: close button anchored inside modal card --- */
+        .search-overlay-content { position: relative !important; }
+        .search-overlay-content > .search-overlay-close-btn {
+            top: 0.6rem !important; right: 0.6rem !important;
+            width: 2rem !important; height: 2rem !important;
+            background: rgba(15, 23, 42, 0.06) !important;
+            color: #475569 !important;
+            z-index: 5 !important;
+            transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+        }
+        .search-overlay-content > .search-overlay-close-btn:hover,
+        .search-overlay-content > .search-overlay-close-btn:focus-visible {
+            background: rgba(15, 23, 42, 0.12) !important;
+            color: #0f172a !important;
+            outline: none !important;
+            transform: scale(1.04);
+        }
+        .search-overlay-content > .search-overlay-close-btn svg { width: 1.05rem !important; height: 1.05rem !important; }
+        .search-input-wrapper-overlay { padding-right: 3.25rem !important; }
+        #searchInputOverlay { padding-right: 4.5rem !important; }
+        #clearSearchInputButton { right: 3.25rem !important; }
+        #loadingSpinnerOverlay { right: 5.75rem !important; }
+
+        /* --- Rich empty state --- */
+        .search-empty-state {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.4rem !important;
+            padding: 2.25rem 1.5rem !important;
+            text-align: center;
+            color: #475569 !important;
+        }
+        .search-empty-state .empty-state-icon {
+            width: 3rem; height: 3rem;
+            color: #94a3b8;
+            margin-bottom: 0.1rem;
+        }
+        .search-empty-state .empty-state-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f3d2e;
+        }
+        .search-empty-state .empty-state-subtitle {
+            margin: 0;
+            font-size: 0.875rem;
+            color: #64748b;
+            max-width: 22rem;
+            line-height: 1.4;
+        }
+        .search-empty-state .empty-state-hints {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+            font-size: 0.72rem;
+            color: #64748b;
+        }
+        .search-empty-state .empty-state-hints kbd {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            background: #eef2f7;
+            border: 1px solid #d6dde6;
+            border-bottom-width: 2px;
+            color: #334155;
+            font-family: Inter;
+            font-size: 0.68rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+
+        /* --- Show All Results: disabled when nothing actionable --- */
+        .show-all-results-btn[disabled],
+        .show-all-results-btn.is-disabled {
+            background: #e2e8f0 !important;
+            border-color: #cbd5e1 !important;
+            color: #94a3b8 !important;
+            cursor: not-allowed !important;
+            pointer-events: none;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        /* --- Collapsible filters --- */
+        .filters-toggle-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.55rem 1rem;
+            background: #E6E6E6;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .filters-toggle-wrapper .filters-toggle-hint {
+            font-size: 0.72rem;
+            color: #64748b;
+        }
+        .filters-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            color: #475569;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+        .filters-toggle-btn:hover,
+        .filters-toggle-btn:focus-visible {
+            background: #eef6f3;
+            border-color: #b7d5ca;
+            color: #00523D;
+            outline: none;
+        }
+        .filters-toggle-btn[aria-expanded="true"] {
+            background: #006A4E;
+            border-color: #006A4E;
+            color: #E6E6E6;
+        }
+        .filters-toggle-btn svg { width: 0.95rem; height: 0.95rem; }
+        .filters-toggle-btn .filters-toggle-chevron { transition: transform 0.2s ease; }
+        .filters-toggle-btn[aria-expanded="true"] .filters-toggle-chevron { transform: rotate(180deg); }
+        .filters-toggle-btn .filters-active-count {
+            margin-left: 0.15rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.1rem;
+            height: 1.1rem;
+            padding: 0 0.3rem;
+            border-radius: 999px;
+            background: #FDB813;
+            color: #0f3d2e;
+            font-size: 0.65rem;
+            font-weight: 700;
+        }
+        .filters-toggle-btn[aria-expanded="true"] .filters-active-count {
+            background: rgba(255,255,255,0.22);
+            color: #E6E6E6;
+        }
+        .filters-toggle-btn .filters-active-count:empty { display: none; }
+        .filters-container-overlay.is-collapsed { display: none !important; }
+
+        /* =========================================================
+           Spotlight rehaul — compact command-palette layout
+           ========================================================= */
+        #search-overlay {
+            background: rgba(15, 23, 42, 0.45) !important;
+            padding: 6vh 1rem 1rem !important;
+            align-items: flex-start !important;
+        }
+        .search-overlay-content {
+            max-width: 640px !important;
+            margin: 0 auto !important;
+            max-height: min(80vh, 620px) !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(15, 23, 42, 0.08) !important;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+            overflow: hidden !important;
+            background: #E6E6E6 !important;
+        }
+        /* Close button: compact top-right of input row */
+        .search-overlay-content > .search-overlay-close-btn {
+            top: 0.95rem !important;
+            right: 0.85rem !important;
+            width: 1.85rem !important;
+            height: 1.85rem !important;
+            background: transparent !important;
+            color: #94a3b8 !important;
+            border-radius: 6px !important;
+            z-index: 6 !important;
+            transition: background-color 0.12s ease, color 0.12s ease;
+        }
+        .search-overlay-content > .search-overlay-close-btn:hover,
+        .search-overlay-content > .search-overlay-close-btn:focus-visible {
+            background: #f1f5f9 !important;
+            color: #0f172a !important;
+            transform: none !important;
+        }
+        .search-overlay-content > .search-overlay-close-btn svg { width: 1rem !important; height: 1rem !important; }
+
+        /* Input row: hero */
+        .search-input-wrapper-overlay {
+            min-height: 4rem !important;
+            padding: 0.85rem 3.25rem 0.85rem 1.15rem !important;
+            background: #E6E6E6 !important;
+            border-bottom: 1px solid #eef0f3 !important;
+            gap: 0.8rem !important;
+        }
+        .search-icon-overlay {
+            width: 1.25rem !important;
+            height: 1.25rem !important;
+            color: #94a3b8 !important;
+            margin: 0 !important;
+        }
+        #searchInputOverlay {
+            font-size: 1.0625rem !important;
+            color: #0f172a !important;
+            padding-right: 0 !important;
+        }
+        #searchInputOverlay::placeholder { color: #94a3b8 !important; }
+        #clearSearchInputButton {
+            right: 3rem !important;
+            width: 1.65rem !important;
+            height: 1.65rem !important;
+            border-radius: 6px !important;
+        }
+        #clearSearchInputButton svg { width: 0.85rem; height: 0.85rem; }
+        #loadingSpinnerOverlay { right: 5rem !important; }
+
+        /* Hide standalone sections we now fold elsewhere */
+        .top-keywords-section { display: none !important; }
+        .show-all-results-button-container { display: none !important; }
+
+        /* Category chips row */
+        .category-buttons-container-overlay {
+            padding: 0.55rem 0.85rem !important;
+            gap: 0.35rem !important;
+            background: #E6E6E6 !important;
+            border-bottom: 0 !important;
+            justify-content: flex-start !important;
+            flex-wrap: wrap !important;
+        }
+        .category-filter-button {
+            min-width: 0 !important;
+            min-height: 0 !important;
+            padding: 0.3rem 0.65rem !important;
+            border-radius: 999px !important;
+            background: #f8faf9 !important;
+            color: #475569 !important;
+            border: 1px solid #e6ebef !important;
+            box-shadow: none !important;
+            font-size: 0.8rem !important;
+            line-height: 1 !important;
+            transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
+        }
+        .category-filter-button:hover {
+            background: #eef6f3 !important;
+            border-color: #b7d5ca !important;
+            color: #00523D !important;
+            transform: none !important;
+        }
+        .category-filter-button.active {
+            background: #006A4E !important;
+            border-color: #006A4E !important;
+            color: #E6E6E6 !important;
+            box-shadow: none !important;
+            transform: none !important;
+            animation: none !important;
+        }
+        .category-button-content {
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 0.4rem !important;
+            min-width: 0 !important;
+        }
+        .category-icon { display: none !important; }
+        .category-name { font-size: 0.8rem !important; font-weight: 600 !important; line-height: 1 !important; white-space: nowrap !important; }
+        .category-count {
+            padding: 0.08rem 0.4rem !important;
+            border-radius: 999px !important;
+            background: rgba(15, 23, 42, 0.06) !important;
+            color: #64748b !important;
+            font-size: 0.66rem !important;
+            line-height: 1 !important;
+            margin-top: 0 !important;
+        }
+        .category-filter-button.active .category-count {
+            background: rgba(255, 255, 255, 0.22) !important;
+            color: #E6E6E6 !important;
+        }
+
+        /* Filters toggle: subdued chip in its own slim row */
+        .filters-toggle-wrapper {
+            padding: 0 0.85rem 0.55rem !important;
+            background: #E6E6E6 !important;
+            border-bottom: 1px solid #eef0f3 !important;
+            justify-content: flex-end !important;
+        }
+        .filters-toggle-wrapper .filters-toggle-hint {
+            font-size: 0.7rem !important;
+            color: #94a3b8 !important;
+        }
+        .filters-toggle-btn {
+            padding: 0.3rem 0.65rem !important;
+            border-radius: 999px !important;
+            font-size: 0.78rem !important;
+            background: #f8faf9 !important;
+            border: 1px solid #e6ebef !important;
+            color: #475569 !important;
+        }
+        .filters-toggle-btn[aria-expanded="true"] {
+            background: #006A4E !important;
+            border-color: #006A4E !important;
+            color: #E6E6E6 !important;
+        }
+
+        /* Filters panel: slimmer */
+        .filters-container-overlay {
+            padding: 0.6rem 0.85rem 0.75rem !important;
+            gap: 0.5rem !important;
+            background: #f8faf9 !important;
+            border-bottom: 1px solid #eef0f3 !important;
+        }
+        .filter-item-overlay label {
+            font-size: 0.68rem !important;
+            margin-bottom: 0.2rem !important;
+        }
+        .filter-item-overlay select {
+            height: 2.1rem !important;
+            font-size: 0.8rem !important;
+        }
+
+        /* Results: tight, scannable rows */
+        #search-results-overlay {
+            padding: 0.3rem !important;
+            background: #E6E6E6 !important;
+        }
+        .search-results-category-section { margin: 0 0 0.4rem !important; }
+        .search-results-category-header {
+            padding: 0.45rem 0.75rem 0.25rem !important;
+            margin: 0 !important;
+            background: transparent !important;
+            color: #94a3b8 !important;
+            font-size: 0.65rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border: 0 !important;
+            border-radius: 0 !important;
+            justify-content: flex-start !important;
+        }
+        .search-results-category-header .header-icon {
+            width: 0.8rem !important;
+            height: 0.8rem !important;
+            color: #94a3b8 !important;
+        }
+        .search-result-item {
+            margin: 0 !important;
+            padding: 0.55rem 0.75rem !important;
+            border-radius: 6px !important;
+            border: 0 !important;
+            background: transparent !important;
+            transition: background-color 0.1s ease !important;
+        }
+        .search-result-item:hover,
+        .search-result-item:focus-visible {
+            background: #f8faf9 !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        .search-result-item.kbd-focus {
+            background: #eef6f3 !important;
+            box-shadow: inset 3px 0 0 #006A4E !important;
+        }
+        .search-result-title {
+            margin-bottom: 0.2rem !important;
+            color: #0f172a !important;
+            font-size: 0.9rem !important;
+            font-weight: 600 !important;
+        }
+        .search-result-meta-primary {
+            font-size: 0.72rem !important;
+            color: #64748b !important;
+            padding: 0 !important;
+            border: 0 !important;
+            margin-bottom: 0.25rem !important;
+            gap: 0.5rem !important;
+        }
+
+        /* Empty state: looser top + popular list */
+        .search-empty-state {
+            padding: 1.5rem 1.25rem 0.5rem !important;
+            gap: 0.3rem !important;
+        }
+        .search-empty-state .empty-state-icon { width: 2.5rem; height: 2.5rem; margin: 0; }
+        .search-empty-state .empty-state-title { font-size: 0.95rem; }
+        .search-empty-state .empty-state-subtitle { font-size: 0.825rem; }
+        .search-empty-state .empty-state-hints { display: none !important; }
+
+        .empty-popular-section {
+            width: 100%;
+            margin-top: 1rem;
+            text-align: left;
+        }
+        .empty-popular-header {
+            padding: 0 0.6rem 0.3rem;
+            color: #94a3b8;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .empty-popular-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .empty-popular-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.5rem 0.6rem;
+            border-radius: 6px;
+            color: #334155;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background-color 0.1s ease, color 0.1s ease;
+        }
+        .empty-popular-item:hover {
+            background: #f8faf9;
+            color: #00523D;
+        }
+        .empty-popular-item.kbd-focus {
+            background: #eef6f3;
+            color: #00523D;
+            box-shadow: inset 3px 0 0 #006A4E;
+        }
+        .empty-popular-item svg {
+            width: 0.95rem;
+            height: 0.95rem;
+            color: #94a3b8;
+            flex-shrink: 0;
+        }
+        .empty-popular-item:hover svg,
+        .empty-popular-item.kbd-focus svg { color: #00523D; }
+        .empty-popular-item .keyword-arrow {
+            margin-left: auto;
+            color: #cbd5e1;
+            font-size: 0.95rem;
+            opacity: 0;
+            transition: opacity 0.1s ease, color 0.1s ease;
+        }
+        .empty-popular-item:hover .keyword-arrow,
+        .empty-popular-item.kbd-focus .keyword-arrow {
+            opacity: 1;
+            color: #00523D;
+        }
+
+        /* Footer keyboard-hint bar */
+        .search-footer-hints {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.5rem 0.85rem;
+            background: #f8faf9;
+            border-top: 1px solid #eef0f3;
+            font-size: 0.7rem;
+            color: #64748b;
+        }
+        .search-footer-hints .footer-hint-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.85rem;
+            flex-wrap: wrap;
+        }
+        .search-footer-hints kbd {
+            display: inline-block;
+            min-width: 1rem;
+            padding: 0.05rem 0.35rem;
+            margin-right: 0.3rem;
+            border-radius: 4px;
+            background: #E6E6E6;
+            border: 1px solid #d6dde6;
+            border-bottom-width: 2px;
+            color: #334155;
+            font-family: Inter;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .search-footer-hints .powered-by {
+            color: #94a3b8;
+            font-size: 0.65rem;
+            letter-spacing: 0.04em;
+        }
+        @media (max-width: 540px) {
+            .search-footer-hints .footer-hint-group { gap: 0.5rem; }
+            .search-footer-hints .powered-by { display: none; }
+        }
+    </style>
+    <script src="/Components/js/system-ui.js" defer></script>
+</head>
+<body class="bg-gray-100">
+    <nav class="shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <img class="h-20 w-auto" src="/Components/images/spud-logo.png" alt="sPEAS Logo" onerror="this.onerror=null; this.src='/Components/images/peas-ico.png'; this.style.height='50px'; this.style.width='auto';">
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="#" class="nav-link-desktop text-gray-700 px-3 py-2 rounded-md text-sm font-medium"></a>
+                            <a href="#" class="nav-link-desktop text-gray-700 px-3 py-2 rounded-md text-sm font-medium"></a>
+                            <a href="#" class="nav-link-desktop text-gray-700 px-3 py-2 rounded-md text-sm font-medium"></a>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden md:flex md:items-center md:ml-6">
+                    <div class="ml-4 flex items-center space-x-4">
+                        <button id="search-open-button" type="button" class="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#E6E6E6] focus:ring-green-600 flex items-center">
+                            <svg class="search-bar-icon h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" />
+                            </svg>
+                            <span class="search-bar-placeholder-text">Search archive</span>
+                        </button>
+                        <button type="button" id="login-button" class="ml-3 bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-500 hover:bg-gradient-to-r hover:from-yellow-600 hover:via-yellow-500 hover:to-yellow-600 text-[#E6E6E6] font-medium py-2 px-4 rounded transition duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-yellow-400" onclick="handleLogin()">
+                            Log In
+                        </button>
+                        <div id="user-auth-container" class="relative inline-block text-left">
+                            </div>
+                    </div>
+                </div>
+                <div class="-mr-2 flex md:hidden">
+                    <button type="button" class="mobile-menu-button bg-[#E6E6E6] inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-green-500" aria-controls="mobile-menu" aria-expanded="false">
+                        <span class="sr-only">Open main menu</span>
+                        <svg class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        <svg class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="md:hidden hidden" id="mobile-menu">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#" class="nav-link-mobile text-gray-700 block px-3 py-2 rounded-md text-base font-medium">Home</a>
+                <a href="#" class="nav-link-mobile text-gray-700 block px-3 py-2 rounded-md text-base font-medium">About</a>
+                <a href="#" class="nav-link-mobile text-gray-700 block px-3 py-2 rounded-md text-base font-medium">Contact</a>
+                 <button id="search-open-button-mobile" type="button" class="nav-link-mobile w-full mt-2 text-left text-gray-700 block px-3 py-2 rounded-md text-base font-medium flex items-center justify-between">
+                    Search
+                </button>
+            </div>
+            <div id="mobile-user-auth-container" class="pt-4 pb-3 border-t border-gray-200">
+                <button type="button" id="mobile-login-button" class="w-full mt-3 bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-500 hover:bg-gradient-to-r hover:from-yellow-600 hover:via-yellow-500 hover:to-yellow-600 text-[#E6E6E6] font-medium py-2 px-4 rounded transition duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 mx-3" onclick="handleLogin()">
+                    Log In
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="search-overlay" class="hidden">
+        <div class="search-overlay-content">
+            <button id="search-close-button" type="button" class="search-overlay-close-btn">
+                <span class="sr-only">Close search</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            </button>
+            <div class="search-input-wrapper-overlay">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="search-icon-overlay">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input type="text" id="searchInputOverlay" placeholder="Search the archive..." autocomplete="off" class=""/>
+                <button id="clearSearchInputButton" type="button" aria-label="Clear search">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                 <div id="loadingSpinnerOverlay" aria-label="Loading search results">
+                    <svg viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                </div>
+            </div>
+            <div class="top-keywords-section">
+                <span class="top-keywords-label">Top Keywords</span>
+                <div class="keywords-conveyor-container" id="keywordsConveyorContainer">
+                    <button type="button" class="conveyor-scroll-btn" id="conveyorScrollLeftBtn" title="Scroll Left">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                        </svg>
+                    </button>
+                    <ul class="keywords-conveyor-belt" id="keywordsConveyorBelt"></ul>
+                    <button type="button" class="conveyor-scroll-btn" id="conveyorScrollRightBtn" title="Scroll Right">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="categoryButtonsContainerOverlay" class="category-buttons-container-overlay">
+                </div>
+            <div class="filters-toggle-wrapper">
+                <span class="filters-toggle-hint">Narrow results by author, keyword, or year</span>
+                <button type="button" id="filtersToggleBtn" class="filters-toggle-btn" aria-expanded="false" aria-controls="filtersPanel">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M6 12h12M10 20h4" /></svg>
+                    Filters
+                    <span class="filters-active-count" id="filtersActiveCount"></span>
+                    <span class="filters-toggle-chevron"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6" /></svg></span>
+                </button>
+            </div>
+            <div id="filtersPanel" class="filters-container-overlay is-collapsed" aria-hidden="true">
+                <div class="filter-item-overlay">
+                    <label for="authorFilterOverlay">Author</label>
+                    <select id="authorFilterOverlay"><option value="">All</option></select>
+                </div>
+                <div class="filter-item-overlay">
+                    <label for="keywordsFilterOverlay">Keyword(s)</label>
+                    <select id="keywordsFilterOverlay"><option value="">All</option></select>
+                </div>
+                <div class="filter-item-overlay">
+                    <label for="yearFilterOverlay">Year</label>
+                    <select id="yearFilterOverlay"><option value="">All</option></select>
+                </div>
+            </div>
+            <div id="search-results-overlay">
+                <div id="searchPlaceholderOverlay" class="search-no-results search-empty-state">
+                    <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                    <h3 class="empty-state-title">Search the sPEAS archive</h3>
+                    <p class="empty-state-subtitle">Find theses, dissertations, and publications by title, author, or keyword.</p>
+                    <div class="empty-state-hints">
+                        <span><kbd>Enter</kbd>Search</span>
+                        <span><kbd>Esc</kbd>Close</span>
+                        <span><kbd>⌘</kbd><kbd>K</kbd>Open anywhere</span>
+                    </div>
+                </div>
+            </div>
+            <div id="showAllResultsContainer" class="show-all-results-button-container hidden">
+                <button id="showAllResultsBtn" type="button" class="show-all-results-btn" onclick="window.location.href = '/pages/searchResultsPage.html?q=' + encodeURIComponent(document.getElementById('searchInputOverlay').value)">Show All Results</button>
+            </div>
+            <div class="search-footer-hints">
+                <div class="footer-hint-group">
+                    <span><kbd>&#8629;</kbd>Open</span>
+                    <span><kbd>&#8593;</kbd><kbd>&#8595;</kbd>Navigate</span>
+                    <span><kbd>esc</kbd>Close</span>
+                </div>
+                <span class="powered-by">sPEAS Archive</span>
+            </div>
+        </div>
+    </div>
+
+    
+
+<script>
+(function() { // IIFE Start
+    "use strict";
+
+    // --- Constants & Global Variables ---
+    const RAINBOW_GRADIENT = 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #6366f1, #8b5cf6)';
+    const DEBOUNCE_DELAY = 300;
+    const CLICK_THRESHOLD_PX = 10; // For conveyor belt item click vs drag
+
+    // CSS Classes
+    const ACTIVE_CLASS = 'active';
+    const VISIBLE_CLASS = 'visible';
+    const HIDDEN_CLASS = 'hidden';
+    const HIGHLIGHT_CLASS = 'highlight';
+    const CATEGORY_FILTER_BUTTON_CLASS = 'category-filter-button';
+    const KBD_SHORTCUT_CLASS = 'kbd-shortcut';
+
+    // Data Attributes
+    const DATA_CATEGORY_ATTR = 'data-category';
+
+    // --- Fixed Predefined Categories ---
+    // Define your fixed categories here. The names should match what your CSS expects for styling (e.g., 'category-tile-thesis').
+    const PREDEFINED_CATEGORIES = ["Thesis", "Dissertation", "Confluence", "Synergy"]; // ADD YOUR CATEGORIES HERE
+
+    // Expose key constants and functions to window for navbar-loader.js to use
+    if (typeof window !== 'undefined') {
+        // Setup namespace if it doesn't exist
+        if (!window.NavbarModule) {
+            window.NavbarModule = {};
+        }
+        
+        // Expose constants
+        window.NavbarModule.CONSTANTS = {
+            ACTIVE_CLASS,
+            VISIBLE_CLASS,
+            HIDDEN_CLASS,
+            HIGHLIGHT_CLASS,
+            CATEGORY_FILTER_BUTTON_CLASS,
+            KBD_SHORTCUT_CLASS,
+            DATA_CATEGORY_ATTR,
+            PREDEFINED_CATEGORIES
+        };
+        
+        // Initialize cache objects
+        window.NavbarModule.cachedResponses = {};
+        window.NavbarModule.filtersLoaded = false;
+        
+        // Expose core functions to window
+        window.performSearchOverlay = performSearchOverlay;
+        window.fetchFiltersData = fetchFiltersData;
+        window.fetchTopKeywords = fetchTopKeywords;
+        window.populateCategoryButtons = populateCategoryButtons;
+        window.getActiveCategories = getActiveCategories;
+        window.handleCategoryButtonClick = handleCategoryButtonClick;
+        window.populateSelectWithOptions = populateSelectWithOptions;
+        window.updateKeywordsConveyor = updateKeywordsConveyor;
+        window.loadFiltersData = loadFiltersData;
+        window.highlightText = highlightText;
+    }
+
+    let isDropdownOpen = false;
+    let originalBodyOverflow = '';
+    let currentUser = null; // Will be populated by checkAuthStatus from backend
+
+    function escapeHTMLAttr(str) {
+        return String(str == null ? '' : str).replace(/[&<>"']/g, function(c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+
+    function getPopularKeywordsForEmptyState(limit) {
+        limit = limit || 6;
+        try {
+            var data = window.NavbarModule && window.NavbarModule.topKeywordsData && window.NavbarModule.topKeywordsData.top_keywords;
+            if (Array.isArray(data) && data.length) {
+                var seen = new Set(); var out = [];
+                for (var i = 0; i < data.length && out.length < limit; i++) {
+                    var raw = data[i];
+                    var v = (raw && typeof raw === 'object') ? (raw.name || raw.keyword || raw.text || '') : raw;
+                    var s = String(v == null ? '' : v).trim();
+                    if (!s) continue;
+                    var k = s.toLowerCase();
+                    if (seen.has(k)) continue;
+                    seen.add(k); out.push(s);
+                }
+                if (out.length) return out;
+            }
+        } catch (_) {}
+        var belt = document.getElementById('keywordsConveyorBelt');
+        if (belt) {
+            var items = Array.from(belt.querySelectorAll('.keyword-conveyor-item'));
+            var seen2 = new Set(); var out2 = [];
+            for (var j = 0; j < items.length && out2.length < limit; j++) {
+                var t = ((items[j].dataset && items[j].dataset.query) || items[j].textContent || '').trim();
+                if (!t) continue;
+                var lk = t.toLowerCase();
+                if (seen2.has(lk)) continue;
+                seen2.add(lk); out2.push(t);
+            }
+            return out2;
+        }
+        return [];
+    }
+
+    function getEmptyStateHTML() {
+        var popular = getPopularKeywordsForEmptyState(6);
+        var popularBlock = '';
+        if (popular.length) {
+            var items = popular.map(function(k) {
+                var safe = escapeHTMLAttr(k);
+                return '<li class="empty-popular-item" data-keyword="' + safe + '" role="button" tabindex="-1">' +
+                    '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>' +
+                    '<span>' + safe + '</span>' +
+                    '<span class="keyword-arrow">&rarr;</span>' +
+                '</li>';
+            }).join('');
+            popularBlock = '<div class="empty-popular-section">' +
+                '<div class="empty-popular-header">Popular searches</div>' +
+                '<ul class="empty-popular-list">' + items + '</ul>' +
+            '</div>';
+        }
+        return '<div id="searchPlaceholderOverlay" class="search-no-results search-empty-state">' +
+            '<svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>' +
+            '<h3 class="empty-state-title">Search the sPEAS archive</h3>' +
+            '<p class="empty-state-subtitle">Find theses, dissertations, and publications by title, author, or keyword.</p>' +
+            popularBlock +
+        '</div>';
+    }
+
+    function refreshEmptyStateIfShowing() {
+        var placeholder = document.getElementById('searchPlaceholderOverlay');
+        var results = document.getElementById('search-results-overlay');
+        var input = document.getElementById('searchInputOverlay');
+        if (placeholder && placeholder.classList.contains('search-empty-state') && results &&
+            (!input || !input.value.trim())) {
+            results.innerHTML = getEmptyStateHTML();
+        }
+    }
+
+    function updateShowAllResultsState() {
+        const btn = document.getElementById('showAllResultsBtn');
+        const input = document.getElementById('searchInputOverlay');
+        if (!btn || !input) return;
+        const hasQuery = input.value.trim().length > 0;
+        const author = document.getElementById('authorFilterOverlay');
+        const kw = document.getElementById('keywordsFilterOverlay');
+        const yr = document.getElementById('yearFilterOverlay');
+        const hasDropdownFilters = !!(author && author.value) || !!(kw && kw.value) || !!(yr && yr.value);
+        let hasSpecificCategory = false;
+        try {
+            const cats = (typeof getActiveCategories === 'function') ? getActiveCategories() : [];
+            const container = document.getElementById('categoryButtonsContainerOverlay');
+            const allActive = container && container.querySelector('.category-filter-button[data-category=""].active');
+            hasSpecificCategory = cats.length > 0 && !allActive;
+        } catch (_) {}
+        const actionable = hasQuery || hasDropdownFilters || hasSpecificCategory;
+        btn.classList.toggle('is-disabled', !actionable);
+        if (actionable) btn.removeAttribute('disabled'); else btn.setAttribute('disabled', '');
+    }
+
+    // Conveyor scroll & drag variables
+    let currentTranslateX = 0;
+    let firstSetItemCount = 0;
+    let itemWidthWithMargin = 0;
+    let firstSetWidth = 0;
+    let isScrollingViaArrows = false;
+    const scrollTransitionDuration = 300;
+    let isDraggingConveyor = false;
+    let dragStartX = 0;
+    let scrollStartXAtDragStart = 0;
+    let pointerDownOnKeywordItem = null;
+    let dragMovedDistance = 0;
+
+    // Placeholder image paths for categories - These can remain or be fetched from backend if dynamic
+    const categoryImagePaths = {
+        "Thesis": "/Components/icons/thesis.svg", // Browser-accessible path
+        "Dissertation": "/Components/icons/dissertation.svg", // Browser-accessible path
+        "Confluence": "/Components/icons/confluence.svg", // Browser-accessible path
+        "Synergy": "/Components/icons/synergy.svg", // Browser-accessible path
+        "All": "/Components/icons/all.svg", // Browser-accessible path
+        // Fallbacks using placeholder images with appropriate colors
+        "ThesisFallback": "https://placehold.co/48x48/FEE2E2/991B1B?text=T&font=Inter",
+        "DissertationFallback": "https://placehold.co/48x48/D1FAE5/065F46?text=D&font=Inter",
+        "ConfluenceFallback": "https://placehold.co/48x48/FEF9C3/713F12?text=C&font=Inter",
+        "SynergyFallback": "https://placehold.co/48x48/DBEAFE/1E40AF?text=S&font=Inter",
+        "AllFallback": "https://placehold.co/48x48/FFC107/FFFFFF?text=ALL&font=Inter",
+        "Default": "https://placehold.co/48x48/cccccc/333333?text=?&font=Inter"
+    };
+
+    // --- DOM Element Selection (Cached) ---
+    const bodyElement = document.body;
+    const userAuthContainer = document.getElementById('user-auth-container');
+    const mobileUserAuthContainer = document.getElementById('mobile-user-auth-container');
+    const mobileMenuButton = document.querySelector('.mobile-menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const mobileMenuOpenIcon = mobileMenuButton?.querySelector('svg:not(.hidden)');
+    const mobileMenuCloseIcon = mobileMenuButton?.querySelector('svg.hidden');
+    const searchOpenButton = document.getElementById('search-open-button');
+    const searchOpenButtonMobile = document.getElementById('search-open-button-mobile');
+    const searchOverlay = document.getElementById('search-overlay');
+    const searchCloseButton = document.getElementById('search-close-button');
+    const searchInputOverlay = document.getElementById('searchInputOverlay');
+    const clearSearchInputButton = document.getElementById('clearSearchInputButton');
+    const searchResultsOverlay = document.getElementById('search-results-overlay');
+    const loadingSpinnerOverlay = document.getElementById('loadingSpinnerOverlay');
+    const topKeywordsSection = document.querySelector('.top-keywords-section');
+    const keywordsConveyorContainer = document.getElementById('keywordsConveyorContainer');
+    const keywordsConveyorBelt = document.getElementById('keywordsConveyorBelt');
+    const conveyorScrollLeftBtn = document.getElementById('conveyorScrollLeftBtn');
+    const conveyorScrollRightBtn = document.getElementById('conveyorScrollRightBtn');
+    const categoryButtonsContainerOverlay = document.getElementById('categoryButtonsContainerOverlay');
+    const showAllResultsContainer = document.getElementById('showAllResultsContainer');
+    const showAllResultsBtn = document.getElementById('showAllResultsBtn');
+    const authorFilterOverlay = document.getElementById('authorFilterOverlay');
+    const keywordsFilterOverlay = document.getElementById('keywordsFilterOverlay');
+    const yearFilterOverlay = document.getElementById('yearFilterOverlay');
+
+    // --- API Helper Function ---
+    /**
+     * Helper function to standardize fetch operations and handle errors
+     */
+    async function fetchData(url, options = {}) {
+        try {
+            // Check if NavbarModule already defined a fetch for this URL
+            if (window.NavbarModule && window.NavbarModule.cachedResponses && window.NavbarModule.cachedResponses[url]) {
+                                return window.NavbarModule.cachedResponses[url];
+            }
+            
+            // Fetch data from server
+                        const response = await fetch(url, options);
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorBody}`);
+            }
+            
+            // Parse response
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.includes("application/json")) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+            
+            // Cache the response if NavbarModule exists
+            if (window.NavbarModule) {
+                if (!window.NavbarModule.cachedResponses) {
+                    window.NavbarModule.cachedResponses = {};
+                }
+                window.NavbarModule.cachedResponses[url] = data;
+            }
+            
+            return data;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // --- Backend API Functions ---
+
+    // API Endpoints
+    const API = {
+        documents: '/api/documents',
+        authors: '/api/authors/all',
+        categories: '/api/categories',
+        keywords: '/api/keywords',
+        researchAgenda: '/api/research-agenda',
+        trendingKeywords: '/api/trending-keywords'
+    };
+
+    /**
+     * Fetches filter data (authors, years, keywords for dropdown, categoryCounts, totalDocuments) from existing APIs.
+     */
+    async function fetchFiltersData() {
+        try {
+            // Fetch initial data to populate filters
+            const [categoryResponse, authorResponse, keywordResponse, documentResponse] = await Promise.all([
+                fetchData(API.categories),
+                fetchData(API.authors),
+                fetchData(API.keywords),
+                fetchData(`${API.documents}?limit=100`) // Get documents to extract years and counts
+            ]);
+            
+            // Process authors
+            const authors = [];
+            if (authorResponse && authorResponse.authors) {
+                authorResponse.authors.forEach(author => {
+                    if (author.full_name) {
+                        authors.push(author.full_name);
+                    }
+                });
+            }
+            
+            // Process keywords
+            const keywords = keywordResponse || [];
+            
+            // Process categories and count documents by type
+            const categoryCounts = {};
+            PREDEFINED_CATEGORIES.forEach(category => {
+                categoryCounts[category] = 0; // Initialize with zeros
+            });
+            
+            // Extract years and count documents by type
+            const years = new Set();
+            let totalDocuments = 0;
+            
+            if (documentResponse && documentResponse.documents) {
+                documentResponse.documents.forEach(doc => {
+                    // Count by document type
+                    if (doc.document_type) {
+                        const docType = doc.document_type.charAt(0).toUpperCase() + doc.document_type.slice(1).toLowerCase();
+                        if (categoryCounts[docType] !== undefined) {
+                            categoryCounts[docType]++;
+                            totalDocuments++;
+                        }
+                    }
+                    
+                    // Extract year from publication_date
+                    if (doc.publication_date) {
+        try {
+                            const year = new Date(doc.publication_date).getFullYear();
+                            if (!isNaN(year)) {
+                                years.add(year.toString());
+                            }
+                        } catch (e) {
+                        }
+                    }
+                });
+            }
+            
+            // Sort years numerically in descending order
+            const yearsArray = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
+            
+            console.log("Search filters loaded:", {
+                authors, keywords, years: yearsArray, categoryCounts, totalDocuments
+            });
+            
+            return {
+                authors,
+                keywords,
+                years: yearsArray,
+                categoryCounts,
+                totalDocuments
+            };
+        } catch (error) {
+            // If API fails, use predefined categories with default counts
+            const defaultCounts = {};
+            PREDEFINED_CATEGORIES.forEach(cat => defaultCounts[cat] = 0);
+            return { 
+                authors: [], 
+                keywords: [], 
+                years: [], 
+                categoryCounts: defaultCounts, 
+                totalDocuments: 0 
+            };
+        }
+    }
+
+    async function fetchTopKeywords() {
+        try {
+            // First try trending keywords endpoint
+            try {
+                const data = await fetchData(API.trendingKeywords);
+                                
+                if (data && data.keywords && data.keywords.length > 0) {
+                    return { top_keywords: data.keywords };
+                }
+            } catch (trendingErr) {
+                            }
+            
+            // Fallback to regular keywords
+            const keywords = await fetchData(API.keywords);
+                        return { top_keywords: keywords || [] };
+        } catch (error) {
+            return { top_keywords: [] };
+        }
+    }
+
+    async function performSearch(searchQuery, filters) {
+        try {
+            const url = new URL(API.documents, window.location.origin);
+            
+            // Add search parameter
+            if (searchQuery) url.searchParams.append('search', searchQuery);
+            
+            // Store selected categories for client-side filtering
+            const selectedCategories = filters.category && filters.category.length > 0 
+                ? filters.category.map(cat => cat.toUpperCase()) 
+                : [];
+                
+                        
+            // For backward compatibility, just fetch all documents without category filter
+            // if multiple categories are selected - we'll filter on client side
+            if (selectedCategories.length === 1) {
+                // Apply single category filter directly - this should work with existing API
+                url.searchParams.append('category', selectedCategories[0]);
+                // Also try document_type as an alternative parameter name
+                url.searchParams.append('document_type', selectedCategories[0]);
+            } else if (selectedCategories.length > 1) {
+                // For multiple categories, we'll fetch more documents and filter client-side
+                // The limit needs to be higher to ensure we get enough results after filtering
+                url.searchParams.set('limit', '50');
+            }
+            
+            // Add other filters
+            if (filters.author) url.searchParams.append('author', filters.author);
+            if (filters.keywords) url.searchParams.append('keyword', filters.keywords);
+            if (filters.year) url.searchParams.append('year', filters.year);
+
+            // Add pagination (increase limit if multiple categories to ensure enough results after filtering)
+            if (!selectedCategories.length || selectedCategories.length <= 1) {
+                url.searchParams.append('limit', '10');
+            }
+            url.searchParams.append('page', '1');
+            
+                        
+            // Fetch documents
+            const documentData = await fetchData(url.toString());
+            let documents = documentData?.documents || [];
+            
+            // Apply client-side filtering for multiple categories if needed
+            if (selectedCategories.length > 1 && documents.length > 0) {
+                documents = documents.filter(doc => {
+                    // Get document's category/type and normalize for comparison
+                    const documentType = doc.document_type || doc.category || '';
+                    const normalizedType = documentType.toUpperCase();
+                    
+                    // Keep document if its type matches any of our selected categories
+                    return selectedCategories.includes(normalizedType);
+                });
+                
+                            }
+            
+            // Process documents to add correct URLs and normalize metadata
+            documents = documents.map(doc => {
+                // Determine if this is a compiled document
+                const isCompiled = doc.is_compiled === true || 
+                                  doc.document_type?.toLowerCase() === 'compiled' || 
+                                  doc.child_count > 0;
+                
+                // For guest/default navbar, direct to the appropriate page
+                // We always direct to guest pages in the default navbar
+                const documentUrl = isCompiled 
+                    ? `/pages/guest-compiled.html?id=${doc.id}` 
+                    : `/pages/guest-single.html?id=${doc.id}`;
+                
+                // Normalize metadata fields for consistent rendering
+                let normalizedKeywords = [];
+                
+                // Process keywords into a consistent format
+                if (doc.keywords) {
+                    if (Array.isArray(doc.keywords)) {
+                        normalizedKeywords = doc.keywords;
+                    } else if (typeof doc.keywords === 'string') {
+                        normalizedKeywords = doc.keywords.split(',').map(k => k.trim()).filter(k => k);
+                    }
+                } else if (doc.tags && Array.isArray(doc.tags)) {
+                    normalizedKeywords = doc.tags;
+                }
+                
+                // Ensure publication date is preserved
+                // This will be formatted by the renderer function
+                const publicationDate = doc.publication_date || null;
+                
+                // Log document metadata for debugging
+                                
+                // Return enriched document object
+                return {
+                    ...doc,
+                    url: documentUrl,
+                    keywords: normalizedKeywords,
+                    // Ensure these fields exist even if empty
+                    author_name: doc.author_name || doc.author || doc.creator || '',
+                    publication_date: publicationDate
+                };
+            });
+            
+            // Fetch matching authors if we have a search query
+            let authorHits = [];
+            if (searchQuery) {
+                try {
+                    const authorUrl = new URL('/api/authors/search', window.location.origin);
+                    authorUrl.searchParams.append('q', searchQuery);
+                    
+                    const authorResults = await fetchData(authorUrl.toString());
+                                        
+                    // Map authors to the expected format
+                    authorHits = (Array.isArray(authorResults) ? authorResults : [])
+                        .map(author => ({
+                            title: author.full_name,
+                            name: author.full_name,
+                            document_count: author.worksCount || 0,
+                            department: author.department || '',
+                            url: `/pages/authorprofile.html?id=${author.id}`
+                        }));
+                } catch (authorErr) {
+                }
+            }
+            
+            // Look for matching keywords if we have a search query
+            let keywordHits = [];
+            if (searchQuery) {
+                try {
+                    const allKeywords = await fetchData(API.keywords);
+                    
+                    // Filter keywords by search term
+                    if (Array.isArray(allKeywords)) {
+                        const lowerQuery = searchQuery.toLowerCase();
+                        keywordHits = allKeywords
+                            .filter(kw => kw.toLowerCase().includes(lowerQuery))
+                            .map(keyword => ({
+                                name: keyword,
+                                keyword: keyword,
+                                title: keyword,
+                                document_count: 1
+                            }));
+                    }
+                } catch (kwErr) {
+                }
+            }
+            
+            // Return unified search results
+            return {
+                query: searchQuery,
+                results: {
+                    documents: {
+                        label: "Documents",
+                        hits: documents,
+                        count: documents.length
+                    },
+                    authors: {
+                        label: "Authors",
+                        hits: authorHits,
+                        count: authorHits.length
+                    },
+                    keywords: {
+                        label: "Matching Keywords",
+                        hits: keywordHits,
+                        count: keywordHits.length
+                    }
+                }
+            };
+        } catch (error) {
+            return {
+                query: searchQuery,
+                results: {
+                    documents: { label: "Documents", hits: [], count: 0 },
+                    authors: { label: "Authors", hits: [], count: 0 },
+                    keywords: { label: "Matching Keywords", hits: [], count: 0 }
+                }
+            };
+        }
+    }
+
+    async function checkAuthStatus() {
+        const apiUrl = '/api/v1/auth/status'; // <-- REPLACE WITH YOUR ACTUAL DENO ENDPOINT
+        try {
+            // For now, we'll always return not authenticated to ensure login button appears
+            currentUser = null;
+            return { isAuthenticated: false, user: null };
+            
+            /* Actual API call code (commented out for now)
+            const data = await fetchData(apiUrl);
+            if (data.isAuthenticated && data.user) {
+                currentUser = data.user;
+            } else {
+                currentUser = null;
+            }
+            return data;
+            */
+        } catch (error) {
+            currentUser = null;
+            return { isAuthenticated: false, user: null };
+        }
+    }
+
+    async function handleLogout() {
+                const apiUrl = '/api/v1/auth/logout'; // <-- REPLACE WITH YOUR ACTUAL DENO ENDPOINT
+        try {
+            await fetchData(apiUrl, { method: 'POST' });
+            currentUser = null;
+            updateUIAfterLogout();
+            if (isDropdownOpen) toggleDropdown(true);
+                    } catch (error) {
+        }
+    }
+
+    // --- UI Update Functions (Mostly unchanged, except for data sources) ---
+    function createProfileBadge(user) { 
+        // Make this function available in the global scope
+        window.createProfileBadge = createProfileBadge;
+        
+        const profileBadgeContainer = document.createElement('div'); 
+        profileBadgeContainer.id = 'profile-badge-container-dynamic'; 
+        profileBadgeContainer.className = 'relative inline-block text-left'; 
+        const button = document.createElement('button'); 
+        button.type = 'button'; 
+        button.id = 'profile-badge-button'; 
+        button.className = 'flex items-center justify-center w-10 h-10 bg-green-600 rounded-full hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#E6E6E6] focus:ring-green-600 profile-initials text-lg select-none';
+        button.setAttribute('aria-expanded', 'false'); 
+        button.setAttribute('aria-haspopup', 'true'); 
+        button.innerHTML = `<span class="text-[#E6E6E6] font-medium">${user.initials || '??'}</span>`;
+        button.addEventListener('click', (event) => { event.stopPropagation(); toggleDropdown(); }); 
+        const dropdownMenu = document.createElement('div'); 
+        dropdownMenu.id = 'dropdown-menu'; 
+        dropdownMenu.className = 'dropdown-menu origin-top-right absolute right-0 mt-2 w-60 rounded-md shadow-lg bg-[#E6E6E6] ring-1 ring-black ring-opacity-5 focus:outline-none opacity-0 transform scale-95 pointer-events-none z-50 select-none';
+        dropdownMenu.setAttribute('role', 'menu'); 
+        dropdownMenu.setAttribute('aria-orientation', 'vertical'); 
+        dropdownMenu.setAttribute('aria-labelledby', 'profile-badge-button'); 
+        dropdownMenu.tabIndex = -1; 
+        const greetingTime = getGreetingTime(); 
+        dropdownMenu.innerHTML = `<div class="dropdown-greeting-container" role="none"><span id="greeting-part" class="greeting-text">${greetingTime.greeting}! ${greetingTime.emoji}</span><span id="user-name-part" class="greeting-name">${user.name || 'User'}</span></div><div class="py-1" role="none"><a href="#" class="group text-gray-700 flex items-center px-4 py-2 text-sm hover:bg-amber-100 hover:text-green-800 rounded-md mx-1" role="menuitem" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" class="w-5 h-5 mr-3"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>Profile</a><a href="#" class="group text-gray-700 flex items-center px-4 py-2 text-sm hover:bg-amber-100 hover:text-green-800 rounded-md mx-1" role="menuitem" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" class="w-5 h-5 mr-3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>History</a><a href="#" class="group text-gray-700 flex items-center px-4 py-2 text-sm hover:bg-amber-100 hover:text-green-800 rounded-md mx-1" role="menuitem" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" class="w-5 h-5 mr-3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>Library ${user.libraryCount > 0 ? `<span class="count-badge">${user.libraryCount}</span>`:''}</a><div class="dropdown-divider mx-1" role="separator"></div><button type="button" id="logout-button-desktop" class="group text-red-600 flex items-center px-4 py-2 text-sm hover:bg-red-200 hover:text-red-800 rounded-md mx-1 w-full text-left" role="menuitem" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" class="w-5 h-5 mr-3"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>Log Out</button></div>`; 
+        profileBadgeContainer.appendChild(button); 
+        profileBadgeContainer.appendChild(dropdownMenu); 
+        return profileBadgeContainer; 
+    }
+    function createMobileProfileSection(user) { const section = document.createElement('div'); section.innerHTML = `<div class="flex items-center px-5"><div class="flex-shrink-0"><div class="flex items-center justify-center w-10 h-10 bg-green-600 rounded-full profile-initials text-lg select-none"><span class="text-[#E6E6E6] font-medium">${user.initials || '??'}</span></div></div><div class="ml-3"><div class="text-base font-medium leading-none text-gray-800">${user.name || 'User'}</div><div class="text-sm font-medium leading-none text-gray-500">${user.email || ''}</div></div></div><div class="mt-3 px-2 space-y-1"><a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-amber-100 hover:text-green-800">Profile</a><a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-amber-100 hover:text-green-800">History</a><a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-amber-100 hover:text-green-800">Library ${user.libraryCount > 0 ? `<span class="ml-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-green-800">${user.libraryCount}</span>`:''}</a><button type="button" id="logout-button-mobile" class="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-200 hover:text-red-800">Log Out</button></div>`; return section; }
+    function getGreetingTime() { const currentTime = new Date(); const currentHour = currentTime.getHours(); let greeting, emoji; if (currentHour < 12) { greeting = "Good morning"; emoji = "☀️"; } else if (currentHour < 18) { greeting = "Good afternoon"; emoji = "👋"; } else { greeting = "Good evening"; emoji = "🌙"; } return { greeting, emoji }; }
+    function handleUserNameClick(event) { const userNamePartElement = document.getElementById('user-name-part'); if (!userNamePartElement) return; userNamePartElement.style.backgroundImage = RAINBOW_GRADIENT; userNamePartElement.style.webkitBackgroundClip = 'text'; userNamePartElement.style.backgroundClip = 'text'; userNamePartElement.style.color = 'transparent'; userNamePartElement.style.webkitTextFillColor = 'transparent'; setTimeout(() => { userNamePartElement.style.backgroundImage = ''; userNamePartElement.style.webkitBackgroundClip = ''; userNamePartElement.style.backgroundClip = ''; userNamePartElement.style.color = ''; userNamePartElement.style.webkitTextFillColor = ''; }, 1000); if (typeof confetti === 'function') { const y = (event.clientY / window.innerHeight); const baseConfettiOptions = {particleCount:60, spread:70, origin:{y}, colors:['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#6366f1', '#8b5cf6']}; confetti({...baseConfettiOptions, angle:60, origin:{...baseConfettiOptions.origin, x:0}}); confetti({...baseConfettiOptions, angle:120, origin:{...baseConfettiOptions.origin, x:1}}); } else { console.warn("Confetti library (confetti.js) not found or loaded."); } }
+    function toggleDropdown(forceClose = false) { const dropdownMenuElement = document.getElementById('dropdown-menu'); const profileButtonElement = document.getElementById('profile-badge-button'); if (!dropdownMenuElement || !profileButtonElement) return; isDropdownOpen = forceClose ? false : !isDropdownOpen; dropdownMenuElement.classList.toggle('opacity-0', !isDropdownOpen); dropdownMenuElement.classList.toggle('scale-95', !isDropdownOpen); dropdownMenuElement.classList.toggle('pointer-events-none', !isDropdownOpen); dropdownMenuElement.classList.toggle('opacity-100', isDropdownOpen); dropdownMenuElement.classList.toggle('scale-100', isDropdownOpen); dropdownMenuElement.classList.toggle('pointer-events-auto', isDropdownOpen); profileButtonElement.setAttribute('aria-expanded', isDropdownOpen.toString()); }
+    function toggleMobileMenu(forceClose = false) { if (!mobileMenu || !mobileMenuButton || !mobileMenuOpenIcon || !mobileMenuCloseIcon) { console.error("Essential mobile menu elements are missing."); return; } const isCurrentlyExpanded = mobileMenuButton.getAttribute('aria-expanded') === 'true'; const openMenu = forceClose ? false : !isCurrentlyExpanded; mobileMenuButton.setAttribute('aria-expanded', openMenu.toString()); mobileMenu.classList.toggle(HIDDEN_CLASS, !openMenu); mobileMenuOpenIcon.classList.toggle(HIDDEN_CLASS, openMenu); mobileMenuCloseIcon.classList.toggle(HIDDEN_CLASS, !openMenu); }
+    function openSearch() {
+        if (!searchOverlay || !searchInputOverlay || !bodyElement) return;
+        originalBodyOverflow = bodyElement.style.overflow;
+        bodyElement.style.overflow = 'hidden';
+        searchOverlay.scrollTop = 0;
+        searchOverlay.classList.remove(HIDDEN_CLASS);
+        searchOverlay.classList.add(VISIBLE_CLASS);
+        setTimeout(() => {
+            searchInputOverlay.focus();
+            if (clearSearchInputButton) {
+                clearSearchInputButton.classList.toggle(VISIBLE_CLASS, searchInputOverlay.value.length > 0);
+            }
+        }, 50);
+        if (mobileMenu && !mobileMenu.classList.contains(HIDDEN_CLASS)) {
+            toggleMobileMenu(true);
+        }
+        if (searchInputOverlay.value === '' && (getActiveCategories().length > 0 || authorFilterOverlay.value || keywordsFilterOverlay.value || yearFilterOverlay.value)) {
+            performSearchOverlay();
+        } else if (searchInputOverlay.value === '' && searchResultsOverlay) {
+            searchResultsOverlay.innerHTML = getEmptyStateHTML();
+            showAllResultsContainer.classList.add(HIDDEN_CLASS);
+            const newPlaceholder = document.getElementById('searchPlaceholderOverlay');
+            if(newPlaceholder) newPlaceholder.classList.remove(HIDDEN_CLASS);
+        } else if (searchResultsOverlay.innerHTML.trim() === '') {
+             searchResultsOverlay.innerHTML = getEmptyStateHTML();
+             showAllResultsContainer.classList.add(HIDDEN_CLASS);
+        }
+        updateShowAllResultsState();
+        
+        // Load filters data if not already loaded
+        if (!openSearch.filtersLoaded) {
+            loadFiltersData();
+            openSearch.filtersLoaded = true;
+        }
+    }
+    
+    // Track if filters are loaded
+    openSearch.filtersLoaded = false;
+    
+    // Function to load filters data when search is opened
+    async function loadFiltersData() {
+                if (loadingSpinnerOverlay) {
+            loadingSpinnerOverlay.classList.add(VISIBLE_CLASS);
+        }
+        
+        try {
+            // If the NavbarModule has already loaded this data, use it
+            if (window.NavbarModule && window.NavbarModule.filtersLoaded) {
+                                
+                // Try to get categories from navbar-loader's cache
+                if (window.NavbarModule.categoryData) {
+                    populateCategoryButtons(
+                        PREDEFINED_CATEGORIES,
+                        window.NavbarModule.categoryData.categoryCounts || {},
+                        window.NavbarModule.categoryData.totalDocuments || 0
+                    );
+                }
+                
+                // Try to get authors from navbar-loader's cache
+                if (window.NavbarModule.authorData && authorFilterOverlay) {
+                    populateSelectWithOptions(authorFilterOverlay, window.NavbarModule.authorData || []);
+                }
+                
+                // Try to get keywords from navbar-loader's cache
+                if (window.NavbarModule.keywordData && keywordsFilterOverlay) {
+                    populateSelectWithOptions(keywordsFilterOverlay, window.NavbarModule.keywordData || []);
+                }
+                
+                // Try to get years from navbar-loader's cache
+                if (window.NavbarModule.yearData && yearFilterOverlay) {
+                    populateSelectWithOptions(yearFilterOverlay, window.NavbarModule.yearData || []);
+                }
+                
+                // Try to get top keywords from navbar-loader's cache
+                if (window.NavbarModule.topKeywordsData && keywordsConveyorBelt) {
+                    updateKeywordsConveyor(window.NavbarModule.topKeywordsData.top_keywords || []);
+                }
+                
+                return;
+            }
+            
+            // Load both filters and top keywords in parallel
+                        let filtersAndCountsData, topKeywordsData;
+            
+            try {
+                [filtersAndCountsData, topKeywordsData] = await Promise.all([
+                    fetchFiltersData(),
+                    fetchTopKeywords()
+                ]);
+            } catch (error) {
+                filtersAndCountsData = { categoryCounts: {}, authors: [], keywords: [], years: [], totalDocuments: 0 };
+                topKeywordsData = { top_keywords: [] };
+            }
+            
+                                    
+            // Populate category buttons
+            if (PREDEFINED_CATEGORIES.length > 0 && filtersAndCountsData.categoryCounts) {
+                populateCategoryButtons(
+                    PREDEFINED_CATEGORIES, 
+                    filtersAndCountsData.categoryCounts, 
+                    filtersAndCountsData.totalDocuments || 0
+                );
+                
+                // Cache in NavbarModule if available
+                if (window.NavbarModule) {
+                    window.NavbarModule.categoryData = {
+                        categoryCounts: filtersAndCountsData.categoryCounts,
+                        totalDocuments: filtersAndCountsData.totalDocuments || 0
+                    };
+                }
+            }
+            
+            // Populate filter dropdowns
+            if (filtersAndCountsData.authors && authorFilterOverlay) {
+                populateSelectWithOptions(authorFilterOverlay, filtersAndCountsData.authors);
+                
+                // Cache in NavbarModule if available
+                if (window.NavbarModule) {
+                    window.NavbarModule.authorData = filtersAndCountsData.authors;
+                }
+            }
+            
+            if (filtersAndCountsData.keywords && keywordsFilterOverlay) {
+                populateSelectWithOptions(keywordsFilterOverlay, filtersAndCountsData.keywords);
+                
+                // Cache in NavbarModule if available
+                if (window.NavbarModule) {
+                    window.NavbarModule.keywordData = filtersAndCountsData.keywords;
+                }
+            }
+            
+            if (filtersAndCountsData.years && yearFilterOverlay) {
+                populateSelectWithOptions(yearFilterOverlay, filtersAndCountsData.years);
+                
+                // Cache in NavbarModule if available
+                if (window.NavbarModule) {
+                    window.NavbarModule.yearData = filtersAndCountsData.years;
+                }
+            }
+            
+            // Populate top keywords conveyor
+            if (topKeywordsData.top_keywords && keywordsConveyorBelt) {
+                updateKeywordsConveyor(topKeywordsData.top_keywords);
+                
+                // Cache in NavbarModule if available
+                if (window.NavbarModule) {
+                    window.NavbarModule.topKeywordsData = topKeywordsData;
+                }
+            }
+            
+            // Mark as loaded in NavbarModule if available
+            if (window.NavbarModule) {
+                window.NavbarModule.filtersLoaded = true;
+            }
+        } catch (error) {
+        } finally {
+            if (loadingSpinnerOverlay) {
+                loadingSpinnerOverlay.classList.remove(VISIBLE_CLASS);
+            }
+        }
+    }
+    
+    // Function to update the keywords conveyor
+    function updateKeywordsConveyor(keywordsToDisplay) {
+                if (!keywordsConveyorBelt || !Array.isArray(keywordsToDisplay)) {
+            return;
+        }
+
+        // Dedupe case-insensitively while preserving first occurrence's casing.
+        const seen = new Map();
+        keywordsToDisplay.forEach(term => {
+            const value = (term && typeof term === 'object') ? (term.name || term.keyword || term.text || '') : term;
+            const str = String(value == null ? '' : value).trim();
+            if (!str) return;
+            const key = str.toLowerCase();
+            if (!seen.has(key)) seen.set(key, str);
+        });
+        keywordsToDisplay = Array.from(seen.values());
+
+        // Clear existing content
+        keywordsConveyorBelt.innerHTML = '';
+
+        // If no keywords, add some placeholders
+        if (keywordsToDisplay.length === 0) {
+                        keywordsToDisplay = ["Thesis", "Research", "Academic", "Journal", "Paper", "University", "Education", "Literature", "Theory", "Analysis"];
+        }
+        firstSetItemCount = keywordsToDisplay.length;
+
+        const selectKeywordTerm = (term) => {
+            if (searchInputOverlay && term) {
+                searchInputOverlay.value = term;
+                if (clearSearchInputButton) {
+                    clearSearchInputButton.classList.add(VISIBLE_CLASS);
+                }
+                performSearchOverlay();
+                searchInputOverlay.focus();
+            }
+        };
+        
+        const createKeywordItem = (term) => {
+            const li = document.createElement('li');
+            li.className = 'keyword-conveyor-item';
+            li.dataset.query = term;
+            li.textContent = term;
+            li.setAttribute('role', 'button');
+            li.tabIndex = 0;
+            
+            // Add click handler directly to each keyword
+            li.addEventListener('click', function() {
+                selectKeywordTerm(this.dataset.query);
+            });
+            li.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectKeywordTerm(this.dataset.query);
+                }
+            });
+            
+            return li;
+        };
+        
+        // Add keyword chips once; wrapping CSS keeps long terms visible.
+        keywordsToDisplay.forEach(term => { 
+            keywordsConveyorBelt.appendChild(createKeywordItem(term)); 
+        });
+
+        currentTranslateX = 0;
+        itemWidthWithMargin = 0;
+        firstSetWidth = 0;
+        keywordsConveyorBelt.style.transform = 'none';
+        keywordsConveyorBelt.style.transition = 'none';
+
+        refreshEmptyStateIfShowing();
+            }
+    function closeSearch() {
+        if (!searchOverlay || !searchInputOverlay || !bodyElement) return;
+        bodyElement.style.overflow = originalBodyOverflow;
+        searchOverlay.classList.remove(VISIBLE_CLASS);
+        searchOverlay.classList.add(HIDDEN_CLASS);
+        searchInputOverlay.value = '';
+        if (clearSearchInputButton) {
+            clearSearchInputButton.classList.remove(VISIBLE_CLASS);
+        }
+        searchResultsOverlay.innerHTML = getEmptyStateHTML();
+        showAllResultsContainer.classList.add(HIDDEN_CLASS);
+        updateShowAllResultsState();
+    }
+    function highlightText(text, query) {
+        if (!query || typeof text !== 'string') return text || '';
+        const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`(${escapedQuery})`, 'gi');
+        return text.replace(regex, `<span class="${HIGHLIGHT_CLASS}">$1</span>`);
+    }
+    let debounceTimerOverlay;
+    function debounceOverlay(func, delay) {
+        return function(...args) {
+            clearTimeout(debounceTimerOverlay);
+            debounceTimerOverlay = setTimeout(() => func.apply(this, args), delay);
+        };
+    }
+    function populateSelectWithOptions(selectElement, optionsArray, placeholder = "All") {
+        if (!selectElement) return;
+        const currentVal = selectElement.value;
+        while (selectElement.options.length > 1) {
+            selectElement.remove(1);
+        }
+        if (Array.isArray(optionsArray)) {
+            optionsArray.forEach(item => {
+                const option = document.createElement('option');
+                if (typeof item === 'object' && item.value && item.text) {
+                    option.value = item.value;
+                    option.textContent = item.text;
+                } else {
+                    option.value = item;
+                    option.textContent = item;
+                }
+                selectElement.appendChild(option);
+            });
+        }
+        if (currentVal && Array.from(selectElement.options).some(opt => opt.value === currentVal)) {
+            selectElement.value = currentVal;
+        } else {
+            selectElement.value = "";
+        }
+    }
+
+    function populateCategoryButtons(categories, counts, totalCount) {
+        if (!categoryButtonsContainerOverlay) return;
+        categoryButtonsContainerOverlay.innerHTML = '';
+        const allButton = document.createElement('button');
+        allButton.type = 'button';
+        allButton.className = `${CATEGORY_FILTER_BUTTON_CLASS} category-tile-all ${ACTIVE_CLASS}`;
+        allButton.setAttribute(DATA_CATEGORY_ATTR, '');
+        const allIconPath = categoryImagePaths["All"] || categoryImagePaths["AllFallback"] || categoryImagePaths["Default"];
+        allButton.innerHTML = `
+            <span class="category-button-content">
+                <img src="${allIconPath}" alt="All Categories Icon" class="category-icon" onerror="this.onerror=null; this.src='${categoryImagePaths["AllFallback"] || categoryImagePaths["Default"]}';">
+                <span class="category-name">All</span>
+                <span class="category-count">${totalCount}</span>
+            </span>`;
+        
+        // Add direct event listener to All button
+        allButton.addEventListener('click', handleCategoryButtonClick);
+        categoryButtonsContainerOverlay.appendChild(allButton);
+
+        if (Array.isArray(categories)) {
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                const categoryClassName = category.toLowerCase().replace(/\s+/g, '-');
+                button.className = `${CATEGORY_FILTER_BUTTON_CLASS} category-tile-${categoryClassName}`;
+                button.setAttribute(DATA_CATEGORY_ATTR, category);
+                const count = counts[category] || 0; // Use count from fetched data
+                const iconPath = categoryImagePaths[category] || categoryImagePaths[`${category}Fallback`] || categoryImagePaths["Default"];
+                const fallbackPath = categoryImagePaths[`${category}Fallback`] || categoryImagePaths["Default"];
+                button.innerHTML = `
+                    <span class="category-button-content">
+                        <img src="${iconPath}" alt="${category} Icon" class="category-icon" onerror="this.onerror=null; this.src='${fallbackPath}';">
+                        <span class="category-name">${category}</span>
+                        <span class="category-count">${count}</span>
+                    </span>`;
+                
+                // Add direct event listener to each category button
+                button.addEventListener('click', handleCategoryButtonClick);
+                categoryButtonsContainerOverlay.appendChild(button);
+            });
+        }
+        
+            }
+
+    function handleCategoryButtonClick(event) {
+        const clickedButton = event.target.closest(`.${CATEGORY_FILTER_BUTTON_CLASS}`);
+        if (!categoryButtonsContainerOverlay || !clickedButton) return;
+        
+                
+        const isAllButton = clickedButton.getAttribute(DATA_CATEGORY_ATTR) === '';
+        const allCategoryButton = categoryButtonsContainerOverlay.querySelector(`.${CATEGORY_FILTER_BUTTON_CLASS}[${DATA_CATEGORY_ATTR}=""]`);
+        const specificCategoryButtons = Array.from(categoryButtonsContainerOverlay.querySelectorAll(`.${CATEGORY_FILTER_BUTTON_CLASS}:not([${DATA_CATEGORY_ATTR}=""])`));
+
+        if (isAllButton) {
+            // If "All" button was clicked and isn't already active
+            if (!clickedButton.classList.contains(ACTIVE_CLASS)) {
+                // Deactivate all specific category buttons
+                specificCategoryButtons.forEach(btn => btn.classList.remove(ACTIVE_CLASS));
+                // Activate "All" button
+                clickedButton.classList.add(ACTIVE_CLASS);
+                
+                // Add a visual indicator showing it's the "All" filter
+                clickedButton.setAttribute('title', 'All Categories');
+            }
+        } else {
+            // If a specific category was clicked, toggle its active state
+            clickedButton.classList.toggle(ACTIVE_CLASS);
+            
+            // Check if any specific category is now active
+            const activeSpecificButtons = specificCategoryButtons.filter(btn => btn.classList.contains(ACTIVE_CLASS));
+            const anySpecificActive = activeSpecificButtons.length > 0;
+            
+            // Update tooltips to show multi-selection state
+            if (clickedButton.classList.contains(ACTIVE_CLASS)) {
+                clickedButton.setAttribute('title', 'Selected - Click to deselect');
+            } else {
+                clickedButton.setAttribute('title', 'Click to select');
+            }
+            
+            // Show count of active filters if multiple are selected
+            if (activeSpecificButtons.length > 1) {
+                const activeCategories = activeSpecificButtons.map(btn => btn.getAttribute(DATA_CATEGORY_ATTR));
+                                
+                // Update tooltips with additional info about multiple selection
+                activeSpecificButtons.forEach(btn => {
+                    btn.setAttribute('title', `Selected - Click to deselect (${activeSpecificButtons.length} categories selected)`);
+                });
+            }
+            
+            if (allCategoryButton) {
+                // If any specific category is active, deactivate "All" button
+                if (anySpecificActive) {
+                    allCategoryButton.classList.remove(ACTIVE_CLASS);
+                    allCategoryButton.setAttribute('title', 'Click to clear filters and show all categories');
+                } else {
+                    // If no specific categories are active, reactivate "All" button
+                    allCategoryButton.classList.add(ACTIVE_CLASS);
+                    allCategoryButton.setAttribute('title', 'All Categories');
+                }
+            }
+        }
+        
+        // Always perform search after toggling
+        if (typeof window.performSearchOverlay === 'function') {
+            window.performSearchOverlay();
+        } else if (typeof performSearchOverlay === 'function') {
+            performSearchOverlay();
+        } else {
+        }
+    }
+
+    function getActiveCategories() {
+        const activeCategories = [];
+        if (categoryButtonsContainerOverlay) {
+            const allCatButton = categoryButtonsContainerOverlay.querySelector(`.${CATEGORY_FILTER_BUTTON_CLASS}[${DATA_CATEGORY_ATTR}=""]`);
+            if (!allCatButton || !allCatButton.classList.contains(ACTIVE_CLASS)) {
+                categoryButtonsContainerOverlay.querySelectorAll(`.${CATEGORY_FILTER_BUTTON_CLASS}.${ACTIVE_CLASS}:not([${DATA_CATEGORY_ATTR}=""])`)
+                    .forEach(button => {
+                        const categoryValue = button.getAttribute(DATA_CATEGORY_ATTR);
+                        if (categoryValue) {
+                            activeCategories.push(categoryValue);
+                        }
+                    });
+            }
+        }
+        return activeCategories;
+    }
+
+    async function performSearchOverlay() {
+        if (!searchResultsOverlay || !searchInputOverlay || !loadingSpinnerOverlay ) {
+            return;
+        }
+        const query = searchInputOverlay.value.trim();
+        const selectedCategories = getActiveCategories();
+        console.log("Searching with categories:", selectedCategories); // Add logging for debugging
+        const selectedAuthor = authorFilterOverlay.value;
+        const selectedKeywordsFilter = keywordsFilterOverlay.value;
+        const selectedYear = yearFilterOverlay.value;
+        const hasQuery = !!query;
+        const hasSpecificCategoryFilter = selectedCategories.length > 0;
+        const isAllCategoryActive = categoryButtonsContainerOverlay?.querySelector(`.${CATEGORY_FILTER_BUTTON_CLASS}[${DATA_CATEGORY_ATTR}=""].${ACTIVE_CLASS}`) !== null;
+        const hasDropdownFilters = !!selectedAuthor || !!selectedKeywordsFilter || !!selectedYear;
+        const hasActiveFilters = (hasSpecificCategoryFilter && !isAllCategoryActive) || hasDropdownFilters;
+        let placeholderEl = document.getElementById('searchPlaceholderOverlay');
+
+        if (!hasQuery && isAllCategoryActive && !hasDropdownFilters) {
+            searchResultsOverlay.innerHTML = getEmptyStateHTML();
+            showAllResultsContainer.classList.add(HIDDEN_CLASS);
+            loadingSpinnerOverlay.classList.remove(VISIBLE_CLASS);
+            if (clearSearchInputButton) clearSearchInputButton.classList.remove(VISIBLE_CLASS);
+            updateShowAllResultsState();
+            return;
+        }
+
+        if(placeholderEl) placeholderEl.classList.add(HIDDEN_CLASS);
+        loadingSpinnerOverlay.classList.add(VISIBLE_CLASS);
+        searchResultsOverlay.innerHTML = '<p class="search-no-results">Searching...</p>';
+        showAllResultsContainer.classList.add(HIDDEN_CLASS);
+
+        try {
+            const filtersToApply = {
+                category: selectedCategories,
+                author: selectedAuthor,
+                keywords: selectedKeywordsFilter,
+                year: selectedYear
+            };
+            const apiResponse = await performSearch(query, filtersToApply);
+            displaySearchResultsOverlay(apiResponse, query);
+        } catch (error) {
+            searchResultsOverlay.innerHTML = `<p class="search-no-results">Error fetching search results. Please try again.</p>`;
+            showAllResultsContainer.classList.add(HIDDEN_CLASS);
+        } finally {
+            loadingSpinnerOverlay.classList.remove(VISIBLE_CLASS);
+        }
+    }
+
+    function createDocumentResultHTML(item, queryToHighlight) {
+        const titleHighlighted = highlightText(item.title, queryToHighlight);
+        const descHighlighted = item.abstract ? highlightText(item.abstract, queryToHighlight) : 
+                               (item.description ? highlightText(item.description, queryToHighlight) : '');
+        
+        // Get document category/type for display
+        let documentCategory = '';
+        if (item.document_type) {
+            documentCategory = item.document_type.charAt(0).toUpperCase() + item.document_type.slice(1).toLowerCase();
+        } else if (item.category) {
+            documentCategory = item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase();
+        }
+
+        // Create CSS class for the category tag based on document type
+        let categoryTagClass = 'search-result-category-tag';
+        if (documentCategory.toLowerCase() === 'thesis') {
+            categoryTagClass += ' bg-red-100 text-red-800 border border-red-200';
+        } else if (documentCategory.toLowerCase() === 'dissertation') {
+            categoryTagClass += ' bg-green-100 text-green-800 border border-green-200';
+        } else if (documentCategory.toLowerCase() === 'confluence') {
+            categoryTagClass += ' bg-yellow-100 text-yellow-800 border border-yellow-200';
+        } else if (documentCategory.toLowerCase() === 'synergy') {
+            categoryTagClass += ' bg-blue-100 text-blue-800 border border-blue-200';
+        }
+        
+        // Enhanced keyword handling
+        let keywordsHTML = '';
+        if (item.keywords) {
+            if (Array.isArray(item.keywords) && item.keywords.length > 0) {
+                keywordsHTML = item.keywords.map(kw => {
+                    if (typeof kw === 'string') {
+                        return `<span class="keyword-pill">${kw}</span>`;
+                    } else if (typeof kw === 'object') {
+                        return `<span class="keyword-pill">${kw.name || kw.keyword || kw.text || ''}</span>`;
+                    }
+                    return '';
+                }).filter(html => html.length > 0).join('');
+            } else if (typeof item.keywords === 'string' && item.keywords.trim().length > 0) {
+                keywordsHTML = item.keywords.split(',')
+                    .map(kw => kw.trim())
+                    .filter(kw => kw)
+                    .map(kw => `<span class="keyword-pill">${kw}</span>`)
+                    .join('');
+            }
+        } else if (item.tags && Array.isArray(item.tags) && item.tags.length > 0) {
+            // Try 'tags' as an alternative field name
+            keywordsHTML = item.tags.map(tag => `<span class="keyword-pill">${tag}</span>`).join('');
+        }
+        
+        // Get author information with various field name fallbacks
+        const authorName = item.author_name || item.author || item.creator || '';
+        
+        // Get publication date with formatting
+        let formattedDate = '';
+        if (item.publication_date) {
+            try {
+                // Format the date as a readable string (e.g., "January 15, 2023")
+                const date = new Date(item.publication_date);
+                if (!isNaN(date.getTime())) {
+                    formattedDate = date.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                }
+            } catch (e) {
+                formattedDate = item.publication_date; // Use as-is if parsing fails
+            }
+        }
+        
+        // Fallback to year if no full date is available
+        const displayDate = formattedDate || item.publication_year || item.year || '';
+        
+        return `
+            <div class="search-result-title">${titleHighlighted || 'No Title'}</div>
+            <div class="search-result-meta-primary">
+                ${authorName ? `<span class="search-result-author">By: ${authorName}</span>` : ''}
+                ${displayDate ? `<span class="search-result-date">${displayDate}</span>` : ''}
+            </div>
+            <div class="search-result-category-keywords">
+                ${documentCategory ? `<span class="${categoryTagClass}">${documentCategory}</span>` : ''}
+                ${keywordsHTML ? `<div class="search-result-keywords-container">${keywordsHTML}</div>` : ''}
+            </div>
+            <!-- Description removed as requested -->
+            `;
+    }
+
+    function createAuthorResultHTML(item, queryToHighlight) {
+        // Handle both string name and object formats
+        const authorName = item.name || item.author_name || item.title || 'Unknown Author';
+        const titleHighlighted = highlightText(authorName, queryToHighlight);
+        const articleCount = item.document_count || item.articleCount || 0;
+        
+        return `
+            <div class="search-result-title">${titleHighlighted}</div>
+            <div class="search-result-meta-primary">
+                ${articleCount > 0 ? 
+                  `<span class="article-count">${articleCount} document${articleCount !== 1 ? 's' : ''}</span>` : 
+                  'No documents found'}
+            </div>`;
+    }
+
+    function createKeywordResultHTML(item, queryToHighlight) {
+        // Handle both string keyword and object formats
+        const keywordText = item.name || item.keyword || item.title || 'Unknown Keyword';
+        const titleHighlighted = highlightText(keywordText, queryToHighlight);
+        const relatedCount = item.document_count || item.relatedArticleCount || 0;
+        
+        return `
+            <div class="search-result-title">${titleHighlighted}</div>
+            <div class="related-articles-count">
+                ${relatedCount > 0 ? 
+                  `Related to ${relatedCount} document${relatedCount !== 1 ? 's' : ''}` : 
+                  'No related documents'}
+            </div>`;
+    }
+
+    function displaySearchResultsOverlay(apiResponse, queryToHighlight) {
+        if (!searchResultsOverlay || !apiResponse || !apiResponse.results) {
+            searchResultsOverlay.innerHTML = `<p class="search-no-results">No results found or invalid response from server.</p>`;
+            showAllResultsContainer.classList.add(HIDDEN_CLASS);
+            return;
+        }
+        searchResultsOverlay.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
+        // Remove category filters summary - it's redundant with the toggled buttons
+        // const activeCategories = getActiveCategories();
+        // if (activeCategories.length > 1) {
+        //     // Create a filters summary header when multiple categories are selected
+        //     const filterSummary = document.createElement('div');
+        //     filterSummary.className = 'mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md';
+        //     
+        //     // Get documents to analyze category breakdown
+        //     const documents = apiResponse.results.documents?.hits || [];
+        //     
+        //     // Count documents by category
+        //     const categoryCounts = {};
+        //     activeCategories.forEach(cat => categoryCounts[cat] = 0);
+        //     
+        //     documents.forEach(doc => {
+        //         const docType = (doc.document_type || doc.category || '').toUpperCase();
+        //         if (categoryCounts[docType] !== undefined) {
+        //             categoryCounts[docType]++;
+        //         }
+        //     });
+        //     
+        //     // Create the category breakdown HTML
+        //     let categoryBreakdownHTML = '';
+        //     Object.entries(categoryCounts).forEach(([category, count]) => {
+        //         // Create appropriate styling for each category
+        //         let badgeClass = 'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium';
+        //         if (category.toLowerCase() === 'thesis') {
+        //             badgeClass += ' bg-red-100 text-red-800';
+        //         } else if (category.toLowerCase() === 'dissertation') {
+        //             badgeClass += ' bg-green-100 text-green-800';
+        //         } else if (category.toLowerCase() === 'confluence') {
+        //             badgeClass += ' bg-yellow-100 text-yellow-800';
+        //         } else if (category.toLowerCase() === 'synergy') {
+        //             badgeClass += ' bg-blue-100 text-blue-800';
+        //         }
+        //         
+        //         categoryBreakdownHTML += `
+        //             <span class="${badgeClass} mr-2 mb-1">
+        //                 ${category}: ${count}
+        //             </span>
+        //         `;
+        //     });
+        //     
+        //     filterSummary.innerHTML = `
+        //         <div class="flex items-center text-sm text-green-800 font-medium">
+        //             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+        //                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+        //             </svg>
+        //             <div>
+        //                 <div>Showing results from multiple categories:</div>
+        //                 <div class="flex flex-wrap mt-2">
+        //                     ${categoryBreakdownHTML}
+        //                 </div>
+        //             </div>
+        //         </div>
+        //     `;
+        //     fragment.appendChild(filterSummary);
+        // }
+        
+        let totalResultsAcrossCategories = 0;
+        const categoryDisplayConfig = {
+            documents: { defaultLabel: 'Documents', icon: `<svg class="header-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>`, headerClass: 'documents-header', itemRenderer: createDocumentResultHTML, itemClass: '' },
+            authors: { defaultLabel: 'Authors', icon: `<svg class="header-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>`, headerClass: 'authors-header', itemRenderer: createAuthorResultHTML, itemClass: 'author-result-item' },
+            keywords: { defaultLabel: 'Matching Keywords', icon: `<svg class="header-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z" /></svg>`, headerClass: 'keywords-header', itemRenderer: createKeywordResultHTML, itemClass: 'keyword-result-item' }
+        };
+
+        Object.keys(categoryDisplayConfig).forEach(key => {
+            const catInfo = categoryDisplayConfig[key];
+            const categoryData = apiResponse.results[key];
+            if (categoryData && categoryData.hits && categoryData.hits.length > 0) {
+                totalResultsAcrossCategories += categoryData.count;
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'search-results-category-section';
+                const header = document.createElement('h3');
+                header.className = `search-results-category-header ${catInfo.headerClass}`;
+                header.innerHTML = `${catInfo.icon}<span>${categoryData.label || catInfo.defaultLabel} (${categoryData.count})</span>`;
+                sectionDiv.appendChild(header);
+                categoryData.hits.forEach(item => {
+                    const resultElement = document.createElement('a');
+                    
+                    // Special handling for keyword results to redirect to searchResultsPage.html
+                    if (key === 'keywords') {
+                        const keywordText = item.name || item.keyword || item.title || '';
+                        const keywordSearchUrl = new URL('/pages/searchResultsPage.html', window.location.origin);
+                        const params = new URLSearchParams();
+                        if (keywordText) params.append('keyword', keywordText);
+                        keywordSearchUrl.search = params.toString();
+                        resultElement.href = keywordSearchUrl.toString();
+                    } else {
+                    resultElement.href = item.url || '#';
+                    }
+                    
+                    resultElement.classList.add('search-result-item');
+                    if (catInfo.itemClass) resultElement.classList.add(catInfo.itemClass);
+                    resultElement.target = "_self";
+                    resultElement.rel = (item.url && item.url !== '#') ? "noopener noreferrer" : "";
+                    resultElement.innerHTML = catInfo.itemRenderer(item, queryToHighlight);
+                    sectionDiv.appendChild(resultElement);
+                });
+                fragment.appendChild(sectionDiv);
+            }
+        });
+
+        if (totalResultsAcrossCategories === 0) {
+            let message = "No results found";
+            if (queryToHighlight) message += ` for "${highlightText(queryToHighlight, queryToHighlight)}"`;
+            const activeCategories = getActiveCategories();
+            if (activeCategories.length > 0 || authorFilterOverlay.value || keywordsFilterOverlay.value || yearFilterOverlay.value) {
+                message += " with the current filters";
+            }
+            searchResultsOverlay.innerHTML = `<p class="search-no-results">${message}.</p>`;
+            showAllResultsContainer.classList.add(HIDDEN_CLASS);
+        } else {
+            searchResultsOverlay.appendChild(fragment);
+            if (showAllResultsContainer) showAllResultsContainer.classList.remove(HIDDEN_CLASS);
+        }
+    }
+
+    async function checkAuthStatusAndSetupUI() {
+        try {
+            const authData = await checkAuthStatus();
+            if (authData.isAuthenticated && authData.user) {
+                displayUserProfile(authData.user);
+            } else {
+                updateUIAfterLogout();
+            }
+        } catch (error) {
+            updateUIAfterLogout();
+        }
+    }
+
+    function displayUserProfile(user) {
+        if (!userAuthContainer || !mobileUserAuthContainer) return;
+        userAuthContainer.innerHTML = '';
+        const desktopBadge = createProfileBadge(user);
+        userAuthContainer.appendChild(desktopBadge);
+        const logoutButtonDesktop = desktopBadge.querySelector('#logout-button-desktop');
+        if (logoutButtonDesktop) logoutButtonDesktop.addEventListener('click', handleLogout);
+        const userNamePartDesktop = desktopBadge.querySelector('#user-name-part');
+        if (userNamePartDesktop) userNamePartDesktop.addEventListener('click', handleUserNameClick);
+
+        mobileUserAuthContainer.innerHTML = '';
+        const mobileProfile = createMobileProfileSection(user);
+        mobileUserAuthContainer.appendChild(mobileProfile);
+        const logoutButtonMobile = mobileProfile.querySelector('#logout-button-mobile');
+        if (logoutButtonMobile) logoutButtonMobile.addEventListener('click', handleLogout);
+    }
+
+    function updateUIAfterLogout() {
+        if (!userAuthContainer || !mobileUserAuthContainer) return;
+        userAuthContainer.innerHTML = `<a href="/login" class="text-green-800 hover:text-green-900 px-4 py-2 rounded-md text-sm font-medium bg-amber-100 border border-amber-300 hover:bg-amber-200 transition duration-150 ease-in-out shadow-sm">Login</a>`;
+        mobileUserAuthContainer.innerHTML = `<div class="px-2"><a href="/login" class="block w-full text-center px-4 py-2 rounded-md text-base font-medium text-green-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition duration-150 ease-in-out">Login</a></div>`;
+            }
+
+    function handleConveyorArrowScroll(event) { if (!keywordsConveyorBelt || event.propertyName !== 'transform' || !isScrollingViaArrows) { if (event.propertyName === 'transform') isScrollingViaArrows = false; return; } let jumped = false; if (currentTranslateX <= -firstSetWidth && firstSetWidth > 0) { currentTranslateX += firstSetWidth; jumped = true; } else if (currentTranslateX > 0 && firstSetWidth > 0) { currentTranslateX -= firstSetWidth; jumped = true; } if (jumped) { keywordsConveyorBelt.style.transition = 'none'; keywordsConveyorBelt.style.transform = `translateX(${currentTranslateX}px)`; void keywordsConveyorBelt.offsetHeight; keywordsConveyorBelt.style.transition = `transform ${scrollTransitionDuration / 1000}s ease-in-out`; } isScrollingViaArrows = false; }
+    function triggerConveyorArrowScroll(direction) { if (isScrollingViaArrows || isDraggingConveyor || !keywordsConveyorBelt || itemWidthWithMargin === 0 || firstSetWidth === 0) return; isScrollingViaArrows = true; const scrollItemsCount = 3; let scrollAmount = itemWidthWithMargin * scrollItemsCount; if (direction === 'right') currentTranslateX -= scrollAmount; else currentTranslateX += scrollAmount; keywordsConveyorBelt.style.transform = `translateX(${currentTranslateX}px)`; }
+    function startDrag(e) { if (isScrollingViaArrows) return; isDraggingConveyor = true; dragStartX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX; scrollStartXAtDragStart = currentTranslateX; pointerDownOnKeywordItem = e.target.closest('.keyword-conveyor-item'); dragMovedDistance = 0; keywordsConveyorBelt.classList.add('is-dragging'); keywordsConveyorBelt.style.transition = 'none'; document.addEventListener('mousemove', dragMove); document.addEventListener('mouseup', endDrag); document.addEventListener('mouseleave', endDrag); document.addEventListener('touchmove', dragMove, { passive: false }); document.addEventListener('touchend', endDrag); }
+    function dragMove(e) { if (!isDraggingConveyor) return; if (e.type === 'touchmove') e.preventDefault(); const currentX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX; const dx = currentX - dragStartX; dragMovedDistance = Math.abs(dx); currentTranslateX = scrollStartXAtDragStart + dx; if (firstSetWidth > 0) { if (currentTranslateX <= -firstSetWidth) { currentTranslateX += firstSetWidth; scrollStartXAtDragStart += firstSetWidth; } else if (currentTranslateX > 0) { currentTranslateX -= firstSetWidth; scrollStartXAtDragStart -= firstSetWidth; } } keywordsConveyorBelt.style.transform = `translateX(${currentTranslateX}px)`; }
+    function endDrag(e) { if (!isDraggingConveyor) return; isDraggingConveyor = false; keywordsConveyorBelt.classList.remove('is-dragging'); keywordsConveyorBelt.style.transition = `transform ${scrollTransitionDuration / 1000}s ease-in-out`; document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', endDrag); document.removeEventListener('mouseleave', endDrag); document.removeEventListener('touchmove', dragMove); document.removeEventListener('touchend', endDrag); if (dragMovedDistance < CLICK_THRESHOLD_PX && pointerDownOnKeywordItem) { const upTargetItem = e.target.closest('.keyword-conveyor-item'); if (upTargetItem === pointerDownOnKeywordItem && !keywordsConveyorBelt.classList.contains('suppress-item-effects')) { const query = pointerDownOnKeywordItem.dataset.query; if (searchInputOverlay && query) { searchInputOverlay.value = query; if (clearSearchInputButton) clearSearchInputButton.classList.add(VISIBLE_CLASS); performSearchOverlay(); searchInputOverlay.focus(); } } } pointerDownOnKeywordItem = null; dragMovedDistance = 0; }
+    function clearKeywordItemEffects() { if (!keywordsConveyorBelt) return; Array.from(keywordsConveyorBelt.children).filter(child => child.classList.contains('keyword-conveyor-item')).forEach(item => { item.classList.remove('is-focused', 'is-neighbor-blur-1', 'is-neighbor-blur-2', 'is-distant-blur'); item.style.filter = ''; item.style.transform = ''; item.style.opacity = ''; item.style.zIndex = ''; }); }
+
+    // --- Event Listeners Setup ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if we're loaded via navbar-loader.js or directly
+        const isLoadedViaNavbarLoader = window.NavbarModule !== undefined && window.NavbarModule.cachedResponses !== undefined;
+                
+        // Force initialize category buttons regardless of loading method
+        setTimeout(() => {
+                        
+            // Initialize or refresh the UI components
+            try {
+                // Always initialize category buttons with default values
+                // even if we later update them with real data
+                if (categoryButtonsContainerOverlay) {
+                    if (categoryButtonsContainerOverlay.children.length === 0) {
+                                                const emptyCounts = {};
+                        PREDEFINED_CATEGORIES.forEach(cat => emptyCounts[cat] = 0);
+                        populateCategoryButtons(PREDEFINED_CATEGORIES, emptyCounts, 0);
+                    }
+                    
+                    // CRITICAL: Make sure to wire up event handlers directly after initialization
+                    // Remove any existing handlers first to prevent duplicates
+                    const buttons = categoryButtonsContainerOverlay.querySelectorAll(`.${CATEGORY_FILTER_BUTTON_CLASS}`);
+                                        
+                    buttons.forEach(button => {
+                        // Remove old handlers if any (we can't directly remove them but we can replace the element)
+                        const newButton = button.cloneNode(true);
+                        button.parentNode.replaceChild(newButton, button);
+                        
+                        // Add new direct handler to each button
+                        newButton.addEventListener('click', function(e) {
+                                                        handleCategoryButtonClick(e);
+                        });
+                    });
+                    
+                                    }
+                
+                // Initialize top keywords conveyor with default values if empty
+                if (keywordsConveyorBelt && keywordsConveyorBelt.children.length === 0) {
+                                        const defaultKeywords = ["Thesis", "Research", "Academic", "Journal", "Paper"];
+                    updateKeywordsConveyor(defaultKeywords);
+                }
+                
+                // Initialize event listeners for the conveyor scroll buttons
+                if (conveyorScrollLeftBtn && conveyorScrollRightBtn) {
+                    conveyorScrollLeftBtn.addEventListener('click', () => triggerConveyorArrowScroll('left'));
+                    conveyorScrollRightBtn.addEventListener('click', () => triggerConveyorArrowScroll('right'));
+                }
+                
+                // Always try to load real data after initialization
+                loadFiltersData();
+            } catch (error) {
+            }
+        }, 100);
+        
+        // Ensure category buttons get handlers regardless of how navbar is loaded
+        if (categoryButtonsContainerOverlay) {
+            // Remove any existing event listeners first to prevent duplicates
+            const oldButtons = categoryButtonsContainerOverlay.querySelectorAll(`.${CATEGORY_FILTER_BUTTON_CLASS}`);
+            oldButtons.forEach(button => {
+                button.removeEventListener('click', handleCategoryButtonClick);
+            });
+            
+            // Add fresh event listeners
+            categoryButtonsContainerOverlay.addEventListener('click', function(event) {
+                const button = event.target.closest(`.${CATEGORY_FILTER_BUTTON_CLASS}`);
+                if (button) {
+                    handleCategoryButtonClick(event);
+                }
+            });
+            
+                    } else {
+        }
+        
+        // If functions are already defined by navbar-loader.js, don't override them
+        if (isLoadedViaNavbarLoader && typeof window.openSearch === 'function') {
+                        
+            // Map our key functions to the ones from navbar-loader.js
+            const originalOpenSearch = window.openSearch;
+            const originalCloseSearch = window.closeSearch;
+            
+            // Override functions that might conflict
+            openSearch = function() {
+                // Use navbar-loader's implementation if available
+                if (typeof originalOpenSearch === 'function') {
+                    originalOpenSearch();
+                } else {
+                    // Fallback to our implementation
+                    if (!searchOverlay || !searchInputOverlay || !bodyElement) return;
+                    originalBodyOverflow = bodyElement.style.overflow;
+                    bodyElement.style.overflow = 'hidden';
+                    searchOverlay.scrollTop = 0;
+                    searchOverlay.classList.remove(HIDDEN_CLASS);
+                    searchOverlay.classList.add(VISIBLE_CLASS);
+                    setTimeout(() => {
+                        searchInputOverlay.focus();
+                        if (clearSearchInputButton) {
+                            clearSearchInputButton.classList.toggle(VISIBLE_CLASS, searchInputOverlay.value.length > 0);
+                        }
+                    }, 50);
+                    if (mobileMenu && !mobileMenu.classList.contains(HIDDEN_CLASS)) {
+                        toggleMobileMenu(true);
+                    }
+                    // Handle loading filter data
+                    if (!openSearch.filtersLoaded) {
+                        loadFiltersData();
+                        openSearch.filtersLoaded = true;
+                    }
+                }
+            };
+            
+            closeSearch = function() {
+                // Use navbar-loader's implementation if available
+                if (typeof originalCloseSearch === 'function') {
+                    originalCloseSearch();
+                } else {
+                    // Fallback to our implementation
+                    if (!searchOverlay || !bodyElement) return;
+                    bodyElement.style.overflow = originalBodyOverflow;
+                    searchOverlay.classList.remove(VISIBLE_CLASS);
+                    setTimeout(() => {
+                        searchOverlay.classList.add(HIDDEN_CLASS);
+                    }, 300);
+                }
+            };
+        }
+        
+        const debouncedPerformSearch = debounceOverlay(performSearchOverlay, DEBOUNCE_DELAY);
+        if (searchInputOverlay) {
+            searchInputOverlay.addEventListener('input', function() {
+                debouncedPerformSearch();
+                if (clearSearchInputButton) {
+                    clearSearchInputButton.classList.toggle(VISIBLE_CLASS, this.value.length > 0);
+                }
+                updateShowAllResultsState();
+            });
+        }
+
+        // Filters: collapsible panel toggle + active-count badge
+        const filtersToggleBtn = document.getElementById('filtersToggleBtn');
+        const filtersPanel = document.getElementById('filtersPanel');
+        const filtersActiveCountEl = document.getElementById('filtersActiveCount');
+        function refreshFiltersActiveCount() {
+            if (!filtersActiveCountEl) return;
+            let count = 0;
+            if (authorFilterOverlay && authorFilterOverlay.value) count++;
+            if (keywordsFilterOverlay && keywordsFilterOverlay.value) count++;
+            if (yearFilterOverlay && yearFilterOverlay.value) count++;
+            filtersActiveCountEl.textContent = count > 0 ? String(count) : '';
+        }
+        if (filtersToggleBtn && filtersPanel) {
+            filtersToggleBtn.addEventListener('click', () => {
+                const expanded = filtersToggleBtn.getAttribute('aria-expanded') === 'true';
+                const next = !expanded;
+                filtersToggleBtn.setAttribute('aria-expanded', String(next));
+                filtersPanel.classList.toggle('is-collapsed', !next);
+                filtersPanel.setAttribute('aria-hidden', String(!next));
+            });
+        }
+        [authorFilterOverlay, keywordsFilterOverlay, yearFilterOverlay].forEach(el => {
+            if (el) el.addEventListener('change', () => { refreshFiltersActiveCount(); updateShowAllResultsState(); });
+        });
+        refreshFiltersActiveCount();
+
+        // Spotlight rehaul: keyboard nav + Enter handling + popular keyword clicks
+        function getResultRows() {
+            if (!searchResultsOverlay) return [];
+            return Array.from(searchResultsOverlay.querySelectorAll('.search-result-item, .empty-popular-item'));
+        }
+        function setKbdFocus(targetIdx) {
+            const rows = getResultRows();
+            rows.forEach((row, i) => row.classList.toggle('kbd-focus', i === targetIdx));
+            const target = rows[targetIdx];
+            if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'nearest' });
+        }
+        function moveKbdFocus(delta) {
+            const rows = getResultRows();
+            if (!rows.length) return;
+            const current = rows.findIndex(r => r.classList.contains('kbd-focus'));
+            let next = current + delta;
+            if (current === -1) next = delta > 0 ? 0 : rows.length - 1;
+            if (next < 0) next = rows.length - 1;
+            if (next >= rows.length) next = 0;
+            setKbdFocus(next);
+        }
+        function clearKbdFocus() {
+            if (!searchResultsOverlay) return;
+            searchResultsOverlay.querySelectorAll('.kbd-focus').forEach(el => el.classList.remove('kbd-focus'));
+        }
+        if (searchInputOverlay) {
+            searchInputOverlay.addEventListener('input', clearKbdFocus);
+            searchInputOverlay.addEventListener('keydown', (event) => {
+                if (event.key === 'ArrowDown') { event.preventDefault(); moveKbdFocus(1); }
+                else if (event.key === 'ArrowUp') { event.preventDefault(); moveKbdFocus(-1); }
+                else if (event.key === 'Enter') {
+                    const focused = searchResultsOverlay && searchResultsOverlay.querySelector('.kbd-focus');
+                    if (focused) {
+                        event.preventDefault();
+                        focused.click();
+                        return;
+                    }
+                    const q = searchInputOverlay.value.trim();
+                    const hasFilters = (authorFilterOverlay && authorFilterOverlay.value) ||
+                                       (keywordsFilterOverlay && keywordsFilterOverlay.value) ||
+                                       (yearFilterOverlay && yearFilterOverlay.value);
+                    if (q || hasFilters) {
+                        event.preventDefault();
+                        const url = new URL('/pages/searchResultsPage.html', window.location.origin);
+                        if (q) url.searchParams.append('q', q);
+                        try {
+                            getActiveCategories().forEach(cat => url.searchParams.append('category', cat));
+                        } catch (_) {}
+                        if (authorFilterOverlay && authorFilterOverlay.value) url.searchParams.append('author', authorFilterOverlay.value);
+                        if (keywordsFilterOverlay && keywordsFilterOverlay.value) url.searchParams.append('keyword', keywordsFilterOverlay.value);
+                        if (yearFilterOverlay && yearFilterOverlay.value) url.searchParams.append('year', yearFilterOverlay.value);
+                        window.location.href = url.toString();
+                    }
+                }
+            });
+        }
+        if (searchResultsOverlay) {
+            searchResultsOverlay.addEventListener('click', (event) => {
+                const popular = event.target.closest('.empty-popular-item');
+                if (popular && searchInputOverlay) {
+                    event.preventDefault();
+                    const kw = popular.dataset.keyword || (popular.textContent || '').trim();
+                    if (kw) {
+                        searchInputOverlay.value = kw;
+                        if (clearSearchInputButton) clearSearchInputButton.classList.add(VISIBLE_CLASS);
+                        clearKbdFocus();
+                        performSearchOverlay();
+                        searchInputOverlay.focus();
+                    }
+                }
+            });
+            searchResultsOverlay.addEventListener('mouseover', (event) => {
+                const row = event.target.closest('.search-result-item, .empty-popular-item');
+                if (!row) return;
+                clearKbdFocus();
+                row.classList.add('kbd-focus');
+            });
+        }
+        if (clearSearchInputButton) {
+            // Instead of cloning, directly add the event listener
+            clearSearchInputButton.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                // Directly update the input value using DOM methods
+                if (searchInputOverlay) {
+                    // Clear the input field directly
+                searchInputOverlay.value = '';
+                    
+                    // Update the DOM input value to ensure it's properly cleared
+                    searchInputOverlay.setAttribute('value', '');
+                    
+                    // Use both property and DOM ways to clear
+                    searchInputOverlay.innerText = '';
+                    
+                    // Manually trigger input event to update state
+                    searchInputOverlay.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Hide the clear button
+                    this.classList.remove(VISIBLE_CLASS);
+                    
+                    // Force focus
+                searchInputOverlay.focus();
+                    
+                    // Trigger search update with empty query
+                    performSearchOverlay();
+                }
+            });
+        }
+        [authorFilterOverlay, keywordsFilterOverlay, yearFilterOverlay].forEach(filterElement => {
+            if (filterElement) filterElement.addEventListener('change', performSearchOverlay);
+        });
+        // Add this function to properly navigate to search results page
+function navigateToSearchResultsPage() {
+    const searchQuery = searchInputOverlay.value.trim();
+    const url = new URL('/pages/searchResultsPage.html', window.location.origin);
+    
+    // Add search query parameter
+    if (searchQuery) {
+        url.searchParams.append('q', searchQuery);
+    }
+    
+    // Add any selected categories
+    const activeCategories = getActiveCategories();
+    activeCategories.forEach(category => {
+        url.searchParams.append('category', category);
+    });
+    
+    // Add other filters if they exist
+    if (authorFilterOverlay && authorFilterOverlay.value) {
+        url.searchParams.append('author', authorFilterOverlay.value);
+    }
+    
+    if (keywordsFilterOverlay && keywordsFilterOverlay.value) {
+        url.searchParams.append('keyword', keywordsFilterOverlay.value);
+    }
+    
+    if (yearFilterOverlay && yearFilterOverlay.value) {
+        url.searchParams.append('year', yearFilterOverlay.value);
+                }
+
+    // Navigate to the search results page
+    window.location.href = url.toString();
+}
+
+if (showAllResultsBtn) {
+    showAllResultsBtn.addEventListener('click', navigateToSearchResultsPage);
+        }
+        if (mobileMenuButton) mobileMenuButton.addEventListener('click', () => toggleMobileMenu());
+        if (searchOpenButton) searchOpenButton.addEventListener('click', (event) => { event.stopPropagation(); openSearch(); });
+        if (searchOpenButtonMobile) searchOpenButtonMobile.addEventListener('click', (event) => { event.stopPropagation(); openSearch(); });
+        if (searchCloseButton) searchCloseButton.addEventListener('click', closeSearch);
+        if (searchOverlay) {
+            searchOverlay.addEventListener('click', (event) => {
+                if (event.target === searchOverlay) {
+                    closeSearch();
+                }
+            });
+        }
+        if (keywordsConveyorBelt) {
+            keywordsConveyorBelt.addEventListener('mousedown', startDrag);
+            keywordsConveyorBelt.addEventListener('touchstart', startDrag, { passive: false });
+            if (keywordsConveyorContainer) {
+                keywordsConveyorContainer.addEventListener('mouseenter', () => { if(keywordsConveyorBelt && !isDraggingConveyor) keywordsConveyorBelt.classList.add('is-hover-active'); });
+                keywordsConveyorContainer.addEventListener('mouseleave', () => { if(keywordsConveyorBelt && !isDraggingConveyor) { keywordsConveyorBelt.classList.remove('is-hover-active'); clearKeywordItemEffects(); } });
+            }
+            keywordsConveyorBelt.addEventListener('mouseover', (event) => { if (keywordsConveyorBelt.classList.contains('suppress-item-effects') || isDraggingConveyor) { clearKeywordItemEffects(); return; } if (keywordsConveyorBelt.classList.contains('is-hover-active')) { const hoveredItem = event.target.closest('.keyword-conveyor-item'); if (hoveredItem) { const allItems = Array.from(keywordsConveyorBelt.children).filter(child => child.classList.contains('keyword-conveyor-item')); const hoveredIndex = allItems.indexOf(hoveredItem); const uniqueKeywordsCount = firstSetItemCount > 0 ? firstSetItemCount : (topKeywordsData?.top_keywords?.length || 0) ; allItems.forEach((item, index) => { item.classList.remove('is-focused', 'is-neighbor-blur-1', 'is-neighbor-blur-2', 'is-distant-blur'); const effectiveCurrentIndex = index % uniqueKeywordsCount; const effectiveHoveredIndex = hoveredIndex % uniqueKeywordsCount; let distance = Math.abs(effectiveCurrentIndex - effectiveHoveredIndex); if (distance > uniqueKeywordsCount / 2) distance = uniqueKeywordsCount - distance; if (effectiveCurrentIndex === effectiveHoveredIndex) item.classList.add('is-focused'); else if (distance === 1) item.classList.add('is-neighbor-blur-1'); else if (distance === 2) item.classList.add('is-neighbor-blur-2'); else item.classList.add('is-distant-blur'); }); } } });
+            keywordsConveyorBelt.addEventListener('transitionend', handleConveyorArrowScroll);
+        }
+        [conveyorScrollLeftBtn, conveyorScrollRightBtn].forEach(btn => { if (btn) { btn.addEventListener('mouseenter', () => { if (keywordsConveyorBelt) { keywordsConveyorBelt.classList.add('suppress-item-effects'); clearKeywordItemEffects(); } }); btn.addEventListener('mouseleave', () => { if (keywordsConveyorBelt) { keywordsConveyorBelt.classList.remove('suppress-item-effects'); } }); } });
+        if (conveyorScrollLeftBtn) conveyorScrollLeftBtn.addEventListener('click', () => triggerConveyorArrowScroll('left'));
+        if (conveyorScrollRightBtn) conveyorScrollRightBtn.addEventListener('click', () => triggerConveyorArrowScroll('right'));
+        document.addEventListener('click', (event) => {
+            const profileBadgeContainerDynamic = document.getElementById('profile-badge-container-dynamic');
+            if (isDropdownOpen && profileBadgeContainerDynamic && !profileBadgeContainerDynamic.contains(event.target)) {
+                toggleDropdown(true);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (isDropdownOpen) {
+                    toggleDropdown(true); event.preventDefault(); return;
+                }
+                if (searchOverlay && searchOverlay.classList.contains(VISIBLE_CLASS)) {
+                    closeSearch(); event.preventDefault(); return;
+                }
+            }
+            const isInputFocused = document.activeElement?.tagName === 'INPUT' ||
+                                 document.activeElement?.tagName === 'TEXTAREA' ||
+                                 document.activeElement?.isContentEditable;
+            if (event.key === '/' && !isInputFocused && searchOverlay && !searchOverlay.classList.contains(VISIBLE_CLASS)) {
+                event.preventDefault(); openSearch();
+            }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+                event.preventDefault();
+                if (searchOverlay && searchOverlay.classList.contains(VISIBLE_CLASS)) {
+                    if (document.activeElement !== searchInputOverlay && searchInputOverlay) searchInputOverlay.focus();
+                } else { openSearch(); }
+            }
+        });
+
+        // Only initialize API data if loading directly (not through navbar-loader.js)
+        if (!isLoadedViaNavbarLoader) {
+            // Check authentication status and load filters data
+        checkAuthStatusAndSetupUI();
+            
+            // Try to initialize filters when first loaded
+            loadFiltersData();
+            openSearch.filtersLoaded = true;
+            
+                    } else {
+                    }
+    });
+
+    // Add this function to properly navigate to search results page
+    function navigateToSearchResultsPage() {
+        const searchQuery = searchInputOverlay.value.trim();
+        const url = new URL('/pages/searchResultsPage.html', window.location.origin);
+        
+        // Add search query parameter
+        if (searchQuery) {
+            url.searchParams.append('q', searchQuery);
+        }
+        
+        // Add any selected categories
+        const activeCategories = getActiveCategories();
+        activeCategories.forEach(category => {
+            url.searchParams.append('category', category);
+        });
+        
+        // Add other filters if they exist
+        if (authorFilterOverlay && authorFilterOverlay.value) {
+            url.searchParams.append('author', authorFilterOverlay.value);
+        }
+        
+        if (keywordsFilterOverlay && keywordsFilterOverlay.value) {
+            url.searchParams.append('keyword', keywordsFilterOverlay.value);
+        }
+        
+        if (yearFilterOverlay && yearFilterOverlay.value) {
+            url.searchParams.append('year', yearFilterOverlay.value);
+        }
+        
+        // Navigate to the search results page
+        window.location.href = url.toString();
+    }
+})(); // IIFE End
+
+// Ensure Show All Results button works
+window.addEventListener('DOMContentLoaded', function() {
+    var showAllResultsBtn = document.getElementById('showAllResultsBtn');
+    if (showAllResultsBtn) {
+        showAllResultsBtn.addEventListener('click', function() {
+            var searchInputValue = document.getElementById('searchInputOverlay').value || '';
+            window.location.href = '/pages/searchResultsPage.html?q=' + encodeURIComponent(searchInputValue);
+        }, true); // Using capture phase to ensure this handler runs first
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+.peas-card-swap {
+  isolation: isolate;
+  perspective: 1100px;
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.peas-card-swap__card {
+  backface-visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peas-card-swap__card { transition: none; }
+}

@@ -1,0 +1,124 @@
+@import url("./_tokens.css");
+@import url("./_components.css");
+
+body {
+    font-family: Inter;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    width: 100%;
+    margin: auto;
+    padding: auto;
+}
+
+.main-content {
+    margin-left: calc(var(--sidebar-width, 250px) + 30px) !important;
+    transition: margin-left 0.5s cubic-bezier(0.65, -0.35, 0.3, 1.35);
+    margin-top: 72px !important;
+    padding: 24px 32px 48px !important;
+}
+
+.main-content h1 {
+    color: var(--text-primary);
+    letter-spacing: 0;
+}
+
+.refresh-button {
+    background-color: #E6E6E6 !important;
+    border: 1px solid rgba(0, 106, 78, 0.24) !important;
+    color: var(--brand-green) !important;
+}
+
+.refresh-button:hover {
+    background-color: var(--brand-green-mist) !important;
+}
+
+.refresh-button.is-loading svg {
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.log-card {
+    background: #E6E6E6;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.log-card > div:first-child {
+    background:
+        var(--gradient-banner),
+        #E6E6E6;
+}
+
+.log-card h2 {
+    color: var(--text-primary);
+}
+
+.log-card h2 svg {
+    color: var(--brand-green) !important;
+}
+
+.log-card table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+/* Ensure icons are vertically aligned */
+.lucide {
+    vertical-align: middle;
+    display: inline-block; /* Needed for vertical alignment */
+}
+/* Style table headers within cards */
+.log-card th {
+    background-color: var(--bg-muted);
+    text-align: left;
+    padding: 0.75rem 1rem; /* p-3 equivalent */
+    font-size: 0.75rem; /* text-xs */
+    font-weight: 500; /* font-medium */
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em; /* tracking-wider */
+}
+/* Style table cells within cards */
+.log-card td {
+    padding: 0.75rem 1rem; /* p-3 equivalent */
+    font-size: 0.875rem; /* text-sm */
+    color: var(--text-secondary);
+    border-bottom-width: 1px;
+    border-color: var(--border-soft);
+}
+/* Remove bottom border from last row */
+.log-card tr:last-child td {
+    border-bottom-width: 0;
+}
+ /* Add subtle hover effect to rows */
+.log-card tbody tr:hover {
+    background-color: var(--brand-green-mist);
+}
+
+.log-card .empty-state {
+    min-height: 120px;
+}
+
+#logsPagination button {
+    background-color: #E6E6E6;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+#logsPagination button:hover:not(:disabled) {
+    background-color: var(--brand-green-mist);
+    border-color: rgba(0, 106, 78, 0.28);
+    color: var(--brand-green);
+}
+
+@media (max-width: 900px) {
+    .main-content {
+        margin-left: 0 !important;
+        padding: 84px 16px 32px !important;
+    }
+}

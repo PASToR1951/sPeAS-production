@@ -1,0 +1,101 @@
+/*
+ * Central category icon definitions — single source of truth.
+ *
+ * Usage (HTML or JS templates):
+ *     <span class="category-icon" data-category="THESIS" aria-hidden="true"></span>
+ *
+ * The data-category value (case-insensitive) selects the glyph and colors.
+ * Unknown/missing categories fall back to the neutral "All" tile.
+ * Sizes: default 40px; add .category-icon--sm for 32px (document rows).
+ *
+ * To change an icon: pick a new glyph at https://phosphoricons.com (Fill weight),
+ * look up its codepoint in the pinned stylesheet imported below, and edit the
+ * matching content rule here. Nothing else in the system needs to change.
+ */
+
+@import url("https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css");
+
+.category-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.category-icon::before {
+    font-family: "Phosphor-Fill";
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    font-size: 20px;
+    content: "\e464"; /* squares-four — default / All */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.category-icon--sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+}
+
+.category-icon--sm::before {
+    font-size: 16px;
+}
+
+.category-icon--lg {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+}
+
+.category-icon--lg::before {
+    font-size: 32px;
+}
+
+/* All — theme green */
+.category-icon[data-category="all" i] {
+    background-color: #e6f2ee;
+    color: #006A4E;
+}
+
+/* Confluence — amber */
+.category-icon[data-category="confluence" i] {
+    background-color: #fef3c7;
+    color: #b45309;
+}
+.category-icon[data-category="confluence" i]::before {
+    content: "\e344"; /* newspaper */
+}
+
+/* Synergy — blue */
+.category-icon[data-category="synergy" i] {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+.category-icon[data-category="synergy" i]::before {
+    content: "\e0e6"; /* book-open */
+}
+
+/* Dissertation — violet */
+.category-icon[data-category="dissertation" i] {
+    background-color: #ede9fe;
+    color: #6d28d9;
+}
+.category-icon[data-category="dissertation" i]::before {
+    content: "\e62c"; /* graduation-cap */
+}
+
+/* Thesis — rose */
+.category-icon[data-category="thesis" i] {
+    background-color: #ffe4e6;
+    color: #be123c;
+}
+.category-icon[data-category="thesis" i]::before {
+    content: "\eb7a"; /* scroll */
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic PeAS production health check
+
+[Timer]
+OnBootSec=10m
+OnUnitActiveSec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

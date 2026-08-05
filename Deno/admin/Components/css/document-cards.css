@@ -1,0 +1,494 @@
+/* Document Cards CSS */
+.document-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    width: 100%;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    background-color: #E6E6E6;
+    padding: 15px;
+    box-sizing: border-box;
+    overflow: visible;
+    height: auto;
+    min-height: 200px;
+}
+
+.document-card {
+    background-color: #E6E6E6;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 12px;
+    overflow: visible;
+    transition: box-shadow 0.2s ease;
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure proper stacking and no overlap */
+    clear: both;
+}
+
+.document-card:hover {
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+    z-index: 5;
+}
+
+/* Document icon container */
+.document-icon {
+    margin-right: 15px;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.document-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Document info */
+.document-info {
+    flex: 1;
+}
+
+/* Document title */
+.document-title {
+    font-weight: 500;
+    font-size: 16px;
+    color: #333;
+    margin: 0 0 4px 0;
+}
+
+/* Document meta information */
+.document-meta {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.meta-item {
+    display: inline-flex;
+    align-items: center;
+}
+
+.meta-item i {
+    margin-right: 5px;
+    color: #4285f4;
+    font-size: 12px;
+}
+
+/* Category badge */
+.category-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    background-color: #f0f0f0;
+    margin-right: 8px;
+}
+
+.category-badge.thesis {
+    background-color: #ffeeba;
+    color: #856404;
+}
+
+.category-badge.dissertation {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.category-badge.confluence {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.category-badge.synergy {
+    background-color: #e2e3ff;
+    color: #3d348b;
+}
+
+/* Action buttons */
+.document-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.action-btn i {
+    font-size: 16px;
+}
+
+.expand-btn {
+    background-color: #4285f4;
+    color: #E6E6E6;
+}
+
+.expand-btn:hover {
+    background-color: #2b6ed9;
+}
+
+.view-btn {
+    background-color: #4285f4;
+    color: #E6E6E6;
+}
+
+.view-btn:hover {
+    background-color: #2b6ed9;
+}
+
+.edit-btn {
+    background-color: #34a853;
+    color: #E6E6E6;
+}
+
+.edit-btn:hover {
+    background-color: #2d8e47;
+}
+
+.delete-btn {
+    background-color: #ea4335;
+    color: #E6E6E6;
+}
+
+.delete-btn:hover {
+    background-color: #d33426;
+}
+
+.download-btn {
+    background-color: #8950fc;
+    color: #E6E6E6;
+}
+
+.download-btn:hover {
+    background-color: #7337e0;
+}
+
+/* Compiled document specific styles */
+.compiled-document {
+    background-color: #f8fbff;
+}
+
+.compiled-document .document-title {
+    display: flex;
+    align-items: center;
+}
+
+.compiled-document .toggle-indicator {
+    margin-right: 8px;
+    font-size: 14px;
+    color: #4285f4;
+}
+
+/* Children container */
+.children-container {
+    width: 90%;
+    margin-left: 10%;
+    padding: 15px;
+    border-radius: 6px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    background-color: #E6E6E6;
+    border-left: 2px solid #4285f4;
+    position: relative;
+    z-index: 10;
+    max-height: 400px;
+    overflow-y: auto;
+    position: relative;
+    top: initial;
+    left: initial;
+    margin-top: 5px;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+    clear: both;
+}
+
+/* Child document card */
+.child-document-card {
+    margin-bottom: 12px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border-left: 3px solid #4285f4;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    box-sizing: border-box;
+    clear: both;
+    position: relative;
+}
+
+.child-document-card:hover {
+    background-color: #f0f7ff;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Child document info section */
+.child-document-info {
+    flex: 1;
+    padding-right: 15px;
+}
+
+.child-document-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: #333;
+    margin: 0 0 5px 0;
+    line-height: 1.3;
+}
+
+.child-document-author {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 5px;
+}
+
+.child-document-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: #777;
+}
+
+.child-document-metadata .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.child-document-metadata .meta-item i {
+    color: #999;
+    font-size: 12px;
+}
+
+/* Child document actions */
+.child-document-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Parent card with expanded children needs relative positioning */
+.document-card.compiled {
+    position: relative;
+    background-color: #f8fbff;
+    border-left: 3px solid #4285f4;
+}
+
+/* Add spacing below compiled cards to make room for overlay */
+.document-card.compiled {
+    margin-bottom: 20px;
+}
+
+/* Toggle button */
+.toggle-children-btn {
+    background: none;
+    border: none;
+    color: #4285f4;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+
+.toggle-children-btn i {
+    margin-right: 4px;
+}
+
+/* Simplified layout for image match */
+.simple-card {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-radius: 4px;
+    background: #E6E6E6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 10px;
+}
+
+.simple-card .document-icon {
+    width: 36px;
+    height: 36px;
+    margin-right: 16px;
+}
+
+.simple-card .document-info {
+    flex: 1;
+}
+
+.simple-card .document-title {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.simple-card .document-meta {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 6px;
+}
+
+.simple-card .category-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 12px;
+}
+
+.simple-card .document-actions {
+    display: flex;
+    gap: 5px;
+    margin-left: 10px;
+}
+
+.simple-card .action-btn {
+    padding: 4px 10px;
+    font-size: 13px;
+}
+
+/* Compiled simple card variations */
+.simple-card.compiled {
+    background-color: #f8fbff;
+}
+
+.simple-card.compiled .toggle-indicator {
+    margin-right: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .document-card {
+        flex-direction: column;
+    }
+    
+    .document-card .card-icon {
+        width: 100%;
+        height: 100px;
+    }
+    
+    .document-card .card-actions {
+        padding: 10px 15px;
+        justify-content: center;
+    }
+    
+    .children-container {
+        margin-left: 15px;
+    }
+    
+    #documents-container {
+        height: 500px !important; /* Slightly shorter on mobile */
+    }
+    
+    .document-card.compilation .document-actions {
+        flex-direction: row;
+        margin-top: 10px;
+        margin-left: 0;
+        justify-content: flex-end;
+    }
+}
+
+/* Fix z-index for document cards and their dropdowns */
+#documents-container {
+    position: relative;
+    z-index: 1;
+}
+
+/* When a card has an open dropdown, keep it at highest z-index */
+.document-card.compiled:has(.children-container) {
+    z-index: 10;
+}
+
+/* Loading indicator */
+.loading-children {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px;
+    color: #666;
+    font-style: italic;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    margin: 10px 0;
+}
+
+.loading-children i {
+    margin-right: 10px;
+    color: #4285f4;
+    font-size: 16px;
+}
+
+/* Error message */
+.error-message {
+    padding: 10px 15px;
+    background-color: #fee2e2;
+    color: #dc2626;
+    border-radius: 6px;
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+}
+
+.error-message i {
+    margin-right: 8px;
+    font-size: 16px;
+}
+
+/* No children message */
+.no-children-message {
+    padding: 15px;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    margin: 10px 0;
+}
+
+/* Children header */
+.children-header {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 15px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+}
+
+.children-header i {
+    margin-right: 8px;
+    color: #4285f4;
+}

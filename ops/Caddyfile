@@ -1,0 +1,25 @@
+{
+  email {$ACME_EMAIL}
+  auto_https prefer_wildcard
+}
+
+{$PUBLIC_APP_URL} {
+  encode zstd gzip
+
+  header {
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  }
+
+  @maintenance path /maintenance
+  respond @maintenance 503
+
+  reverse_proxy app:8000 {
+    health_uri /health/ready
+    health_interval 15s
+    health_timeout 5s
+    flush_interval -1
+  }
+}

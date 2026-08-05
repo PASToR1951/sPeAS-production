@@ -1,0 +1,232 @@
+/* ============================================================
+   Header (Navbar) — Glass Refresh
+   ============================================================ */
+
+body {
+    max-width: 100%;
+    font-family: Inter;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    margin: 0 auto;
+}
+
+/* Placeholder keeps the page flow height while the header itself is fixed */
+#navbar-header {
+    height: var(--header-height, 73px);
+}
+
+.header {
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-width, 250px);
+    right: 0;
+    z-index: 900;
+    height: var(--header-height, 73px);
+    box-sizing: border-box;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    color: #0f172a;
+    background-color: rgba(255, 255, 255, 0.55);
+    backdrop-filter: saturate(180%) blur(18px);
+    -webkit-backdrop-filter: saturate(180%) blur(18px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    transition: left 0.5s cubic-bezier(0.65, -0.35, 0.3, 1.35), box-shadow 0.25s ease, background-color 0.25s ease;
+}
+
+.header.is-scrolled {
+    background-color: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
+}
+
+#navbar-header .logo,
+.header .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-sizing: border-box;
+    min-width: 0;
+    flex: 1;
+}
+
+#navbar-header .logo-spud,
+.header .logo-spud {
+    width: 48px;
+    height: 48px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    flex-shrink: 0;
+}
+
+#navbar-header .spud-text,
+.header .spud-text {
+    font-size: 1em;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    display: block;
+}
+
+#navbar-header .content,
+.header .content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 2px;
+    min-width: 0;
+}
+
+.content p {
+    font-size: 0.7em;
+    margin: 0;
+    white-space: nowrap;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 500;
+}
+
+/* ---------- Right-side actions ---------- */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.header-icon-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background-color: transparent;
+    border: 1px solid #eef0f3;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.header-icon-btn:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    border-color: #e2e8f0;
+}
+
+.header-icon-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 106, 78, 0.18);
+}
+
+.header-icon-btn svg { width: 18px; height: 18px; }
+
+.notification-dot {
+    position: absolute;
+    top: 8px;
+    right: 9px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #e11d48;
+    border: 2px solid #E6E6E6;
+}
+
+.header-divider {
+    width: 1px;
+    height: 26px;
+    background-color: #eef0f3;
+}
+
+.header-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 999px;
+    background-color: #f8fafc;
+    border: 1px solid #eef0f3;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.header-profile:hover {
+    background-color: #f1f5f9;
+    border-color: #e2e8f0;
+}
+
+.header-profile-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: #e6f2ee;
+    border: 2px solid #E6E6E6;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+    flex-shrink: 0;
+}
+
+.header-profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.header-profile-avatar .user-avatar-initials {
+    align-items: center;
+    color: #12503d;
+    display: inline-flex;
+    font-size: 0.64rem;
+    font-weight: 800;
+    height: 100%;
+    justify-content: center;
+    width: 100%;
+}
+
+.header-profile-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.15;
+}
+
+.header-profile-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+.header-profile-role {
+    font-size: 9.5px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+@media (max-width: 900px) {
+    .header-profile-meta { display: none; }
+    .header-profile { padding: 4px; }
+}
+
+@media (max-width: 768px) {
+    .header {
+        padding: 0 16px;
+    }
+    .header-divider { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header,
+    .header-icon-btn,
+    .header-profile { transition: none; }
+}
