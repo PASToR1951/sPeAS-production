@@ -4,6 +4,10 @@
 which operates on an immutable GHCR image and never builds application source
 on the production host.
 
+On Windows 11, `install.ps1` provides the equivalent native PowerShell entry
+point and calls `ops\peas-deploy.ps1`. It uses Windows ACLs, Defender Firewall,
+and Task Scheduler; it does not require WSL.
+
 ## First installation
 
 Run the menu from a reviewed checkout on Ubuntu 24.04 (22.04 is accepted only
@@ -41,6 +45,41 @@ The installer:
    from standard input, and deploys the selected image.
 7. Applies the schema-only baseline and forward migrations, starts Caddy,
    verifies HTTPS readiness, and optionally starts the administrator bootstrap.
+
+### Windows 11 installation
+
+Prerequisites are Windows 11 build 22000 or newer, PowerShell 7.2+, Docker
+Desktop/Engine running Linux containers, Git, and Restic on `PATH`. Docker must
+be configured to start before unattended PeAS scheduled tasks run. From an
+elevated PowerShell 7 session:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1
+```
+
+The Windows installer copies the reviewed release to
+`%ProgramData%\PeAS\current`, stores configuration under
+`%ProgramData%\PeAS\config`, restricts those directories to Administrators and
+SYSTEM, opens inbound TCP 80/443, creates daily **PeAS Backup** and 15-minute
+**PeAS Health Check** scheduled tasks, initializes Restic, and deploys the same
+immutable Compose images used on Ubuntu.
+
+The native automation entry point is:
+
+```powershell
+$PeasDeploy = "$env:ProgramData\PeAS\current\ops\peas-deploy.ps1"
+& $PeasDeploy status
+& $PeasDeploy doctor
+& $PeasDeploy backup
+& $PeasDeploy deploy -Image 'ghcr.io/OWNER/REPOSITORY@sha256:DIGEST'
+& $PeasDeploy rollback
+& $PeasDeploy restore -Snapshot 'SNAPSHOT_ID'
+```
+
+Run these commands from an elevated PowerShell 7 session. Restore requires the
+exact confirmation phrase, creates new database and storage volumes, validates
+the manifest checksums, and leaves the former volumes untouched.
 
 The first deployment is intentionally empty. Bootstrap the administrator with
 the password prompt; do not put the password in a command argument or shell

@@ -34,6 +34,9 @@ push as the release source of record.
 ## Deployment improvements in this review
 
 - Added `install.sh` as the single interactive operator menu.
+- Added native Windows 11 PowerShell installation and operations through
+  `install.ps1` and `ops/peas-deploy.ps1`, including ACLs, Defender Firewall,
+  Task Scheduler, backup/restore, deploy/rollback, and diagnostics.
 - Added hidden prompts and Docker-secret delivery for the Microsoft Entra
   client secret and SMTP password.
 - Added menu commands to rotate Microsoft and email configuration separately

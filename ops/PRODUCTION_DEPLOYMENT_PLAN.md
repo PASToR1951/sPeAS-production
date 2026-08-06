@@ -104,7 +104,7 @@ placeholders and must be replaced with institution-owned values.
 6. Confirm the GHCR package is private, linked to the repository, and readable
    by a server credential with package-read permission only.
 
-## 4. Prepare the Ubuntu server
+## 4. Prepare the production host
 
 1. Provision Ubuntu 24.04 LTS with at least 4 vCPUs, 8 GB RAM, and expandable
    storage. Allow more than twice the expected corpus plus 20 GiB free.
@@ -120,6 +120,11 @@ placeholders and must be replaced with institution-owned values.
 7. Copy the reviewed repository to the server. Do not execute an unreviewed
    `curl | sh` command.
 
+For Windows 11, use build 22000 or newer with PowerShell 7.2+, Git, Restic, and
+Docker Desktop/Engine in Linux-container mode. Configure Docker to start at
+boot, point DNS at the Windows host, reserve inbound TCP 80/443, and run the
+installer from an elevated PowerShell session. WSL is not required.
+
 ## 5. Run the first installation
 
 1. Resolve the release, PostgreSQL, Caddy, ClamAV, and Alpine utility images to
@@ -130,6 +135,13 @@ placeholders and must be replaced with institution-owned values.
    ./install.sh
    ```
 
+   On Windows 11:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\install.ps1
+   ```
+
 3. Read each prompt carefully. Enter Microsoft Entra, SMTP, and S3 secrets only
    at hidden prompts. The script writes them below `/etc/peas/secrets` mode
    `0600`; it does not print them or put them in Git. Use the displayed Entra
@@ -137,9 +149,11 @@ placeholders and must be replaced with institution-owned values.
 4. When asked for GHCR authentication, paste the read-only token into the
    hidden prompt. Confirm Docker login succeeded without copying the token into
    shell history.
-5. Let the script create `/opt/peas/current`, `/opt/peas/releases`, `/etc/peas`,
+5. On Ubuntu, let the script create `/opt/peas/current`, `/opt/peas/releases`, `/etc/peas`,
    `/var/lib/peas/backup-staging`, and `/var/log/peas`, then install the
-   systemd backup and health timers.
+   systemd backup and health timers. On Windows, it creates
+   `%ProgramData%\PeAS`, applies restrictive ACLs, and registers the **PeAS
+   Backup** and **PeAS Health Check** scheduled tasks.
 6. Verify Caddy obtains a certificate. If DNS or ports are wrong, fix the
    external prerequisite; do not bypass HTTPS by publishing the app port.
 7. Confirm the first migration run succeeds and the web service reports

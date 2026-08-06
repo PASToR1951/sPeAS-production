@@ -56,19 +56,28 @@ The web process uses the restricted `peas_app` database role.
 
 ## Production deployment
 
-Production is Ubuntu 24.04 (or the explicitly supported Ubuntu release),
-Docker Compose, Caddy, PostgreSQL 17, the Deno web process, media/OCR workers,
-ClamAV, and Restic. Only Caddy publishes ports 80 and 443.
+Production supports Ubuntu 24.04 and Windows 11. Both platforms run the same
+pinned Linux containers through Docker Compose: Caddy, PostgreSQL 17, the Deno
+web process, media/OCR workers, and ClamAV. Restic runs on the host. Only Caddy
+publishes ports 80 and 443.
 
 1. Build and publish a signed semantic release through
    `.github/workflows/release.yml`.
 2. Resolve the published GHCR image to its immutable `@sha256:` digest.
 3. Copy this repository to the server. Never execute
    an unreviewed `curl | sh` installer.
-4. Open the installation menu:
+4. Open the installation menu from an elevated terminal:
 
    ```bash
    ./install.sh
+   ```
+
+   On Windows 11, install PowerShell 7.2+, Docker Desktop in Linux-container
+   mode, Git, and Restic, then run in an elevated PowerShell session:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\install.ps1
    ```
 
    Choose **Install PeAS on a new server**. The wizard asks for the domain,
@@ -79,7 +88,8 @@ ClamAV, and Restic. Only Caddy publishes ports 80 and 443.
    in shell history:
 
    ```bash
-   sudo peas-deploy bootstrap-admin
+   sudo peas-deploy bootstrap-admin # Ubuntu
+   & "$env:ProgramData\PeAS\current\ops\peas-deploy.ps1" bootstrap-admin # Windows
    ```
 
 6. Verify the installation:
@@ -91,13 +101,14 @@ ClamAV, and Restic. Only Caddy publishes ports 80 and 443.
    sudo peas-deploy backup
    ```
 
-`install.sh` is the operator's single launch point. The lower-level
-`peas-deploy` command remains available for automation. The complete command
+`install.sh` and `install.ps1` are the platform-specific operator launch
+points. The lower-level `peas-deploy` command remains available for automation. The complete command
 contract, rollback rules, maintenance window behavior,
 restore confirmation phrase, backup retention, and staging rehearsal are in
 [`ops/README.md`](ops/README.md). The server command is implemented in
 [`ops/peas-deploy.sh`](ops/peas-deploy.sh) and is installed as
-`/usr/local/sbin/peas-deploy`.
+`/usr/local/sbin/peas-deploy`; the Windows implementation is
+[`ops/peas-deploy.ps1`](ops/peas-deploy.ps1) under `%ProgramData%\PeAS\current`.
 
 The latest codebase comparison, completed checks, and remaining go-live gates
 are recorded in [`ops/RELEASE_READINESS_AUDIT.md`](ops/RELEASE_READINESS_AUDIT.md).
