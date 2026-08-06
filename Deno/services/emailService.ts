@@ -15,8 +15,9 @@ import { escapeContactHtml } from "../shared/contactInquiry.ts";
 // load in config/db.ts.
 try {
   const { dotenvConfig } = await import("../deps.ts");
+  const { fromFileUrl } = await import("https://deno.land/std@0.200.0/path/from_file_url.ts");
   await dotenvConfig({
-    envPath: new URL("../.env", import.meta.url).pathname,
+    envPath: fromFileUrl(new URL("../.env", import.meta.url)),
     export: true,
   });
 } catch (_error) {

@@ -89,7 +89,8 @@ import abstractReviewRoutes from "./routes/abstractReviewRoutes.ts";
 // -----------------------------
 // SECTION: Configuration
 // -----------------------------
-const PORT = Deno.env.get("PORT") || 8000;
+const PORT = Deno.env.get("PORT") || 80;
+const HOST = Deno.env.get("HOST") || "0.0.0.0";
 const LEGACY_PUBLIC_RELEASE_ID = getLegacyPublicReleaseId();
 const PROTECTED_DOCUMENT_FILE_PREFIXES = [
   "/storage/thesis/",
@@ -331,6 +332,7 @@ app.use(async (ctx, next) => {
       await ctx.send({
         root: `${Deno.cwd()}`,
         path: adminPath,
+        index: "dashboard.html",
       });
       if (adminPath.endsWith(".html") || /\/react-ui\/(main-admin\.js|style\.css)$/.test(adminPath)) {
         ctx.response.headers.set("Cache-Control", "no-cache, must-revalidate");
@@ -1394,7 +1396,8 @@ async function startServer() {
     });
     
     // Start the server
-        await app.listen({ port: Number(PORT) });
+    console.log(`[peas-server] Starting server on ${HOST}:${PORT} (Network accessible)...`);
+    await app.listen({ port: Number(PORT), hostname: HOST });
   } catch (error) {
     console.error("Fatal error during server startup:", error);
     Deno.exit(1);

@@ -4,10 +4,12 @@ import { dotenvConfig, Pool } from "../deps.ts";
 // works regardless of the process working directory) and export the values
 // to Deno.env. Missing .env is allowed because Docker and production hosts
 // can provide the same values directly as environment variables.
+import { fromFileUrl } from "https://deno.land/std@0.200.0/path/from_file_url.ts";
+
 let env: Record<string, string> = {};
 try {
   env = await dotenvConfig({
-    envPath: new URL("../.env", import.meta.url).pathname,
+    envPath: fromFileUrl(new URL("../.env", import.meta.url)),
     export: true,
   });
 } catch (_error) {

@@ -8,9 +8,11 @@ import { hashPassword, verifyPassword } from "../utils/hashPassword.ts";
 // Load .env ourselves: config/db.ts also loads it, but top-level await means
 // sibling modules can evaluate before its load completes. Loading twice is
 // harmless (export skips already-set variables).
+import { fromFileUrl } from "https://deno.land/std@0.200.0/path/from_file_url.ts";
+
 try {
   await dotenvConfig({
-    envPath: new URL("../.env", import.meta.url).pathname,
+    envPath: fromFileUrl(new URL("../.env", import.meta.url)),
     export: true,
   });
 } catch (_error) {
@@ -83,10 +85,22 @@ const authPool = new pg.Pool({
   max: 5,
 });
 
+const extraOrigins = (Deno.env.get("TRUSTED_ORIGINS") ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 export const auth = betterAuth({
   baseURL,
   secret,
-  trustedOrigins: [baseURL, "http://localhost:5173"],
+  trustedOrigins: [
+    baseURL,
+    "http://localhost:5173",
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://0.0.0.0",
+    ...extraOrigins,
+  ],
 
   database: authPool,
 

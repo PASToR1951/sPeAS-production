@@ -7,42 +7,21 @@ function required(label: string, value: string): string {
   return normalized;
 }
 
-async function prompt(label: string): Promise<string> {
-  const value = promptSync(label);
-  return required(label, value);
+async function promptSync(label: string): Promise<string> {
+  const buf = new Uint8Array(1024);
+  await Deno.stdout.write(new TextEncoder().encode(label));
+  const n = await Deno.stdin.read(buf);
+  if (n === null) throw new Error(`Unable to read ${label}`);
+  return new TextDecoder().decode(buf.subarray(0, n)).trim();
 }
 
-function promptSync(label: string): string {
-  const command = new Deno.Command("bash", {
-    args: ["-c", `read -r -p '${label.replaceAll("'", "'\\''")}' value; printf '%s' "$value"`],
-    stdin: "inherit",
-    stdout: "piped",
-    stderr: "inherit",
-  });
-  const output = command.outputSync();
-  if (!output.success) throw new Error(`Unable to read ${label}`);
-  return new TextDecoder().decode(output.stdout);
-}
-
-function promptSecret(label: string): string {
-  const command = new Deno.Command("bash", {
-    args: ["-c", `read -r -s -p '${label.replaceAll("'", "'\\''")}' value; printf '\\n' >&2; printf '%s' "$value"`],
-    stdin: "inherit",
-    stdout: "piped",
-    stderr: "inherit",
-  });
-  const output = command.outputSync();
-  if (!output.success) throw new Error(`Unable to read ${label}`);
-  return new TextDecoder().decode(output.stdout);
-}
-
-const userId = await prompt("Administrator ID: ");
-const name = await prompt("Full name: ");
-const email = (await prompt("School email: ")).toLowerCase();
+const userId = Deno.env.get("BOOTSTRAP_ADMIN_ID") || await promptSync("Administrator ID: ");
+const name = Deno.env.get("BOOTSTRAP_ADMIN_NAME") || await promptSync("Full name: ");
+const email = (Deno.env.get("BOOTSTRAP_ADMIN_EMAIL") || await promptSync("School email: ")).toLowerCase();
 const expectedDomain = (Deno.env.get("AUTH_ALLOWED_EMAIL_DOMAIN") ?? "spud.edu.ph").toLowerCase();
 if (!email.endsWith(`@${expectedDomain}`)) throw new Error(`Email must use @${expectedDomain}`);
-const password = promptSecret("Password: ");
-const confirmation = promptSecret("Confirm password: ");
+const password = Deno.env.get("BOOTSTRAP_ADMIN_PASSWORD") || await promptSync("Password: ");
+const confirmation = Deno.env.get("BOOTSTRAP_ADMIN_PASSWORD") ? password : await promptSync("Confirm password: ");
 if (password !== confirmation) throw new Error("Passwords do not match");
 if (password.length < 14) throw new Error("Password must contain at least 14 characters");
 
@@ -52,7 +31,10 @@ try {
   const existing = await connection.queryObject<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM users WHERE lower(COALESCE(role, 'user')) = 'admin'",
   );
-  if (Number(existing.rows[0]?.count ?? 0) > 0) throw new Error("An administrator already exists; refusing bootstrap");
+  if (Number(existing.rows[0]?.count ?? 0) > 0) {
+    console.log("An administrator already exists; skipping bootstrap.");
+    Deno.exit(0);
+  }
 
   const role = await connection.queryObject<{ id: number }>(
     "SELECT id FROM roles WHERE lower(role_name) = 'admin' LIMIT 1",
@@ -72,7 +54,7 @@ try {
     [userId, passwordHash],
   );
   await connection.queryArray("COMMIT");
-  console.log(`Administrator ${userId} created.`);
+  console.log(`Administrator ${userId} created successfully.`);
 } catch (error) {
   await connection.queryArray("ROLLBACK").catch(() => undefined);
   throw error;

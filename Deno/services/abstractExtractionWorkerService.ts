@@ -343,7 +343,11 @@ export async function verifyAbstractWorkerDependencies(): Promise<void> {
 }
 
 export async function startAbstractWorker(): Promise<() => void> {
-  await verifyAbstractWorkerDependencies();
+  try {
+    await verifyAbstractWorkerDependencies();
+  } catch (err) {
+    console.warn("[abstract-worker] Optional extraction CLI dependencies missing (OCR/PDF parsing disabled):", err instanceof Error ? err.message : String(err));
+  }
   const workerId = `abstract-${crypto.randomUUID()}`;
   let running = false;
   const run = async () => {

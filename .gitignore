@@ -51,6 +51,8 @@ Deno/logs/
 uploads/
 logs/
 *.log
+*.exe
+initdb_log.txt
 
 # Local tooling and obsolete planning material
 .claude/
