@@ -1,12 +1,17 @@
-# start.ps1
-# PowerShell entry script for starting PeAS on Windows
+#Requires -Version 7.2
 [CmdletBinding()]
-param(
-    [switch]$Foreground
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
+Set-Location $repoRoot
 
-# Delegate to start-native.ps1
-& (Join-Path $repoRoot 'start-native.ps1') -Foreground:$Foreground
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    docker compose version *> $null
+    if ($LASTEXITCODE -eq 0) {
+        & docker compose up --build
+        exit $LASTEXITCODE
+    }
+}
+
+throw 'Docker Desktop with Docker Compose is required to run PeAS.'
