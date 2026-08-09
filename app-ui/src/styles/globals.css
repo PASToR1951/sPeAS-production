@@ -2094,9 +2094,10 @@ body:has([id^="react-"][id$="-admin-root"]) {
   color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
+  flex: 1 1 126px;
   gap: 12px;
   min-height: 56px;
-  min-width: 126px;
+  min-width: 0;
   padding: 8px 16px;
   text-align: left;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease, background-color 0.16s ease;
@@ -2146,6 +2147,7 @@ body:has([id^="react-"][id$="-admin-root"]) {
   display: grid;
   gap: 2px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .peas-category-filter__copy span:first-child {
@@ -2153,6 +2155,7 @@ body:has([id^="react-"][id$="-admin-root"]) {
   font-size: 1rem;
   font-weight: 800;
   line-height: 1.1;
+  white-space: normal;
 }
 
 .peas-category-filter__copy span:last-child {
@@ -2889,8 +2892,8 @@ body:has([id^="react-"][id$="-admin-root"]) {
 /* Canonical reporting surfaces */
 .peas-dashboard-header-actions,
 .peas-report-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 8px; }
-.peas-dashboard-range { color: var(--muted-foreground); display: grid; font-size: .68rem; font-weight: 800; gap: 4px; }
-.peas-dashboard-range select { background: var(--card); border: 1px solid var(--border-soft); border-radius: 8px; color: var(--foreground); font: inherit; min-height: 38px; padding: 0 10px; }
+.peas-dashboard-range { color: var(--muted-foreground); display: grid; flex: 1 1 220px; font-size: .68rem; font-weight: 800; gap: 4px; min-width: 0; }
+.peas-dashboard-range select { background: var(--card); border: 1px solid var(--border-soft); border-radius: 8px; color: var(--foreground); font: inherit; min-height: 38px; min-width: 0; padding: 0 10px; width: 100%; }
 .peas-dashboard-stale-warning,
 .peas-report-stale-warning { background: var(--surface-muted); border-radius: 10px; color: var(--muted-foreground); margin: 0; padding: 10px 12px; }
 .peas-dashboard-attention { background: var(--card); border: 1px solid var(--border-soft); border-radius: 14px; box-shadow: var(--shadow-sm); padding: 18px; }
@@ -3012,6 +3015,9 @@ body:has([id^="react-"][id$="-admin-root"]) {
   .peas-report-actions { align-items: stretch; width: 100%; }
   .peas-dashboard-header-actions > *,
   .peas-report-actions > * { flex: 1 1 auto; }
+  .peas-dashboard-header-actions .peas-dashboard-range,
+  .peas-dashboard-header-actions > button { min-width: 0; }
+  .peas-dashboard-header-actions > button { align-self: flex-start; flex: 0 1 120px; margin-top: 20px; }
   .peas-dashboard-attention__grid,
   .peas-reports-page > .peas-reports-grid { grid-template-columns: 1fr; }
 }
@@ -9532,6 +9538,7 @@ body:has(#react-public-root) {
 }
 
 .peas-public-mobile-panel > .peas-public-repository-button {
+  color: #fff;
   margin-top: 4px;
   width: 100%;
 }
