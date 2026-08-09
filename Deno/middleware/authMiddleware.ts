@@ -1,7 +1,7 @@
 import { Context, Next } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { getSessionFromHeaders } from "../services/sessionService.ts";
 
-export const APP_ROLES = ["admin", "publisher", "user"] as const;
+export const APP_ROLES = ["admin"] as const;
 export type AppRole = typeof APP_ROLES[number];
 
 export const CAPABILITIES = [
@@ -18,17 +18,15 @@ export type Capability = typeof CAPABILITIES[number];
 
 const ROLE_CAPABILITIES: Record<AppRole, ReadonlySet<Capability>> = {
     admin: new Set(CAPABILITIES),
-    publisher: new Set(["news:manage", "documents:upload"]),
-    user: new Set(),
 };
 
-export function normalizeAppRole(value: unknown): AppRole {
-    const role = String(value ?? "user").trim().toLowerCase();
-    return APP_ROLES.includes(role as AppRole) ? role as AppRole : "user";
+export function normalizeAppRole(value: unknown): AppRole | null {
+    return String(value ?? "").trim().toLowerCase() === "admin" ? "admin" : null;
 }
 
 export function hasCapability(role: unknown, capability: Capability): boolean {
-    return ROLE_CAPABILITIES[normalizeAppRole(role)].has(capability);
+    const normalized = normalizeAppRole(role);
+    return normalized ? ROLE_CAPABILITIES[normalized].has(capability) : false;
 }
 
 export async function isAuthenticated(ctx: Context, next: Next) {
@@ -48,7 +46,13 @@ export async function isAuthenticated(ctx: Context, next: Next) {
         return;
     }
 
-    ctx.state.user = { id: session.id, role: normalizeAppRole(session.role) };
+    const role = normalizeAppRole(session.role);
+    if (!role) {
+        ctx.response.status = 403;
+        ctx.response.body = { error: "Administrator access required" };
+        return;
+    }
+    ctx.state.user = { id: session.id, role };
     // Run downstream middleware outside the authentication error boundary so
     // application and database failures retain their real status/error path.
     await next();
@@ -70,7 +74,8 @@ export function requireAnyRole(...roles: AppRole[]) {
     const allowed = new Set(roles);
     return async (ctx: Context, next: Next) => {
         const user = ctx.state.user;
-        if (!user || !allowed.has(normalizeAppRole(user.role))) {
+        const normalized = normalizeAppRole(user?.role);
+        if (!normalized || !allowed.has(normalized)) {
             ctx.response.status = 403;
             ctx.response.body = { error: "Forbidden" };
             return;

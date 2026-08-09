@@ -116,7 +116,6 @@ export const auth = betterAuth({
       role: {
         type: "string",
         required: false,
-        defaultValue: "user",
         input: false,
       },
     },
@@ -240,9 +239,8 @@ export const auth = betterAuth({
     },
     user: {
       create: {
-        // Only Microsoft sign-in can implicitly create users (password
-        // sign-up is disabled), so this hook is the auto-provision gate.
-        // deno-lint-ignore require-await
+        // Accounts are provisioned explicitly by an operator. Microsoft may
+        // link to an existing administrator, but it may never create one.
         before: async (user) => {
           const email = (user.email ?? "").toLowerCase();
           if (!email.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
@@ -251,7 +249,9 @@ export const auth = betterAuth({
                 `Only @${ALLOWED_EMAIL_DOMAIN} accounts can sign in to sPeAS.`,
             });
           }
-          return { data: { ...user, role: "user" } };
+          throw new APIError("FORBIDDEN", {
+            message: "This administrator account has not been provisioned in PeAS.",
+          });
         },
       },
     },

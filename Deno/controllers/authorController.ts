@@ -577,8 +577,8 @@ export const getAuthorProfile = async (ctx: Context) => {
     // analytics best-effort so a reporting outage cannot break the profile.
     try {
       const role = String((await getSessionFromHeaders(ctx.request.headers))?.role ?? "").toLowerCase();
-      if (role !== "admin" && role !== "publisher") {
-        await recordAuthorActivity(authorId, role === "user" ? "registered" : "guest").catch(() => undefined);
+      if (role !== "admin") {
+        await recordAuthorActivity(authorId, "guest").catch(() => undefined);
       }
     } catch {
       // Audience resolution/reporting is best-effort and must not turn a

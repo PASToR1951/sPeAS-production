@@ -68,6 +68,9 @@ async function applyMigration(connection: Awaited<ReturnType<typeof pool.connect
 
   await connection.queryArray("BEGIN");
   try {
+    if (Deno.env.get("PEAS_DESTRUCTIVE_MIGRATION_CONFIRMATION") === "RESTORABLE_BACKUP_VERIFIED") {
+      await connection.queryArray("SELECT set_config('peas.backup_verified', 'on', true)");
+    }
     await connection.queryArray(executableSql(migration.sql));
     await connection.queryArray(
       `INSERT INTO public.schema_migrations (migration_id, filename, checksum_sha256, release_id)

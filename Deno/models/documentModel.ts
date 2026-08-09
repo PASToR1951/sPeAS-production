@@ -34,6 +34,8 @@ export interface Document {
   volume?: string;
   issue?: string;
   is_public: boolean;
+  full_access_requestable?: boolean;
+  access_embargo_until?: Date | string | null;
   document_type: DocumentType;
   created_at?: Date;
   updated_at?: Date;

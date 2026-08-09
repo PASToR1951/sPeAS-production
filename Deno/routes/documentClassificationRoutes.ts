@@ -125,11 +125,7 @@ router.put("/api/admin/research-agendas/:id", isAuthenticated, isAdmin, async (c
 
 router.get("/api/topics", async (ctx) => {
   try {
-    const session = await getSessionFromHeaders(ctx.request.headers);
-    // Upload search results must match what the current user can submit.  A
-    // publisher may include a pending proposal in a submission for review;
-    // administrators publish immediately and must choose approved topics.
-    ctx.response.body = await searchTopics(ctx.request.url.searchParams.get("q") ?? "", session?.role === "publisher");
+    ctx.response.body = await searchTopics(ctx.request.url.searchParams.get("q") ?? "", false);
   } catch (error) {
     validationResponse(ctx, error);
   }
@@ -331,7 +327,7 @@ router.get("/api/documents/:id/classification", async (ctx) => {
       ctx.response.body = { error: "Document not found" };
       return;
     }
-    const includePending = session?.role === "admin" || (session?.role === "publisher" && await canModifyPendingUpload(session, id));
+    const includePending = session?.role === "admin";
     ctx.response.body = { classification: await getDocumentClassification(id, includePending) };
   } catch (error) {
     validationResponse(ctx, error);
@@ -354,8 +350,8 @@ router.put("/api/documents/:id/classification", isAuthenticated, requireUpload, 
     );
     const pendingDocument = statusResult.rows[0]?.review_status === "pending_review";
     const classification = await replaceDocumentClassification(id, input, actorFromContext(ctx), {
-      allowPendingTopics: String(ctx.state.user.role) === "publisher" || pendingDocument,
-      allowIncomplete: String(ctx.state.user.role) === "publisher" || pendingDocument,
+      allowPendingTopics: pendingDocument,
+      allowIncomplete: pendingDocument,
     });
     ctx.response.body = { classification };
   } catch (error) {

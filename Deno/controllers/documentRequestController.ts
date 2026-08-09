@@ -2,7 +2,7 @@ import { join, RouterContext } from "../deps.ts";
 import { DocumentRequestModel, DocumentRequest } from "../models/documentRequestModel.ts";
 import { DocumentModel } from "../models/documentModel.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
-import { sendRequestConfirmationEmail, sendApprovedRequestEmail, sendRejectedRequestEmail } from "../services/emailService.ts";
+import { sendApprovedRequestEmail, sendRejectedRequestEmail, sendEmailWithAttachment } from "../services/emailService.ts";
 import { client } from "../db/denopost_conn.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
 import { STORAGE_ROOT } from "../config/storage.ts";
@@ -24,6 +24,7 @@ type CompiledRecord = {
     start_year: number | null;
     end_year: number | null;
     foreword: string | null;
+    review_status?: string;
 };
 
 function formatCompiledTitle(compiled: Pick<CompiledRecord, 'category' | 'volume' | 'start_year' | 'end_year'>, id: number): string {
@@ -80,6 +81,12 @@ function escapeHtml(value: unknown): string {
         .replaceAll("'", "&#39;");
 }
 
+async function requestIpHash(ip: string): Promise<string> {
+    const salt = Deno.env.get("BETTER_AUTH_SECRET") || "peas-request-rate-limit";
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}:${ip}`));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function resolveStoredFilePath(filePath: string): string | null {
     const normalized = filePath.replace(/\\/gu, "/").replace(/^\/+/, "");
     if (!normalized.startsWith("storage/")) return null;
@@ -109,7 +116,11 @@ async function resolveApprovalTarget(request: DocumentRequest): Promise<Approval
         const result = await client.queryObject<CompiledRecord>(
             `SELECT id, category, volume, start_year, end_year, foreword
              FROM compiled_documents
-             WHERE id = $1 AND deleted_at IS NULL`,
+             WHERE id = $1
+               AND deleted_at IS NULL
+               AND review_status = 'approved'
+               AND full_access_requestable IS TRUE
+               AND (access_embargo_until IS NULL OR access_embargo_until <= CURRENT_DATE)`,
             [id],
         );
         const compiled = result.rows[0];
@@ -123,7 +134,17 @@ async function resolveApprovalTarget(request: DocumentRequest): Promise<Approval
         };
     }
 
-    const document = await DocumentModel.getById(id);
+    const result = await client.queryObject<Record<string, unknown>>(
+        `SELECT * FROM documents
+         WHERE id = $1
+           AND deleted_at IS NULL
+           AND review_status = 'approved'
+           AND is_public IS TRUE
+           AND full_access_requestable IS TRUE
+           AND (access_embargo_until IS NULL OR access_embargo_until <= CURRENT_DATE)`,
+        [id],
+    );
+    const document = result.rows[0] as unknown as Awaited<ReturnType<typeof DocumentModel.getById>>;
     if (!document) return null;
     return {
         id,
@@ -148,156 +169,100 @@ export class DocumentRequestController {
     // Create a new document request
     async createRequest(ctx: RouterContext<any, any, any>) {
         try {
-            const body = ctx.request.body();
-            const requestData = await body.value;
+            const requestData = await ctx.request.body({ type: "json" }).value as Record<string, unknown>;
+            if (String(requestData.website ?? "").trim()) {
+                ctx.response.status = 202;
+                ctx.response.body = { status: "awaiting_verification" };
+                return;
+            }
+            const documentId = Number(requestData.document_id);
+            const recordType = requestData.record_type === "compiled" ? "compiled" : requestData.record_type === "document" ? "document" : null;
+            const fullName = String(requestData.full_name ?? "").trim();
+            const email = String(requestData.email ?? "").trim().toLowerCase();
+            const affiliation = String(requestData.affiliation ?? "").trim();
+            const reason = String(requestData.reason ?? "").trim();
+            const reasonDetails = String(requestData.reason_details ?? "").trim();
+            if (!Number.isSafeInteger(documentId) || documentId <= 0 || !recordType || !fullName || !email || !affiliation || !reason || requestData.consent !== true) {
+                ctx.response.status = 400;
+                ctx.response.body = { error: "A valid target, requester identity, reason, and consent are required" };
+                return;
+            }
+            if (fullName.length > 160 || email.length > 254 || affiliation.length > 200 || reason.length > 120 || reasonDetails.length > 2000 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                ctx.response.status = 400;
+                ctx.response.body = { error: "One or more request fields are invalid" };
+                return;
+            }
 
-            // Validate required fields
-            const requiredFields = ['document_id', 'full_name', 'email', 'affiliation', 'reason', 'reason_details'];
-            for (const field of requiredFields) {
-                if (!requestData[field]) {
-                    ctx.response.status = 400;
-                    ctx.response.body = { error: `Missing required field: ${field}` };
+            const existing = await this.documentRequestModel.findActive(String(documentId), recordType, email);
+            if (existing) {
+                ctx.response.status = 200;
+                ctx.response.body = { id: existing.id, status: existing.status, duplicate: true };
+                return;
+            }
+
+            let title = "Requested research";
+            let childDocuments: number[] | undefined;
+            if (recordType === "document") {
+                const document = await DocumentModel.getById(documentId);
+                const eligibility = await client.queryObject<{ allowed: boolean }>(
+                    `SELECT full_access_requestable IS TRUE
+                            AND (access_embargo_until IS NULL OR access_embargo_until <= CURRENT_DATE) AS allowed
+                     FROM documents WHERE id = $1 AND deleted_at IS NULL`, [documentId],
+                );
+                const filePath = document ? await DocumentModel.getDocumentPath(documentId) : null;
+                if (!document || !eligibility.rows[0]?.allowed || document.deleted_at || document.review_status !== "approved" || document.is_public !== true || !(await isReadableFile(filePath))) {
+                    ctx.response.status = 404;
+                    ctx.response.body = { error: "Research is not available for an access request" };
+                    return;
+                }
+                title = document.title || title;
+            } else {
+                const result = await client.queryObject<CompiledRecord>(
+                    `SELECT id, category, volume, start_year, end_year, foreword, review_status
+                     FROM compiled_documents WHERE id = $1 AND deleted_at IS NULL AND review_status = 'approved'
+                       AND full_access_requestable IS TRUE
+                       AND (access_embargo_until IS NULL OR access_embargo_until <= CURRENT_DATE)`,
+                    [documentId],
+                );
+                const compiled = result.rows[0];
+                if (!compiled) {
+                    ctx.response.status = 404;
+                    ctx.response.body = { error: "Compilation is not available for an access request" };
+                    return;
+                }
+                title = formatCompiledTitle(compiled, documentId);
+                const children = await DocumentModel.getContainedDocuments(documentId);
+                childDocuments = children.map((child) => child.id);
+                let available = await isReadableFile(compiled.foreword ? resolveStoredFilePath(compiled.foreword) : null);
+                for (const child of children) if (!available) available = await isReadableFile(await DocumentModel.getDocumentPath(child.id));
+                if (!available) {
+                    ctx.response.status = 409;
+                    ctx.response.body = { error: "Compilation files are unavailable" };
                     return;
                 }
             }
 
-            // Preserve the requested record type so document and compiled IDs
-            // cannot be confused when the two tables contain the same number.
-            const isEntireCollection = requestData.record_type === 'compiled' || !!requestData.is_entire_collection;
-            requestData.is_entire_collection = isEntireCollection;
-            
-            let document;
-            let documentId = parseInt(requestData.document_id);
-
-            // A compiled request must resolve against compiled_documents even if
-            // a regular document happens to use the same numeric ID.
-            document = isEntireCollection ? null : await DocumentModel.getById(documentId);
-
-            // If not found in documents table, check compiled_documents table
-            if (!document) {
-                                try {
-                    const compiledResult = await client.queryObject<CompiledRecord>(`
-                        SELECT cd.*
-                        FROM compiled_documents cd
-                        WHERE cd.id = $1 AND cd.deleted_at IS NULL
-                    `, [documentId]);
-                    
-                    if (compiledResult.rows.length > 0) {
-                        // Create a document-like object from compiled document
-                        const compiledDoc = compiledResult.rows[0];
-                        document = {
-                            id: compiledDoc.id,
-                            title: formatCompiledTitle(compiledDoc, documentId),
-                            is_public: false,
-                            document_type: compiledDoc.category || 'CONFLUENCE',
-                            category: compiledDoc.category,
-                            is_compiled: true,
-                            file_path: ''  // Compiled documents don't typically have a file_path
-                        };
-                                                
-                        // If this is an entire collection request, get child documents
-                        if (isEntireCollection && Array.isArray(requestData.child_document_ids)) {
-                                                        requestData.child_documents = requestData.child_document_ids;
-                        } else if (isEntireCollection) {
-                            // Try to fetch child documents if not provided in request
-                            try {
-                                const childDocsResult = await client.queryObject(`
-                                    SELECT d.id
-                                    FROM documents d
-                                    JOIN compiled_document_items cdi ON d.id = cdi.document_id
-                                    WHERE cdi.compiled_document_id = $1
-                                    AND d.deleted_at IS NULL
-                                `, [documentId]);
-                                
-                                if (childDocsResult.rows.length > 0) {
-                                    requestData.child_documents = childDocsResult.rows.map((row) => {
-                                        const typedRow = row as Record<string, any>;
-                                        return typedRow.id;
-                                    });
-                                                                    }
-                            } catch (childError) {
-                            }
-                        }
-                    }
-                } catch (error) {
-                }
-            }
-
-            // If document still not found, return error
-            if (!document) {
-                ctx.response.status = 404;
-                ctx.response.body = { error: 'Document not found' };
-                return;
-            }
-
-            // Create the request
-            const request = await this.documentRequestModel.create(requestData);
-            
-            // Send confirmation email - moved to background processing to prevent server crashes
-            let emailSuccess = false;
-            
-            // Create response first - immediately return success to the client
-            ctx.response.status = 201;
-            ctx.response.body = { 
-                ...request, 
-                email_status: 'processing'
-            };
-            
-            // Process email asynchronously after responding to the client
-            setTimeout(async () => {
-                try {
-                                    
-                // Extract document info
-                const documentInfo = {
-                    title: document.title || 'Requested Document',
-                    author: document.author || undefined,
-                    category: document.category || undefined,
-                    researchAgenda: document.research_agenda || undefined,
-                    abstract: document.abstract || undefined
-                };
-                
-                // Extract request info
-                const requestInfo = {
-                    affiliation: requestData.affiliation,
-                    reason: requestData.reason,
-                    reasonDetails: requestData.reason_details
-                };
-                
-                // Generate request ID - this format matches what we show in the UI
-                const requestId = `REQ-${request.id || Date.now()}`;
-                
-                    // Send the confirmation email with error handling
-                    try {
-                        emailSuccess = await sendRequestConfirmationEmail(
-                    requestData.email,
-                    requestData.full_name,
-                    documentInfo,
-                    requestInfo,
-                    requestId
-                        );
-                        
-                                            } catch (innerEmailError) {
-                        emailSuccess = false;
-                    }
-                    
-                    // Update request with email status
-                    try {
-                        if (request.id === undefined) {
-                            throw new Error("Document request is missing an ID");
-                        }
-                        await this.documentRequestModel.update(request.id, {
-                            email_sent: emailSuccess,
-                            email_error: emailSuccess ? undefined : "Failed to send confirmation email"
-                });
-                    } catch (updateError) {
-                    }
-                } catch (outerEmailError) {
-            }
-            }, 100);
-            
+            const request = await this.documentRequestModel.create({
+                document_id: String(documentId), record_type: recordType, full_name: fullName, email,
+                affiliation, reason, reason_details: reasonDetails || `Request for access: ${reason}`,
+                is_entire_collection: recordType === "compiled", child_documents: childDocuments,
+                request_ip_hash: await requestIpHash(ctx.request.ip || "unknown"),
+            });
+            if (!request.id) throw new Error("Request ID was not generated");
+            const verificationExpiry = new Date(Date.now() + 30 * 60 * 1000);
+            const rawToken = await this.documentRequestModel.createVerificationToken(request.id, verificationExpiry);
+            const verificationUrl = `${getPublicOrigin(ctx)}/api/document-requests/verify?token=${encodeURIComponent(rawToken)}`;
+            const text = `Hello ${fullName},\n\nVerify your email to submit request REQ-${request.id} for “${title}”: ${verificationUrl}\n\nThis link expires in 30 minutes.`;
+            const result = await sendEmailWithAttachment(email, "Verify your PeAS document request", text,
+                `<p>Hello ${escapeHtml(fullName)},</p><p>Verify your email to submit request <strong>REQ-${request.id}</strong> for “${escapeHtml(title)}”.</p><p><a href="${escapeHtml(verificationUrl)}">Verify request email</a></p><p>This link expires in 30 minutes.</p>`);
+            const emailSent = result === true || (typeof result === "object" && result?.success === true);
+            await this.documentRequestModel.update(request.id, { email_sent: emailSent, email_error: emailSent ? undefined : "Verification email delivery failed" });
+            ctx.response.status = 202;
+            ctx.response.body = { id: request.id, status: "awaiting_verification", verificationEmailSent: emailSent };
         } catch (error) {
-            ctx.response.status = 500;
-            ctx.response.body = { error: 'Internal server error' };
+            const duplicate = error instanceof Error && /uq_document_requests_active_email_target|duplicate key/i.test(error.message);
+            ctx.response.status = duplicate ? 409 : 500;
+            ctx.response.body = { error: duplicate ? "An active request already exists" : "Unable to submit the access request" };
         }
     }
 
@@ -348,6 +313,70 @@ export class DocumentRequestController {
         }
     }
 
+    private async approveOne(requestId: number, reviewedBy: string, reviewNotes?: string) {
+        const request = await this.documentRequestModel.getById(requestId);
+        if (!request) return { id: requestId, status: "failed", code: "NOT_FOUND" } as const;
+        if (request.status === "approved") return { id: requestId, status: "already_approved", notificationStatus: "unchanged" } as const;
+        if (request.status !== "pending" || !request.email_verified_at) {
+            return { id: requestId, status: "failed", code: "NOT_VERIFIED_PENDING" } as const;
+        }
+        const target = await resolveApprovalTarget(request);
+        if (!target) return { id: requestId, status: "failed", code: "TARGET_UNAVAILABLE" } as const;
+        if (target.recordType === "document") {
+            if (!(await isReadableFile(await DocumentModel.getDocumentPath(target.id)))) {
+                return { id: requestId, status: "failed", code: "FILE_UNAVAILABLE" } as const;
+            }
+        } else {
+            const childIds = request.child_documents ?? [];
+            let available = await isReadableFile(target.filePath ? resolveStoredFilePath(target.filePath) : null);
+            for (const childId of childIds) if (!available) available = await isReadableFile(await DocumentModel.getDocumentPath(childId));
+            if (!available) return { id: requestId, status: "failed", code: "FILE_UNAVAILABLE" } as const;
+        }
+        const state = await this.documentRequestModel.approvePending(requestId, reviewedBy, reviewNotes);
+        if (state === "missing") return { id: requestId, status: "failed", code: "NOT_FOUND" } as const;
+        if (state === "not_pending") return { id: requestId, status: "failed", code: "STATUS_CHANGED" } as const;
+        if (state === "already_approved") return { id: requestId, status: "already_approved", notificationStatus: "unchanged" } as const;
+        await this.documentRequestModel.revokeAccessTokensForRequest(requestId);
+        await this.documentRequestModel.enqueueEmailJob(requestId, "approval");
+        return { id: requestId, status: "approved", notificationStatus: "queued" } as const;
+    }
+
+    async verifyRequestEmail(ctx: RouterContext<any, any, any>) {
+        const token = ctx.request.url.searchParams.get("token") ?? "";
+        const request = token ? await this.documentRequestModel.verifyEmail(token) : null;
+        ctx.response.headers.set("Cache-Control", "no-store");
+        ctx.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+        ctx.response.headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+        ctx.response.status = request ? 200 : 400;
+        ctx.response.type = "html";
+        ctx.response.body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PeAS request verification</title><style>body{font:16px/1.5 system-ui,sans-serif;background:#f4f7f5;color:#17211d}main{max-width:620px;margin:10vh auto;padding:32px;border-radius:16px;background:#fff;box-shadow:0 12px 36px #163b2b1a}a{color:#087f5b;font-weight:700}</style></head><body><main><h1>${request ? "Email verified" : "Verification link unavailable"}</h1><p>${request ? `Request REQ-${request.id} is now awaiting administrator review. Updates will be sent by email.` : "This verification link is invalid, expired, or has already been used."}</p><a href="/index.html">Return to PeAS</a></main></body></html>`;
+    }
+
+    async bulkApprove(ctx: RouterContext<any, any, any>) {
+        const body = await ctx.request.body({ type: "json" }).value as { requestIds?: unknown };
+        const rawIds = Array.isArray(body.requestIds) ? body.requestIds : [];
+        const requestIds = [...new Set(rawIds.map(Number))];
+        if (requestIds.length < 1 || requestIds.length > 100 || requestIds.some((id) => !Number.isSafeInteger(id) || id <= 0) || requestIds.length !== rawIds.length) {
+            ctx.response.status = 400;
+            ctx.response.body = { error: "requestIds must contain 1–100 unique positive integers" };
+            return;
+        }
+        const results = [];
+        for (const id of requestIds) results.push(await this.approveOne(id, String(ctx.state.user.id)));
+        const approved = results.filter((result) => result.status === "approved" || result.status === "already_approved").length;
+        ctx.response.body = { requested: requestIds.length, approved, failed: requestIds.length - approved, results };
+    }
+
+    async resendAccessLink(ctx: RouterContext<any, any, any>) {
+        const id = Number(ctx.params?.id);
+        const request = Number.isSafeInteger(id) ? await this.documentRequestModel.getById(id) : null;
+        if (!request) { ctx.response.status = 404; ctx.response.body = { error: "Request not found" }; return; }
+        if (request.status !== "approved") { ctx.response.status = 409; ctx.response.body = { error: "Only approved requests can receive a replacement link" }; return; }
+        await this.documentRequestModel.revokeAccessTokensForRequest(id);
+        await this.documentRequestModel.enqueueEmailJob(id, "approval");
+        ctx.response.body = { success: true, notificationStatus: "queued" };
+    }
+
     // Update request status (admin only)
     async updateRequestStatus(ctx: RouterContext<any, any, any>) {
         try {
@@ -382,109 +411,24 @@ export class DocumentRequestController {
             }
 
             if (status === 'approved') {
-                const target = await resolveApprovalTarget(request);
-                if (!target) {
-                    ctx.response.status = 404;
-                    ctx.response.body = { error: "The requested document or compilation no longer exists" };
+                const result = await this.approveOne(requestIdNum, reviewedBy, reviewNotes);
+                if (result.status === "failed") {
+                    ctx.response.status = result.code === "NOT_FOUND" ? 404 : 409;
+                    ctx.response.body = { error: "Approval could not be completed", code: result.code };
                     return;
                 }
-
-                if (target.recordType === 'document') {
-                    const resolvedPath = await DocumentModel.getDocumentPath(target.id);
-                    if (!(await isReadableFile(resolvedPath))) {
-                        ctx.response.status = 409;
-                        ctx.response.body = { error: "The document file is unavailable, so access cannot be granted" };
-                        return;
-                    }
-                } else {
-                    const children = await DocumentModel.getContainedDocuments(target.id);
-                    let hasAvailableFile = await isReadableFile(target.filePath ? resolveStoredFilePath(target.filePath) : null);
-                    for (const child of children) {
-                        if (hasAvailableFile) break;
-                        hasAvailableFile = await isReadableFile(await DocumentModel.getDocumentPath(child.id));
-                    }
-                    if (!hasAvailableFile) {
-                        ctx.response.status = 409;
-                        ctx.response.body = { error: "The compilation has no files available for access" };
-                        return;
-                    }
-                }
-
-                try {
-                    const expiresAt = getAccessTokenExpiry();
-                    const updated = await this.documentRequestModel.updateStatus(
-                        requestIdNum, 'approved', reviewedBy, reviewNotes,
-                    );
-                    if (!updated) throw new Error("Failed to update request status");
-
-                    await this.documentRequestModel.revokeAccessTokensForRequest(requestIdNum);
-                    const accessGrant = await this.documentRequestModel.createAccessToken(
-                        requestIdNum,
-                        String(target.id),
-                        target.recordType,
-                        request.email,
-                        expiresAt,
-                    );
-                    const secureAccessUrl =
-                        `${getPublicOrigin(ctx)}/api/document-requests/${requestIdNum}/access?token=${encodeURIComponent(accessGrant.rawToken)}`;
-
-                    const emailResult = await sendApprovedRequestEmail(
-                        request.email,
-                        request.full_name,
-                        target.title,
-                        target.filePath || '',
-                        String(request.id || requestIdNum),
-                        target.author,
-                        target.category,
-                        target.keywords,
-                        undefined,
-                        {
-                            secureDownloadUrl: secureAccessUrl,
-                            expiresAt,
-                            attachDocument: false,
-                            accessLabel: target.recordType === 'compiled' ? 'compilation' : 'document',
-                        }
-                    );
-                    if (emailResult === false || (typeof emailResult === 'object' && !emailResult.success)) {
-                        throw new Error("Email service did not accept the approval message");
-                    }
-
-                    ctx.response.status = 200;
-                    ctx.response.body = {
-                        success: true,
-                        emailSent: true,
-                        recordType: target.recordType,
-                        accessExpiresAt: expiresAt.toISOString()
-                    };
-                } catch (_error) {
-                    await this.documentRequestModel.returnApprovalToPending(requestIdNum).catch(() => undefined);
-                    ctx.response.status = 502;
-                    ctx.response.body = {
-                        error: "Approval could not be completed because the magic-link email was not sent. The request remains pending.",
-                        code: "APPROVAL_EMAIL_FAILED",
-                    };
-                }
+                ctx.response.body = { success: true, ...result };
             } else if (status === 'rejected') {
-                try {
-                    await this.documentRequestModel.revokeAccessTokensForRequest(requestIdNum);
-                    const updated = await this.documentRequestModel.updateStatus(
-                        requestIdNum, 'rejected', reviewedBy, reviewNotes,
-                    );
-                    if (!updated) throw new Error("Failed to update request status");
-                    const target = await resolveApprovalTarget(request);
-                    await sendRejectedRequestEmail(
-                        request.email,
-                        request.full_name,
-                        target?.title || "Requested Document",
-                        reviewNotes || "Your request has been rejected by an administrator.",
-                        String(request.id || requestIdNum),
-                    );
-                    ctx.response.status = 200;
-                    ctx.response.body = { success: true, emailSent: true };
-                } catch (_error) {
-                    ctx.response.status = 502;
-                    ctx.response.body = { error: "The request was rejected, but the notification email could not be sent" };
+                if (request.status !== "pending" || !request.email_verified_at) {
+                    ctx.response.status = 409;
+                    ctx.response.body = { error: "Only verified pending requests can be rejected" };
+                    return;
                 }
+                await this.documentRequestModel.revokeAccessTokensForRequest(requestIdNum);
+                const updated = await this.documentRequestModel.updateStatus(requestIdNum, 'rejected', reviewedBy, reviewNotes);
+                if (!updated) throw new Error("Failed to update request status");
+                await this.documentRequestModel.enqueueEmailJob(requestIdNum, "rejection");
+                ctx.response.body = { success: true, notificationStatus: "queued" };
             }
         } catch (error) {
             ctx.response.status = 500;
@@ -558,12 +502,15 @@ export class DocumentRequestController {
 
                 const compiledTitle = formatCompiledTitle(compiled, recordId);
 
-                const children = await DocumentModel.getContainedDocuments(recordId);
+                const scope = access.scope && typeof access.scope === "object" ? access.scope : {};
+                const allowedChildren = new Set(Array.isArray(scope.childDocumentIds) ? scope.childDocumentIds.map(Number) : []);
+                const children = (await DocumentModel.getContainedDocuments(recordId)).filter((child) => allowedChildren.has(child.id));
+                const forewordAllowed = scope.foreword === true;
                 const item = ctx.request.url.searchParams.get("item");
                 if (!item) {
                     const baseUrl = `${ctx.request.url.pathname}?token=${encodeURIComponent(token)}`;
                     const links = [
-                        compiled.foreword
+                        compiled.foreword && forewordAllowed
                             ? `<li><a href="${baseUrl}&amp;item=foreword">Download foreword</a></li>`
                             : "",
                         ...children.map((child) =>
@@ -581,7 +528,7 @@ export class DocumentRequestController {
 
                 let filePath: string | null = null;
                 let fileName = "foreword.pdf";
-                if (item === "foreword") {
+                if (item === "foreword" && forewordAllowed) {
                     filePath = compiled.foreword ? resolveStoredFilePath(compiled.foreword) : null;
                 } else {
                     const childId = Number(item);
@@ -600,6 +547,8 @@ export class DocumentRequestController {
                 ctx.response.headers.set("Content-Disposition", `attachment; filename="${fileName}"`);
                 ctx.response.headers.set("Content-Type", getContentType(fileName));
                 ctx.response.headers.set("Cache-Control", "no-store");
+                ctx.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+                ctx.response.headers.set("X-Content-Type-Options", "nosniff");
                 ctx.response.body = await Deno.readFile(filePath);
                 await recordRepositoryActivity({ recordType: "compiled", recordId, audience: "approved_request", action: "download" }).catch(() => undefined);
                 return;
@@ -653,11 +602,14 @@ export class DocumentRequestController {
                 // Download access should not fail only because audit logging failed.
             }
 
-            ctx.response.headers.set("Content-Disposition", `attachment; filename="${fileName}"`);
+            const inline = ctx.request.url.searchParams.get("disposition") === "inline" && getContentType(fileName) === "application/pdf";
+            ctx.response.headers.set("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${fileName}"`);
             ctx.response.headers.set("Content-Type", getContentType(fileName));
             ctx.response.headers.set("Cache-Control", "no-store");
+            ctx.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+            ctx.response.headers.set("X-Content-Type-Options", "nosniff");
             ctx.response.body = await Deno.readFile(filePath);
-            await recordRepositoryActivity({ recordType: "document", recordId, audience: "approved_request", action: "download" }).catch(() => undefined);
+            await recordRepositoryActivity({ recordType: "document", recordId, audience: "approved_request", action: inline ? "view" : "download" }).catch(() => undefined);
         } catch (error) {
             ctx.response.status = 500;
             console.error("Approved document delivery failed", { code: "APPROVED_DOCUMENT_DELIVERY_FAILED" });
@@ -723,5 +675,44 @@ export class DocumentRequestController {
             ctx.response.status = 500;
             ctx.response.body = { error: 'Internal server error' };
         }
+    }
+}
+
+export async function processDocumentRequestEmailQueue(model: DocumentRequestModel): Promise<boolean> {
+    const job = await model.claimEmailJob();
+    if (!job) return false;
+    try {
+        const request = await model.getById(job.request_id);
+        if (!request) throw new Error("Request no longer exists");
+        const target = await resolveApprovalTarget(request);
+        if (!target) throw new Error("Requested research is unavailable");
+        if (job.job_type === "rejection") {
+            const sent = await sendRejectedRequestEmail(request.email, request.full_name, target.title,
+                request.review_notes || "Your request was not approved.", String(request.id));
+            if (sent === false || (typeof sent === "object" && !sent.success)) throw new Error("Rejection email was not accepted");
+        } else {
+            if (request.status !== "approved") throw new Error("Request is no longer approved");
+            const expiresAt = getAccessTokenExpiry();
+            const scope = target.recordType === "compiled"
+                ? { foreword: Boolean(target.filePath), childDocumentIds: request.child_documents ?? [] }
+                : {};
+            await model.revokeAccessTokensForRequest(job.request_id);
+            const grant = await model.createAccessToken(job.request_id, String(target.id), target.recordType, request.email, expiresAt, scope);
+            const origin = (Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("APP_BASE_URL") || "http://localhost:8000").replace(/\/+$/, "");
+            const baseUrl = `${origin}/api/document-requests/${job.request_id}/access?token=${encodeURIComponent(grant.rawToken)}`;
+            const accessUrl = target.recordType === "document" ? `${baseUrl}&disposition=inline` : baseUrl;
+            const sent = await sendApprovedRequestEmail(request.email, request.full_name, target.title, target.filePath || "",
+                String(request.id), target.author, target.category, target.keywords, undefined,
+                { secureDownloadUrl: accessUrl, expiresAt, attachDocument: false, accessLabel: target.recordType === "compiled" ? "compilation" : "document" });
+            if (sent === false || (typeof sent === "object" && !sent.success)) {
+                await model.revokeAccessTokensForRequest(job.request_id);
+                throw new Error("Approval email was not accepted");
+            }
+        }
+        await model.finishEmailJob(job.id);
+        return true;
+    } catch (error) {
+        await model.finishEmailJob(job.id, error instanceof Error ? error.message : String(error));
+        return true;
     }
 }

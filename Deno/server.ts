@@ -38,7 +38,7 @@ import { unifiedArchiveRoutes, unifiedArchiveAllowedMethods } from "./routes/uni
 import { authRoutes } from "./routes/authRoutes.ts"; // Transitional logout shims
 import { createDocumentRequestRoutes } from "./routes/documentRequestRoutes.ts";
 import { DocumentRequestModel } from "./models/documentRequestModel.ts";
-import { DocumentRequestController } from "./controllers/documentRequestController.ts";
+import { DocumentRequestController, processDocumentRequestEmailQueue } from "./controllers/documentRequestController.ts";
 import { emailRoutes } from "./routes/emailRoutes.ts"; // Import email routes
 import { authorVisitsRoutes, authorVisitsAllowedMethods } from "./routes/authorVisitsRoutes.ts"; // Import author visits routes
 import { authorReferenceRoutes, authorReferenceAllowedMethods } from "./routes/authorReferenceRoutes.ts";
@@ -290,9 +290,9 @@ app.use(async (ctx, next) => {
   try {
     const session = await getSessionFromHeaders(ctx.request.headers);
     const role = String(session?.role ?? "").toLowerCase();
-    if (role === "admin" || role === "publisher") return;
+    if (role === "admin") return;
 
-    const audience = role === "user" ? "registered" : "guest";
+    const audience = "guest";
     const current = await readAnalyticsSessionCookie(ctx.request.headers);
     const startsVisit = !current || current.audience !== audience;
     const recorded = await recordPublicTraffic({ pageKey, audience, startsVisit });
@@ -1444,6 +1444,19 @@ const documentRequestModel = new DocumentRequestModel();
 const documentRequestController = new DocumentRequestController(documentRequestModel);
 const documentRequestRoutes = createDocumentRequestRoutes(documentRequestController);
 
+// Durable request-email jobs are claimed atomically. A failed delivery is
+// rescheduled by the model without exposing or persisting a raw access token.
+setInterval(() => {
+  void processDocumentRequestEmailQueue(documentRequestModel).catch((error) =>
+    console.error("Document request email worker failed", error)
+  );
+}, 5_000);
+setInterval(() => {
+  void documentRequestModel.expireUnverifiedRequests().catch((error) =>
+    console.error("Unverified document request cleanup failed", error)
+  );
+}, 15 * 60_000);
+
 // Add document request routes
 app.use(documentRequestRoutes.routes());
 app.use(documentRequestRoutes.allowedMethods());
@@ -1693,7 +1706,7 @@ router.get("/api/document-views/stats", isAuthenticated, requireCapability("repo
 });
 
 // Add endpoint to fetch the foreword specifically for a category type of compiled document
-router.get("/api/compiled-documents/:id/foreword", isAuthenticated, async (ctx) => {
+router.get("/api/compiled-documents/:id/foreword", isAuthenticated, isAdmin, async (ctx) => {
   const id = ctx.params.id;
   
   if (!id) {

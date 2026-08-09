@@ -414,7 +414,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                 {
                   id: "access",
                   label: "Access",
-                  description: "Gives guests, registered readers, publishers, and administrators the right experience while protected files remain controlled.",
+                  description: "Gives public visitors an abstract-first repository while administrators manage protected files and access requests.",
                 },
               ],
               ctaLabel: "Explore the repository",
@@ -605,18 +605,18 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   items: [
                     {
                       id: "how-to-sign-in",
-                      question: "How do I sign in?",
-                      answer: "Open Sign in and use your provisioned School ID and password. If Microsoft sign-in is enabled for the deployment, eligible SPUD accounts can use the Microsoft option.",
+                      question: "Do I need an account?",
+                      answer: "No visitor account is needed. Browse metadata and abstracts publicly, then request a full paper from its research page.",
                     },
                     {
                       id: "forgot-password",
-                      question: "What if I forgot my password?",
-                      answer: "Select Forgot password on the sign-in page, enter your registered email address, and follow the time-limited reset link sent to you.",
+                      question: "Who can sign in?",
+                      answer: "Only explicitly provisioned PeAS administrators can sign in. Visitors do not need accounts.",
                     },
                     {
                       id: "full-paper-access",
                       question: "Why can't I open or download a full paper?",
-                      answer: "PeAS does not expose protected files through direct storage links. Guests receive approved metadata and previews; signed-in readers can open or download a full file only when the backend confirms their session and the document's access policy.",
+                      answer: "PeAS publicly provides approved metadata and the reviewed abstract. Full viewing and downloads require an administrator-approved, time-limited access link sent to the verified requester email.",
                     },
                     {
                       id: "outsider-access-request",
@@ -626,23 +626,23 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   ],
                 },
                 {
-                  id: "reading-and-personal-tools",
-                  label: "Reading and personal tools",
+                  id: "verified-request-access",
+                  label: "Approved request access",
                   items: [
                     {
-                      id: "signed-in-tools",
-                      question: "What can signed-in readers do?",
-                      answer: "Signed-in readers can use the full PDF reader where permitted, save items, review their history, mark records as read, and create private bookmarks, highlights, notes, and tags.",
+                      id: "verify-request-email",
+                      question: "Why must I verify my email?",
+                      answer: "Email verification prevents forged requests and ensures the approval link reaches the person who submitted the request.",
                     },
                     {
-                      id: "private-annotations",
-                      question: "Are annotations private?",
-                      answer: "Yes. Annotations are owner-scoped and are not visible to other readers. They are stored separately from saved items, operational history, and Mark as Read state.",
+                      id: "approved-link-expiry",
+                      question: "How long does an approved link work?",
+                      answer: "The default access period is seven days. Administrators can revoke a link or issue a replacement link when needed.",
                     },
                     {
-                      id: "saved-history-read-state",
-                      question: "How do Saved Items, History, and Mark as Read differ?",
-                      answer: "Saved Items is your intentional collection. History records successful repository activity. Mark as Read is an explicit reading state and does not change analytics. PeAS stores these states separately.",
+                      id: "approved-view-download",
+                      question: "Can I view and download an approved paper?",
+                      answer: "Yes. A valid approved link supports browser viewing for PDFs and downloading until it expires or is revoked.",
                     },
                   ],
                 },
@@ -653,7 +653,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     {
                       id: "who-can-upload",
                       question: "Who can upload documents or publish news?",
-                      answer: "Authorized administrators and content publishers can upload documents or manage Department News. Publisher uploads are private and remain pending review until an administrator approves them.",
+                      answer: "Only authorized administrators can upload documents, manage Department News, review access requests, or change repository settings.",
                     },
                     {
                       id: "contact-office",

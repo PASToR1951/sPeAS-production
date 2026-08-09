@@ -313,7 +313,8 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
                 pages: document.pages || "",
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 date_uploaded: document.created_at,
-                editor: document.editor || null
+                editor: document.editor || null,
+                full_access_requestable: document.full_access_requestable !== false && (!document.access_embargo_until || new Date(document.access_embargo_until) <= new Date())
                 // Note: Not including sensitive fields like file_path
             } as DocumentResult
         };
@@ -1159,7 +1160,7 @@ export const documentRoutes: Route[] = [
     { method: "GET", path: "/documents", handler: getDocuments },
     { method: "GET", path: "/documents/years", handler: getAvailablePublicationYears },
     { method: "GET", path: "/documents/:id", handler: getDocumentById },
-    { method: "GET", path: "/documents/:id/download", handler: downloadDocument },
+    { method: "GET", path: "/documents/:id/download", handler: downloadDocument, middleware: [isAuthenticated, isAdmin] },
     { method: "GET", path: "/documents/:id/authors", handler: getDocumentAuthorsById },
     { method: "POST", path: "/documents", handler: createDocument, middleware: [isAuthenticated, requireDocumentUpload] },
     { method: "PUT", path: "/documents/:id/review", handler: reviewDocument, middleware: [isAuthenticated, requireDocumentReview] },
@@ -1170,5 +1171,5 @@ export const documentRoutes: Route[] = [
     { method: "GET", path: "/guest/documents/:id/authors", handler: getDocumentAuthorsById },
     { method: "GET", path: "/public/documents/:id", handler: getPublicDocumentById },
     { method: "GET", path: "/public/documents/:id/authors", handler: getDocumentAuthorsById },
-    { method: "GET", path: "/documents/:id/verify-file", handler: verifyDocumentFile }
+    { method: "GET", path: "/documents/:id/verify-file", handler: verifyDocumentFile, middleware: [isAuthenticated, isAdmin] }
 ];

@@ -44,7 +44,7 @@ router.post("/api/files", isAuthenticated, isAdmin, async (ctx) => {
 });
 
 // Route to get a file by ID
-router.get("/api/files/:id", async (ctx) => {
+router.get("/api/files/:id", isAuthenticated, isAdmin, async (ctx) => {
   try {
     const id = ctx.params.id;
     

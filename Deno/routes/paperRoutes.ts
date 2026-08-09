@@ -4,6 +4,7 @@ import { DocumentModel } from "../models/documentModel.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
 import { canViewDocument } from "../services/contentAuthorizationService.ts";
 import { getSessionFromHeaders } from "../services/sessionService.ts";
+import { isAuthenticated, isAdmin } from "../middleware/authMiddleware.ts";
 import {
   PaperViewerError,
   readPaperPdf,
@@ -107,8 +108,8 @@ const streamPaper = async (ctx: RouterContext<any, any, any>) => {
 };
 
 export const paperRoutes: Route[] = [
-  { method: "GET", path: "/papers/:id/pages/:pageNumber", handler: getPaperPage },
-  { method: "GET", path: "/papers/:id/stream", handler: streamPaper },
+  { method: "GET", path: "/papers/:id/pages/:pageNumber", handler: getPaperPage, middleware: [isAuthenticated, isAdmin] },
+  { method: "GET", path: "/papers/:id/stream", handler: streamPaper, middleware: [isAuthenticated, isAdmin] },
 ];
 
 function positiveInteger(value: unknown): number | null {

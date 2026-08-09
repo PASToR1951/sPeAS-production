@@ -28,11 +28,12 @@ if (password.length < 14) throw new Error("Password must contain at least 14 cha
 const connection = await pool.connect();
 try {
   await connection.queryArray("BEGIN");
-  const existing = await connection.queryObject<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM users WHERE lower(COALESCE(role, 'user')) = 'admin'",
+  const existing = await connection.queryObject<{ id: string }>(
+    "SELECT id FROM users WHERE id = $1 OR lower(email) = lower($2) LIMIT 1",
+    [userId, email],
   );
-  if (Number(existing.rows[0]?.count ?? 0) > 0) {
-    console.log("An administrator already exists; skipping bootstrap.");
+  if (existing.rows[0]) {
+    console.log("An administrator with that ID or email already exists; skipping bootstrap.");
     Deno.exit(0);
   }
 

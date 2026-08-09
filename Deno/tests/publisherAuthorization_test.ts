@@ -9,17 +9,10 @@ const {
   requireCapability,
 } = await import("../middleware/authMiddleware.ts");
 
-Deno.test("publisher capabilities are limited to news management and document upload", () => {
-  if (!hasCapability("publisher", "news:manage")) {
-    throw new Error("Publisher should be able to manage news");
-  }
-  if (!hasCapability("publisher", "documents:upload")) {
-    throw new Error("Publisher should be able to upload documents");
-  }
-
-  for (const capability of ["news:delete", "documents:review", "roles:manage", "system:admin", "reports:view", "reports:export"] as const) {
-    if (hasCapability("publisher", capability)) {
-      throw new Error(`Publisher must not receive ${capability}`);
+Deno.test("legacy publisher and reader roles receive no capabilities", () => {
+  for (const role of ["publisher", "user", "owner"]) {
+    for (const capability of ["news:manage", "documents:upload", "documents:review", "roles:manage", "reports:view"] as const) {
+      if (hasCapability(role, capability)) throw new Error(`${role} must not receive ${capability}`);
     }
   }
 });
@@ -33,9 +26,9 @@ Deno.test("only administrators receive reporting capabilities", () => {
   }
 });
 
-Deno.test("unknown roles normalize to registered-user access", () => {
-  if (normalizeAppRole("OWNER") !== "user") {
-    throw new Error("Unknown roles must fail closed to user");
+Deno.test("unknown and legacy roles fail closed", () => {
+  if (normalizeAppRole("OWNER") !== null || normalizeAppRole("user") !== null || normalizeAppRole("publisher") !== null) {
+    throw new Error("Only the administrator role may normalize");
   }
   if (hasCapability("OWNER", "news:manage")) {
     throw new Error("Unknown roles must not gain publisher capabilities");
@@ -59,10 +52,10 @@ Deno.test("capability middleware returns 403 without running the handler", async
   }
 });
 
-Deno.test("capability middleware allows publisher news management", async () => {
+Deno.test("capability middleware allows administrator news management", async () => {
   let nextCalled = false;
   const ctx = {
-    state: { user: { id: "publisher-01", role: "publisher" } },
+    state: { user: { id: "admin-01", role: "admin" } },
     response: {},
   } as any;
 
@@ -70,5 +63,5 @@ Deno.test("capability middleware allows publisher news management", async () => 
     nextCalled = true;
   });
 
-  if (!nextCalled) throw new Error("Allowed middleware should call next");
+  if (!nextCalled) throw new Error("Administrator middleware should call next");
 });

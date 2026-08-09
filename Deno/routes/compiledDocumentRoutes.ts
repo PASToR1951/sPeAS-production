@@ -205,37 +205,6 @@ const addDocumentsToCompilation = async (ctx: RouterContext<any, any, any>) => {
     const bodyParser = await ctx.request.body({type: "json"});
     const body = await bodyParser.value;
 
-    if (String(ctx.state.user.role) === "publisher") {
-        const compiledDocumentId = Number(body.compiledDocumentId);
-        const documentIds = Array.isArray(body.documentIds)
-            ? body.documentIds.map(Number).filter((id: number) => Number.isInteger(id) && id > 0)
-            : [];
-        const ownership = await client.queryObject<{ allowed: boolean }>(`
-            SELECT
-              EXISTS (
-                SELECT 1
-                FROM compiled_documents
-                WHERE id = $1
-                  AND uploaded_by = $2
-                  AND review_status = 'pending_review'
-                  AND deleted_at IS NULL
-              )
-              AND (
-                SELECT COUNT(*) = $3
-                FROM documents
-                WHERE id = ANY($4::int[])
-                  AND uploaded_by = $2
-                  AND review_status = 'pending_review'
-                  AND deleted_at IS NULL
-              ) AS allowed
-        `, [compiledDocumentId, String(ctx.state.user.id), documentIds.length, documentIds]);
-        if (!ownership.rows[0]?.allowed) {
-            ctx.response.status = 403;
-            ctx.response.body = { error: "Publishers may only link documents from their current pending upload" };
-            return;
-        }
-    }
-    
     // Convert context to Request
     const request = new Request(ctx.request.url.toString(), {
         method: "POST",

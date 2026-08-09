@@ -586,6 +586,8 @@ CREATE TABLE public.compiled_documents (
     abstract_foreword_source character varying(20) DEFAULT 'none'::character varying NOT NULL,
     abstract_foreword_reviewed_by character varying,
     abstract_foreword_reviewed_at timestamp with time zone,
+    full_access_requestable boolean DEFAULT true NOT NULL,
+    access_embargo_until date,
     foreword_content_sha256 character(64),
     CONSTRAINT compiled_documents_abstract_foreword_source_check CHECK (((abstract_foreword_source)::text = ANY ((ARRAY['none'::character varying, 'manual'::character varying, 'pdf_text'::character varying, 'ocr'::character varying, 'legacy'::character varying])::text[]))),
     CONSTRAINT compiled_documents_foreword_sha256_check CHECK (((foreword_content_sha256 IS NULL) OR (foreword_content_sha256 ~* '^[0-9a-f]{64}$'::text))),
@@ -845,7 +847,10 @@ CREATE TABLE public.document_access_tokens (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     used_at timestamp with time zone,
     access_count integer DEFAULT 0,
-    revoked_at timestamp with time zone
+    revoked_at timestamp with time zone,
+    record_type character varying(16) DEFAULT 'document'::character varying NOT NULL,
+    scope jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT document_access_tokens_record_type_check CHECK (((record_type)::text = ANY ((ARRAY['document'::character varying, 'compiled'::character varying])::text[])))
 );
 
 
@@ -996,7 +1001,12 @@ CREATE TABLE public.document_requests (
     email_error text,
     is_entire_collection boolean DEFAULT false,
     child_documents integer[],
-    CONSTRAINT document_requests_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text])))
+    record_type character varying(16) DEFAULT 'document'::character varying NOT NULL,
+    email_verified_at timestamp with time zone,
+    consented_at timestamp with time zone,
+    request_ip_hash character(64),
+    CONSTRAINT document_requests_record_type_check CHECK (((record_type)::text = ANY ((ARRAY['document'::character varying, 'compiled'::character varying])::text[]))),
+    CONSTRAINT document_requests_status_check CHECK (((status)::text = ANY ((ARRAY['awaiting_verification'::character varying, 'pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'expired'::character varying])::text[])))
 );
 
 
@@ -1098,6 +1108,8 @@ CREATE TABLE public.documents (
     abstract_reviewed_by character varying,
     abstract_reviewed_at timestamp with time zone,
     content_sha256 character(64),
+    full_access_requestable boolean DEFAULT true NOT NULL,
+    access_embargo_until date,
     CONSTRAINT documents_abstract_source_check CHECK (((abstract_source)::text = ANY ((ARRAY['none'::character varying, 'manual'::character varying, 'pdf_text'::character varying, 'ocr'::character varying, 'legacy'::character varying])::text[]))),
     CONSTRAINT documents_content_sha256_check CHECK (((content_sha256 IS NULL) OR (content_sha256 ~* '^[0-9a-f]{64}$'::text))),
     CONSTRAINT documents_review_status_check CHECK (((review_status)::text = ANY ((ARRAY['pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
@@ -2178,7 +2190,8 @@ CREATE TABLE public.users (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     username character varying(255),
     display_username character varying(255),
-    role character varying(20)
+    role character varying(20) NOT NULL,
+    CONSTRAINT users_admin_role_check CHECK ((lower((role)::text) = 'admin'::text))
 );
 
 
@@ -4496,4 +4509,3 @@ ALTER TABLE ONLY public.users
 --
 
 \unrestrict 6ewJSGDRaAH6dpCmasgY0EFctToPkGYd3bzSX3mmr6iE2xTrvwEZBWcIts6GPkQ
-
