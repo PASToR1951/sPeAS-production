@@ -37,7 +37,11 @@ DELETE FROM public.session WHERE user_id IN (SELECT id FROM peas_non_admin_accou
 DELETE FROM public.account WHERE user_id IN (SELECT id FROM peas_non_admin_accounts);
 DELETE FROM public.verification
 WHERE lower(identifier) IN (SELECT lower(email) FROM peas_non_admin_accounts);
-DELETE FROM public.credentials_legacy WHERE user_id IN (SELECT id FROM peas_non_admin_accounts);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'credentials_legacy') THEN
+    EXECUTE 'DELETE FROM public.credentials_legacy WHERE user_id IN (SELECT id FROM peas_non_admin_accounts)';
+  END IF;
+END $$;
 DELETE FROM public.document_permissions
 WHERE user_id IN (SELECT id FROM peas_non_admin_accounts)
    OR granted_by IN (SELECT id FROM peas_non_admin_accounts);

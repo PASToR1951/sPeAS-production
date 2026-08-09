@@ -1,12 +1,16 @@
 #Requires -Version 7.2
 [CmdletBinding()]
-param()
+param(
+    [switch]$Native,
+    [string]$AppRoot = 'C:\ProgramData\PeAS',
+    [string]$RepoRoot = $PSScriptRoot
+)
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = $PSScriptRoot
-Set-Location $repoRoot
+$repoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+Set-Location -LiteralPath $repoRoot
 
-if (Get-Command docker -ErrorAction SilentlyContinue) {
+if (-not $Native -and (Get-Command docker -ErrorAction SilentlyContinue)) {
     docker compose version *> $null
     if ($LASTEXITCODE -eq 0) {
         & docker compose up --build
@@ -14,4 +18,11 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     }
 }
 
-throw 'Docker Desktop with Docker Compose is required to run PeAS.'
+$nativeSupervisor = Join-Path $repoRoot 'scripts\peas-boot-daemon.ps1'
+if (Test-Path -LiteralPath $nativeSupervisor) {
+    Write-Warning 'Docker Compose is unavailable; starting the configured native PeAS supervisor.'
+    & $nativeSupervisor -AppRoot $AppRoot -RepoRoot $repoRoot
+    exit $LASTEXITCODE
+}
+
+throw 'Docker Compose is unavailable and no native PeAS supervisor was found.'
