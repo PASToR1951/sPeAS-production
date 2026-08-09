@@ -74,6 +74,8 @@ Deno/scratch/
 *.tmp
 *.swp
 *~
+scripts/peas-boot-daemon.ps1
+scripts/setup-autostart-boot.ps1
 
 # Never commit deployable user data or database dumps
 *.pdf
