@@ -138,6 +138,20 @@ is checked after each backup. Configure retention at the S3-compatible
 repository (the operational default is 7 daily, 4 weekly, and 12 monthly
 snapshots).
 
+The initial capacity plan assumes 19 MB per research paper, 20--30 years of
+holdings, and an unknown annual intake. It allocates 4 TB for the expandable
+production pool (including restore headroom), 4 TB for versioned off-site
+backups, and 4 TB for an independent institutional archive: 12 TB of total
+addressable capacity across separate systems, not one server disk. Compression
+is not counted as capacity because most PDFs are already compressed. See
+"Capacity plan for the research corpus" in
+[`PRODUCTION_DEPLOYMENT_PLAN.md`](PRODUCTION_DEPLOYMENT_PLAN.md#41-capacity-plan-for-the-research-corpus)
+for formulas, workload scenarios, monitoring thresholds, and review gates.
+Use [`PERFORMANCE_CAPACITY_SIMULATION_PLAN.md`](PERFORMANCE_CAPACITY_SIMULATION_PLAN.md)
+for the detailed simultaneous-user, ingestion, backup-interference, spike, and
+16/24/32 GB comparison protocol. It defines simulations and acceptance
+criteria; it does not contain fabricated performance results.
+
 To restore, use an exact snapshot ID and type the confirmation phrase. The
 script restores into newly named PostgreSQL and storage volumes, verifies the
 database and files, starts the recorded compatible image, and only then points

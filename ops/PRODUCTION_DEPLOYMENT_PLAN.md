@@ -106,8 +106,11 @@ placeholders and must be replaced with institution-owned values.
 
 ## 4. Prepare the production host
 
-1. Provision Ubuntu 24.04 LTS with at least 4 vCPUs, 8 GB RAM, and expandable
-   storage. Allow more than twice the expected corpus plus 20 GiB free.
+1. Provision Ubuntu 24.04 LTS with at least 8 vCPUs, 16 GB RAM, and expandable
+   storage for the initial production deployment. Prefer 24--32 GB RAM when
+   OCR, antivirus scanning, document ingestion, and media processing can run
+   concurrently. The installer's lower checks are compatibility floors, not a
+   demonstrated production capacity. Follow the capacity plan below.
 2. Patch the operating system and reboot.
 3. Create a non-root SSH operator with a hardware-backed/key-only credential.
    Confirm a second session works before disabling SSH password login.
@@ -124,6 +127,79 @@ For Windows 11, use build 22000 or newer with PowerShell 7.2+, Git, Restic, and
 Docker Desktop/Engine in Linux-container mode. Configure Docker to start at
 boot, point DNS at the Windows host, reserve inbound TCP 80/443, and run the
 installer from an elevated PowerShell session. WSL is not required.
+
+### 4.1 Capacity plan for the research corpus
+
+This initial projection covers 10--20 years of historical imports and 10 more
+years of incoming research. The annual paper count is not yet known. Use an
+average source-document size of 19 MB and review the projection after the
+historical inventory and after each year of operation.
+
+Do not plan on material savings from ZIP, gzip, or PDF compression. Most PDFs,
+especially scanned PDFs, already contain compressed streams or images. Treat
+compression as an operational optimization rather than additional capacity.
+
+For planning, calculate the source corpus and production allocation as:
+
+```text
+source corpus (GB) = paper count * 19 / 1000
+production allocation (GB) = 3.25 * source corpus + 50
+```
+
+The production multiplier allows for generated previews/OCR/media variants,
+database and indexes, processing space, and 25 percent free-space headroom. It
+is deliberately conservative and must be replaced with measured ratios after
+the import rehearsal.
+
+| Papers per year | Papers over 20 years | Planned disk | Papers over 30 years | Planned disk |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 2,000 | 200 GB | 3,000 | 250 GB |
+| 250 | 5,000 | 400 GB | 7,500 | 600 GB |
+| 500 | 10,000 | 750 GB | 15,000 | 1 TB |
+| 1,000 | 20,000 | 1.5 TB | 30,000 | 2 TB |
+| 2,000 | 40,000 | 2.6 TB | 60,000 | 4 TB |
+
+Until an annual count is established, approve the following initial target:
+
+| Purpose | Usable capacity | Location |
+| --- | ---: | --- |
+| Live application, database, and research storage | 2 TB | Production storage |
+| Restore/maintenance headroom | Up to 2 TB | Production storage pool |
+| Versioned operational backups | 4 TB | Separate off-site backup repository |
+| Long-term institutional archive | 4 TB | Independent archive location |
+| **Total planned addressable capacity** | **12 TB** | **Across independent systems** |
+
+The total is not a request for one 12 TB server disk. It represents 4 TB of
+expandable production-pool capacity and two independent 4 TB protection
+targets. Restore headroom is required because the restore process creates new
+volumes and deliberately leaves the former volumes untouched. Storage may be
+thin-provisioned only when the underlying pool is monitored and has committed
+expansion capacity. Alert at 70 percent use, expand before 75 percent, and
+retain at least 25 percent free during imports and restore drills.
+
+Use the 3-2-1 principle: keep the production copy, a separately administered
+backup, and an independent off-site or offline archive. Do not count the live
+copy as a backup, and do not treat a versioned backup repository as the sole
+institutional archive.
+
+The current backup job creates one compressed archive of the complete storage
+volume before sending it to Restic. Whole-corpus compression can reduce
+file-level deduplication between snapshots, so the 4 TB backup target is an
+initial allocation, not a guarantee for all retention periods. Record backup
+growth during the import rehearsal and monthly thereafter. Before a large
+historical import, evaluate changing the job to let Restic back up individual
+storage files directly while keeping the PostgreSQL dump and manifest as
+separate artifacts.
+
+Capacity is governed by measured ingestion and workload, not CPU count alone.
+During the staging import and load test, record peak resident memory for the
+application, PostgreSQL, ClamAV, OCR and media workers; concurrent users;
+request latency; queue depth; disk throughput; backup size; and restore size.
+Increase RAM or separate workers when memory pressure, paging, or sustained
+queue growth appears. Recalculate storage from the actual paper count and
+generated-file ratio at least annually. Execute and report the scenarios in
+[`PERFORMANCE_CAPACITY_SIMULATION_PLAN.md`](PERFORMANCE_CAPACITY_SIMULATION_PLAN.md)
+before claiming a supported simultaneous-user count.
 
 ## 5. Run the first installation
 
@@ -195,6 +271,10 @@ installer from an elevated PowerShell session. WSL is not required.
    behavior. Deploy a deliberately unhealthy image and prove rollback to the
    previous digest. Reboot and confirm recovery.
 7. Promote only after every rehearsal result is recorded and reviewed.
+8. Run the performance and capacity simulation protocol in
+   [`PERFORMANCE_CAPACITY_SIMULATION_PLAN.md`](PERFORMANCE_CAPACITY_SIMULATION_PLAN.md).
+   Treat its results as configuration-specific evidence, not a universal user
+   limit.
 
 ## 8. Normal deploy and rollback
 

@@ -11,6 +11,14 @@ Deno/.env
 Deno/.env.*
 !Deno/.env.example
 !Deno/.env.*.example
+
+# Deployment secret files (including SMTP app passwords)
+secrets/
+**/secrets/
+smtp_password
+**/smtp_password
+*_password_file
+*.secret
 *.pem
 *.key
 *.p12
