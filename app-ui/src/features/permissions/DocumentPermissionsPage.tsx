@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { CheckCircle2, Eye, FileText, MailWarning, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, FileText, MailWarning, RefreshCw, Send, ShieldCheck, XCircle } from "lucide-react";
 import { ApiError, getErrorMessage } from "../../lib/api/http";
 import {
   fetchPermissionRequests,
+  bulkApprovePermissionRequests,
+  resendPermissionAccessLink,
   updatePermissionRequestStatus,
   type PermissionListParams,
 } from "../../lib/api/permissions";
@@ -66,6 +68,7 @@ export function DocumentPermissionsPage() {
   const [rejectTarget, setRejectTarget] = useState<DocumentRequestRecord | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [mutationBusy, setMutationBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const baseFilters = useMemo(
     () => ({
@@ -113,6 +116,40 @@ export function DocumentPermissionsPage() {
 
   const totalPages = Math.ceil(requests.length / PAGE_SIZE);
   const visibleRequests = requests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const visiblePendingIds = visibleRequests.filter((request) => request.status === "pending").map((request) => request.id);
+
+  const handleBulkApprove = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (!ids.length || !window.confirm(`Approve ${ids.length} selected access ${ids.length === 1 ? "request" : "requests"}?`)) return;
+    setMutationBusy(true);
+    try {
+      const result = await bulkApprovePermissionRequests(ids);
+      if (result.failed) {
+        const failures = result.results.filter((item) => item.status === "failed").map((item) => `REQ-${item.id}: ${item.code ?? "failed"}`);
+        toast.warning(`${result.approved} approved; ${result.failed} failed.`, { description: failures.join(" · ") });
+      } else {
+        toast.success(`${result.approved} ${result.approved === 1 ? "request" : "requests"} approved; access emails queued.`);
+      }
+      setSelectedIds(new Set());
+      setReloadKey((current) => current + 1);
+    } catch (caughtError) {
+      toast.error(getErrorMessage(caughtError));
+    } finally {
+      setMutationBusy(false);
+    }
+  }, [selectedIds]);
+
+  const handleResend = useCallback(async (request: DocumentRequestRecord) => {
+    setMutationBusy(true);
+    try {
+      await resendPermissionAccessLink(request.id);
+      toast.success(`A replacement access link for ${request.fullName} was queued.`);
+    } catch (caughtError) {
+      toast.error(getErrorMessage(caughtError));
+    } finally {
+      setMutationBusy(false);
+    }
+  }, []);
 
   const handleApprove = useCallback(async () => {
     if (!approveTarget) return;
@@ -123,7 +160,7 @@ export function DocumentPermissionsPage() {
         id: approveTarget.id,
         status: "approved",
       });
-      toastStatusResult(`${approveTarget.fullName} was emailed a secure access link.`, result);
+      toastStatusResult(`${approveTarget.fullName}'s secure access email was queued.`, result);
       setApproveTarget(null);
       setReloadKey((current) => current + 1);
     } catch (caughtError) {
@@ -163,6 +200,12 @@ export function DocumentPermissionsPage() {
   }, [rejectReason, rejectTarget]);
 
   const columns: Array<PeasDataTableColumn<DocumentRequestRecord>> = [
+    {
+      key: "select",
+      header: <input type="checkbox" aria-label="Select pending requests on this page" checked={visiblePendingIds.length > 0 && visiblePendingIds.every((id) => selectedIds.has(id))} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); for (const id of visiblePendingIds) event.currentTarget.checked ? next.add(id) : next.delete(id); return next; })} />,
+      render: (request) => request.status === "pending" ? <input type="checkbox" aria-label={`Select request from ${request.fullName}`} checked={selectedIds.has(request.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); event.currentTarget.checked ? next.add(request.id) : next.delete(request.id); return next; })} /> : null,
+      className: "peas-data-table__select",
+    },
     {
       key: "requester",
       header: "Requester",
@@ -218,6 +261,10 @@ export function DocumentPermissionsPage() {
                 <XCircle aria-hidden="true" />
               </PeasIconButton>
             </>
+          ) : request.status === "approved" ? (
+            <PeasIconButton label="Resend access link" variant="actionBlue" disabled={mutationBusy} onClick={() => void handleResend(request)}>
+              <Send aria-hidden="true" />
+            </PeasIconButton>
           ) : null}
         </div>
       ),
@@ -227,10 +274,13 @@ export function DocumentPermissionsPage() {
   return (
     <main className="peas-admin-island peas-permissions-page">
       <PeasToaster />
-      <AdminPageHeader eyebrow="Access control" title="Document Permissions" description="Review access requests, inspect requester details, and approve or reject requests." actions={<Button variant="outline" onClick={() => setReloadKey((current) => current + 1)}>
+      <AdminPageHeader eyebrow="Access control" title="Document Permissions" description="Review verified visitor requests and issue expiring access links." actions={<><Button disabled={!selectedIds.size || mutationBusy} onClick={() => void handleBulkApprove()}>
+          <CheckCircle2 aria-hidden="true" />
+          Approve selected ({selectedIds.size})
+        </Button><Button variant="outline" onClick={() => setReloadKey((current) => current + 1)}>
           <RefreshCw aria-hidden="true" />
           Refresh
-        </Button>} />
+        </Button></>} />
 
       <section className="peas-summary-grid" aria-label="Permission request summary">
         <SummaryCard label="All Requests" value={summary.all} active={status === "all"} onClick={() => setStatus("all")} />
@@ -240,6 +290,7 @@ export function DocumentPermissionsPage() {
       </section>
 
       <section className="peas-permissions-toolbar" aria-label="Permission filters">
+        {selectedIds.size ? <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>Clear selection</Button> : null}
         <PeasSearchInput
           value={search}
           placeholder="Search requester, email, or document..."
@@ -284,6 +335,8 @@ export function DocumentPermissionsPage() {
               <PermissionMobileCard
                 key={request.id}
                 request={request}
+                selected={selectedIds.has(request.id)}
+                onSelected={(checked) => setSelectedIds((current) => { const next = new Set(current); checked ? next.add(request.id) : next.delete(request.id); return next; })}
                 onDetails={setDetailTarget}
                 onApprove={setApproveTarget}
                 onReject={(target) => {
@@ -354,11 +407,15 @@ function SummaryCard({
 
 function PermissionMobileCard({
   request,
+  selected,
+  onSelected,
   onDetails,
   onApprove,
   onReject,
 }: {
   request: DocumentRequestRecord;
+  selected: boolean;
+  onSelected: (checked: boolean) => void;
   onDetails: (request: DocumentRequestRecord) => void;
   onApprove: (request: DocumentRequestRecord) => void;
   onReject: (request: DocumentRequestRecord) => void;
@@ -366,6 +423,7 @@ function PermissionMobileCard({
   return (
     <article className="peas-permission-card">
       <header>
+        {request.status === "pending" ? <input type="checkbox" aria-label={`Select request from ${request.fullName}`} checked={selected} onChange={(event) => onSelected(event.currentTarget.checked)} /> : null}
         <div>
           <h3>{request.fullName}</h3>
           <p>{request.bookTitle ?? "Requested Document"}</p>

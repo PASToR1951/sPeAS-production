@@ -1,6 +1,6 @@
 import { apiFetch } from "./http";
 
-export type ManagedRole = "admin" | "publisher" | "user";
+export type ManagedRole = "admin";
 
 export interface ManagedUser {
   id: string;
@@ -20,10 +20,10 @@ export async function fetchManagedUsers() {
   return payload.users;
 }
 
-export async function updateManagedUserRole(userId: string, role: ManagedRole) {
-  const payload = await apiFetch<{ user: ManagedUser }>(
-    `/api/admin/users/${encodeURIComponent(userId)}/role`,
-    { method: "PUT", json: { role } },
-  );
-  return payload.user;
+export function revokeManagedUserSessions(userId: string) {
+  return apiFetch<{ success: boolean; revoked: number }>(`/api/admin/users/${encodeURIComponent(userId)}/revoke-sessions`, { method: "POST" });
+}
+
+export function deleteManagedAdministrator(userId: string) {
+  return apiFetch<void>(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }

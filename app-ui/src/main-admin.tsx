@@ -11,7 +11,7 @@ type AdminRoute = {
   Component: ComponentType;
 };
 
-const ADMIN_AND_PUBLISHER: WorkspaceRole[] = ["admin", "publisher"];
+const ADMIN_ROLES: WorkspaceRole[] = ["admin"];
 const routes: Record<string, AdminRoute> = {
   "/admin/dashboard.html": {
     title: "Dashboard | PeAS Admin",
@@ -27,7 +27,7 @@ const routes: Record<string, AdminRoute> = {
   },
   "/admin/Components/upload_document.html": {
     title: "Upload Document | PeAS",
-    allowedRoles: ADMIN_AND_PUBLISHER,
+    allowedRoles: ADMIN_ROLES,
     Component: lazyNamed(() => import("./features/upload/UploadDocumentPage"), "UploadDocumentPage"),
   },
   "/admin/Components/archive-documents.html": {
@@ -64,7 +64,7 @@ const routes: Record<string, AdminRoute> = {
   },
   "/admin/Components/news.html": {
     title: "Department News | PeAS",
-    allowedRoles: ADMIN_AND_PUBLISHER,
+    allowedRoles: ADMIN_ROLES,
     Component: lazyNamed(() => import("./features/news/AdminNewsPage"), "AdminNewsPage"),
   },
   "/admin/Components/role-management.html": {

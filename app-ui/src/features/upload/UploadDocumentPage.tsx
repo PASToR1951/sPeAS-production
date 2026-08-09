@@ -121,7 +121,7 @@ const FINAL_UPLOAD_STEP: UploadStep = 5;
 
 export function UploadDocumentPage() {
   const { role } = useAdminIdentity();
-  const isPublisher = role === "publisher";
+  const isPublisher = false;
   const [mode, setMode] = useState<UploadMode>("single");
   const [step, setStep] = useState<UploadStep>(1);
   const [singleForm, setSingleForm] = useState<SingleFormState>(initialSingleForm);

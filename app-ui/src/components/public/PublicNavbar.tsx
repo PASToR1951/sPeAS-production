@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookMarked, ChevronDown, Clock3, Highlighter, LayoutDashboard, LogOut, Menu, UserRound, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, LayoutDashboard, LogOut, Menu, X } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -31,9 +31,9 @@ export function PublicNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const alwaysGreen = usesAlwaysGreenNavbar();
   const { session, signOut } = usePublicSession();
-  const authenticated = Boolean(session?.authenticated);
   const isAdmin = session?.role === "admin";
-  const userName = String(session?.user?.name ?? session?.username ?? session?.userId ?? "User");
+  const authenticated = Boolean(session?.authenticated && isAdmin);
+  const userName = String(session?.user?.name ?? session?.username ?? session?.userId ?? "Administrator");
   const userImage = normalizeProfileImage(session?.user?.image);
 
   useEffect(() => {
@@ -109,13 +109,9 @@ export function PublicNavbar() {
         </a>
         {authenticated ? (
           <>
-            <AccountMenu isAdmin={isAdmin} userImage={userImage} userName={userName} onLogout={handleLogout} />
+            <AccountMenu userImage={userImage} userName={userName} onLogout={handleLogout} />
           </>
-        ) : (
-          <Button className="peas-public-login-button" size="sm" onClick={() => (window.location.href = "/log-in.html")}>
-            Login
-          </Button>
-        )}
+        ) : null}
       </div>
 
       <button className="peas-public-mobile-toggle" type="button" aria-label="Open navigation" onClick={() => setOpen(true)}>
@@ -155,18 +151,12 @@ export function PublicNavbar() {
             {authenticated ? (
               <>
                 <MobileAccountIdentity userImage={userImage} userName={userName} />
-                {isAdmin ? <a href="/admin/dashboard.html"><LayoutDashboard aria-hidden="true" /> Dashboard</a> : null}
-                <a href="/pages/SavedDocument.html"><BookMarked aria-hidden="true" /> Saved Items</a>
-                <a href="/pages/UserAnnotations.html"><Highlighter aria-hidden="true" /> Annotations</a>
-                <a href="/pages/UserHistory.html"><Clock3 aria-hidden="true" /> History</a>
-                <a href="/pages/UserProfile.html"><UserRound aria-hidden="true" /> Profile</a>
+                <a href="/admin/dashboard.html"><LayoutDashboard aria-hidden="true" /> Administrator dashboard</a>
                 <Button variant="outline" onClick={handleLogout}>
                   Logout
                 </Button>
               </>
-            ) : (
-              <Button className="peas-public-login-button" onClick={() => (window.location.href = "/log-in.html")}>Login</Button>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -206,7 +196,7 @@ function NavbarSearch({ className, onFocus }: { className: string; onFocus?: () 
   );
 }
 
-function AccountMenu({ isAdmin, userImage, userName, onLogout }: { isAdmin: boolean; userImage: string; userName: string; onLogout: () => Promise<void> }) {
+function AccountMenu({ userImage, userName, onLogout }: { userImage: string; userName: string; onLogout: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const initials = getInitials(userName);
 
@@ -227,15 +217,11 @@ function AccountMenu({ isAdmin, userImage, userName, onLogout }: { isAdmin: bool
                 <AccountAvatar image={userImage} initials={initials} large />
                 <div>
                   <strong>{userName}</strong>
-                  <small>{isAdmin ? "Administrator" : "Registered User"}</small>
+                  <small>Administrator</small>
                 </div>
               </div>
               <div className="peas-public-account-menu__items">
-                {isAdmin ? <AccountMenuLink href="/admin/dashboard.html" icon={<LayoutDashboard aria-hidden="true" />} label="Dashboard" /> : null}
-                <AccountMenuLink href="/pages/SavedDocument.html" icon={<BookMarked aria-hidden="true" />} label="Saved Items" />
-                <AccountMenuLink href="/pages/UserAnnotations.html" icon={<Highlighter aria-hidden="true" />} label="Annotations" />
-                <AccountMenuLink href="/pages/UserHistory.html" icon={<Clock3 aria-hidden="true" />} label="History" />
-                <AccountMenuLink href="/pages/UserProfile.html" icon={<UserRound aria-hidden="true" />} label="Profile" />
+                <DropdownMenuItem asChild><a href="/admin/dashboard.html"><LayoutDashboard aria-hidden="true" /><span>Administrator dashboard</span></a></DropdownMenuItem>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="peas-public-account-menu__logout" onSelect={() => void onLogout()}>
@@ -247,17 +233,6 @@ function AccountMenu({ isAdmin, userImage, userName, onLogout }: { isAdmin: bool
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function AccountMenuLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
-  return (
-    <DropdownMenuItem asChild>
-      <a href={href}>
-        {icon}
-        <span>{label}</span>
-      </a>
-    </DropdownMenuItem>
   );
 }
 

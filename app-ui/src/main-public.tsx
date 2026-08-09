@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { PublicErrorBoundary, PublicErrorPage } from "./components/public/PublicPageShell";
 import { PublicSessionProvider } from "./components/public/PublicSessionProvider";
@@ -16,13 +16,15 @@ const routes: Array<{ paths: string[]; component: ComponentType }> = [
   { paths: ["/pages/miscellaneous/T&A-Public.html"], component: lazy(() => import("./features/public/PublicLegalPages").then(({ PublicTermsPage }) => ({ default: PublicTermsPage }))) },
   { paths: ["/pages/miscellaneous/Privacy.html"], component: lazy(() => import("./features/public/PublicLegalPages").then(({ PublicPrivacyPage }) => ({ default: PublicPrivacyPage }))) },
   { paths: ["/pages/miscellaneous/404.html"], component: PublicErrorPage },
-  { paths: ["/pages/SavedDocument.html"], component: lazy(() => import("./features/public/PublicAccountPages").then(({ PublicSavedDocumentsPage }) => ({ default: PublicSavedDocumentsPage }))) },
-  { paths: ["/pages/UserHistory.html"], component: lazy(() => import("./features/public/PublicAccountPages").then(({ PublicHistoryPage }) => ({ default: PublicHistoryPage }))) },
-  { paths: ["/pages/UserProfile.html"], component: lazy(() => import("./features/public/PublicAccountPages").then(({ PublicProfilePage }) => ({ default: PublicProfilePage }))) },
-  { paths: ["/pages/UserAnnotations.html"], component: lazy(() => import("./features/public/PublicAccountPages").then(({ PublicAnnotationsPage }) => ({ default: PublicAnnotationsPage }))) },
+  { paths: ["/pages/SavedDocument.html", "/pages/UserHistory.html", "/pages/UserProfile.html", "/pages/UserAnnotations.html"], component: RetiredAccountRoute },
   { paths: ["/pages/authorprofile.html"], component: lazy(() => import("./features/public/PublicAuthorPage").then(({ PublicAuthorPage }) => ({ default: PublicAuthorPage }))) },
   { paths: ["/pages/guest-single.html", "/pages/user-single.html", "/pages/guest-compiled.html", "/pages/user-compiled.html"], component: lazy(() => import("./features/public/PublicDocumentDetailPage").then(({ PublicDocumentDetailPage }) => ({ default: PublicDocumentDetailPage }))) },
 ];
+
+function RetiredAccountRoute() {
+  useEffect(() => { window.location.replace("/index.html?account_features_retired=true"); }, []);
+  return <PublicRouteLoadingScreen />;
+}
 
 const root = document.getElementById("react-public-root");
 

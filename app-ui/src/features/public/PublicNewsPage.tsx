@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bookmark, CalendarDays, Check, ChevronRight, Link2, Mail, Newspaper, Share2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, Link2, Mail, Newspaper, Share2 } from "lucide-react";
 import { FaFacebookF, FaLinkedinIn, FaWhatsapp, FaXTwitter } from "react-icons/fa6";
 import { motion } from "motion/react";
 import { PeasErrorState } from "../../components/feedback/PeasStates";
@@ -8,13 +8,11 @@ import { NewsPreviewCard } from "../../components/public/NewsPreviewCard";
 import { NewsArticleBody } from "../../components/news/NewsArticleBody";
 import { NewsArticleAuthors, NewsArticleWorks } from "../../components/news/NewsArticleReferences";
 import { PublicPageShell } from "../../components/public/PublicPageShell";
-import { usePublicSession } from "../../components/public/PublicSessionProvider";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Button } from "../../components/ui/button";
-import { PeasInlineSpinner } from "../../components/feedback/PeasStates";
 import { PeasToaster, toast } from "../../components/ui/toast";
 import { getErrorMessage } from "../../lib/api/http";
-import { checkSavedNews, fetchPublishedNews, fetchPublishedNewsPost, removeSavedNewsPost, saveNewsPost, type NewsPost } from "../../lib/api/news";
+import { fetchPublishedNews, fetchPublishedNewsPost, type NewsPost } from "../../lib/api/news";
 
 const PAGE_SIZE = 9;
 
@@ -95,7 +93,6 @@ function NewsFeed({ posts, page, totalCount, totalPages, onPageChange }: {
 }
 
 function NewsArticle({ post }: { post: NewsPost }) {
-  const { session } = usePublicSession();
   return (
     <article className="peas-news-article">
       <PeasToaster />
@@ -104,7 +101,7 @@ function NewsArticle({ post }: { post: NewsPost }) {
         <span>Office of Research &amp; Publications</span>
         <h1>{post.title}</h1>
         <NewsMeta post={post} />
-        <NewsArticleActions post={post} authenticated={Boolean(session?.authenticated)} />
+        <NewsArticleActions post={post} />
         <p>{post.excerpt}</p>
         <NewsArticleAuthors authors={post.taggedAuthors || []} />
       </header>
@@ -119,7 +116,7 @@ function NewsArticle({ post }: { post: NewsPost }) {
       </div>
       <NewsArticleWorks
         works={post.taggedWorks || []}
-        authenticated={Boolean(session?.authenticated)}
+        authenticated={false}
       />
     </article>
   );
@@ -134,10 +131,7 @@ function NewsCoverMedia({ post }: { post: NewsPost }) {
   return <picture className="peas-news-article__cover"><source type="image/webp" srcSet={variants.map((variant) => `${variant.url} ${variant.width}w`).join(", ")} sizes="(max-width: 860px) 100vw, 860px" /><img src={fallback?.url || post.coverImageUrl || ""} alt={cover.isDecorative ? "" : cover.altText || post.coverImageAlt || ""} width={cover.width || undefined} height={cover.height || undefined} loading="eager" decoding="async" /></picture>;
 }
 
-function NewsArticleActions({ post, authenticated }: { post: NewsPost; authenticated: boolean }) {
-  const [saved, setSaved] = useState(false);
-  const [busyAction, setBusyAction] = useState<"saving" | "removing" | null>(null);
-  const [error, setError] = useState("");
+function NewsArticleActions({ post }: { post: NewsPost }) {
   const [nativeShare, setNativeShare] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const canonicalUrl = useMemo(() => new URL(`/news.html?slug=${encodeURIComponent(post.slug)}`, window.location.origin).toString(), [post.slug]);
@@ -145,63 +139,6 @@ function NewsArticleActions({ post, authenticated }: { post: NewsPost; authentic
   useEffect(() => {
     setNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
   }, []);
-
-  useEffect(() => {
-    if (!authenticated) return;
-    let cancelled = false;
-    const intent = readNewsSaveIntent();
-    const matchingIntent = intent && intent.id === post.id && intent.slug === post.slug;
-    const load = async () => {
-      setError("");
-      if (matchingIntent) {
-        clearNewsSaveIntent();
-        setBusyAction("saving");
-        try {
-          await saveNewsPost(post.id);
-          if (!cancelled) {
-            setSaved(true);
-            toast.success("Saved to your Saved Items");
-          }
-        } catch (caught) {
-          if (!cancelled) setError(getErrorMessage(caught));
-        } finally {
-          if (!cancelled) setBusyAction(null);
-        }
-        return;
-      }
-      try {
-        const result = await checkSavedNews(post.id);
-        if (!cancelled) setSaved(Boolean(result.saved));
-      } catch (caught) {
-        if (!cancelled) setError(getErrorMessage(caught));
-      }
-    };
-    void load();
-    return () => { cancelled = true; };
-  }, [authenticated, post.id, post.slug]);
-
-  const toggleSaved = async () => {
-    if (!authenticated) {
-      writeNewsSaveIntent({ id: post.id, slug: post.slug });
-      const returnPath = `${window.location.pathname}${window.location.search}`;
-      window.location.assign(`/log-in.html?redirect=${encodeURIComponent(returnPath)}`);
-      return;
-    }
-    const nextSaved = !saved;
-    setBusyAction(nextSaved ? "saving" : "removing");
-    setError("");
-    setSaved(nextSaved);
-    try {
-      if (nextSaved) await saveNewsPost(post.id);
-      else await removeSavedNewsPost(post.id);
-      toast.success(nextSaved ? "Saved to your Saved Items" : "Removed from Saved Items");
-    } catch (caught) {
-      setSaved(!nextSaved);
-      setError(getErrorMessage(caught));
-    } finally {
-      setBusyAction(null);
-    }
-  };
 
   const shareData = { title: post.title, text: post.excerpt, url: canonicalUrl };
   const share = async () => {
@@ -251,9 +188,6 @@ function NewsArticleActions({ post, authenticated }: { post: NewsPost; authentic
 
   return (
     <div className="peas-news-article__actions" aria-label="Article actions">
-      <Button variant="outline" aria-pressed={saved} disabled={busyAction !== null} onClick={() => void toggleSaved()}>
-        {busyAction ? <PeasInlineSpinner label={busyAction === "removing" ? "Removing" : "Saving"} /> : saved ? <><Check aria-hidden="true" /> Saved</> : <><Bookmark aria-hidden="true" /> Save</>}
-      </Button>
       <div className="peas-news-share">
         <Button
           variant="outline"
@@ -284,7 +218,6 @@ function NewsArticleActions({ post, authenticated }: { post: NewsPost; authentic
           </div>
         ) : null}
       </div>
-      {error ? <span className="peas-news-article__action-error" role="alert">{error}</span> : null}
     </div>
   );
 }
@@ -324,24 +257,6 @@ function SocialIcon({ platform }: { platform: SocialPlatform }) {
     return <FaWhatsapp aria-hidden="true" focusable="false" />;
   }
   return <FaLinkedinIn aria-hidden="true" focusable="false" />;
-}
-
-function writeNewsSaveIntent(intent: { id: number; slug: string }) {
-  try { sessionStorage.setItem("peas.news.save-intent", JSON.stringify({ ...intent, createdAt: Date.now() })); } catch { /* Storage may be disabled. */ }
-}
-
-function readNewsSaveIntent(): { id: number; slug: string; createdAt: number } | null {
-  try {
-    const value = JSON.parse(sessionStorage.getItem("peas.news.save-intent") || "null");
-    if (!value || Number(value.id) <= 0 || typeof value.slug !== "string" || Date.now() - Number(value.createdAt) > 30 * 60 * 1000) return null;
-    return { id: Number(value.id), slug: value.slug, createdAt: Number(value.createdAt) };
-  } catch {
-    return null;
-  }
-}
-
-function clearNewsSaveIntent() {
-  try { sessionStorage.removeItem("peas.news.save-intent"); } catch { /* Storage may be disabled. */ }
 }
 
 function copyTextWithSelection(value: string) {

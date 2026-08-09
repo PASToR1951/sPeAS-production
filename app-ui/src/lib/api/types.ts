@@ -131,7 +131,7 @@ export interface DocumentRequestRecord {
   affiliation: string;
   reason: string;
   reasonDetails: string;
-  status: "pending" | "approved" | "rejected" | string;
+  status: "awaiting_verification" | "pending" | "approved" | "rejected" | "expired" | string;
   createdAt: string | null;
   updatedAt: string | null;
   reviewedBy?: string | null;

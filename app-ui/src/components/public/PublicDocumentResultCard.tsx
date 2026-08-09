@@ -21,10 +21,9 @@ export function PublicDocumentResultCard({
   isNewest = false,
 }: PublicDocumentResultCardProps) {
   const category = getCategoryMeta(document.category);
-  const authenticated = Boolean(session?.authenticated);
   const basePath = document.isCompiled
-    ? authenticated ? "/pages/user-compiled.html" : "/pages/guest-compiled.html"
-    : authenticated ? "/pages/user-single.html" : "/pages/guest-single.html";
+    ? "/pages/guest-compiled.html"
+    : "/pages/guest-single.html";
   const href = `${basePath}?id=${encodeURIComponent(String(document.id))}`;
 
   if (variant === "search") {

@@ -44,7 +44,7 @@ interface AdminLayoutProps {
   allowedRoles?: WorkspaceRole[];
 }
 
-export type WorkspaceRole = "admin" | "publisher";
+export type WorkspaceRole = "admin";
 type AdminNavigationItem = {
   label: string;
   href: string;
@@ -65,7 +65,7 @@ interface WorkspaceBootstrap {
 interface AdminIdentity {
   userName: string;
   role: WorkspaceRole;
-  roleLabel: "Administrator" | "Content Publisher";
+  roleLabel: "Administrator";
   profile: UserProfile | null;
   updateProfile: (update: Partial<UserProfile>) => void;
 }
@@ -79,12 +79,12 @@ const navItems: AdminNavigationItem[] = [
   { label: "Archived Documents", href: "/admin/Components/archive-documents.html", icon: Archive, roles: ["admin"] as WorkspaceRole[] },
   { label: "Authors", href: "/admin/Components/author-list.html", icon: UsersRound, roles: ["admin"] as WorkspaceRole[] },
   { label: "Document Permissions", href: "/admin/Components/document-permissions.html", icon: ShieldCheck, roles: ["admin"] as WorkspaceRole[] },
-  { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin", "publisher"] as WorkspaceRole[] },
+  { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin"] as WorkspaceRole[] },
   { label: "Contact Inquiries", href: "/admin/Components/contact-inquiries.html", icon: MailQuestion, roles: ["admin"] as WorkspaceRole[] },
 ];
 
 const utilityItems: AdminNavigationItem[] = [
-  { label: "View Site", href: "/index.html", icon: Home, roles: ["admin", "publisher"] as WorkspaceRole[] },
+  { label: "View Site", href: "/index.html", icon: Home, roles: ["admin"] as WorkspaceRole[] },
   { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ["admin"] as WorkspaceRole[], activePaths: ["/admin/Components/most-viewed-works.html", "/admin/Components/most-viewed-authors.html", "/admin/Components/trending-topics.html", "/admin/Components/search-analytics.html"] },
   { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ["admin"] as WorkspaceRole[] },
   {
@@ -176,9 +176,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
       return;
     }
     if (!workspaceRole || !allowedRoles.includes(workspaceRole)) {
-      const destination = workspaceRole === "publisher"
-        ? "/admin/Components/news.html"
-        : "/index.html";
+      const destination = "/index.html";
       const timer = window.setTimeout(() => window.location.replace(destination), 900);
       return () => window.clearTimeout(timer);
     }
@@ -191,7 +189,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
     return names.join(" ") || String(session?.user?.name ?? session?.username ?? session?.userId ?? "Administrator");
   }, [profile, session]);
 
-  const role = workspaceRole === "publisher" ? "Content Publisher" : "Administrator";
+  const role = "Administrator";
   const sidebarToggleLabel = isMobileViewport
     ? (mobileOpen ? "Close navigation" : "Open navigation")
     : (collapsed ? "Expand sidebar" : "Collapse sidebar");
@@ -491,7 +489,7 @@ function WorkspaceGate({ message }: { message: string }) {
 
 function normalizeWorkspaceRole(value: unknown): WorkspaceRole | null {
   const role = String(value ?? "").toLowerCase();
-  return role === "admin" || role === "publisher" ? role : null;
+  return role === "admin" ? role : null;
 }
 
 function useStoredSidebarState(): [boolean, (value: boolean) => void] {

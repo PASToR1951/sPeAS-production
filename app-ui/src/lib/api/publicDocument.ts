@@ -14,18 +14,18 @@ export function getPublicDocumentErrorStatus(error: unknown) {
   return error instanceof PublicDocumentLoadError ? error.status : 500;
 }
 
-export async function fetchPublicDocumentDetail(id: string, compiled: boolean, authenticated: boolean) {
+export async function fetchPublicDocumentDetail(id: string, compiled: boolean, _authenticated: boolean) {
   const path = compiled
-    ? authenticated ? `/api/compiled-documents/${id}` : `/api/guest/compiled-documents/${id}`
-    : authenticated ? `/api/documents/${id}` : `/api/guest/documents/${id}`;
+    ? `/api/guest/compiled-documents/${id}`
+    : `/api/guest/documents/${id}`;
   // React detail pages use exactly one canonical metadata endpoint. Compatibility
   // aliases remain server-side only, so a failed request cannot trigger a second
   // request that might record a duplicate readership event.
   const payload = await fetchCanonical(path);
   const record = payload?.document ?? payload?.compiled_document ?? payload;
   const actualCompiled = compiled || record.is_compiled === true || String(record.document_type ?? "").toLowerCase() === "compiled" || Number(record.child_count ?? 0) > 0;
-  const children = actualCompiled ? await fetchChildren(id, authenticated, record) : [];
-  const authors = !actualCompiled ? await fetchAuthors(id, authenticated) : [];
+  const children = actualCompiled ? await fetchChildren(id, record) : [];
+  const authors = !actualCompiled ? await fetchAuthors(id) : [];
   return { record, children, authors, compiled: actualCompiled };
 }
 
@@ -33,12 +33,10 @@ export function submitDocumentAccessRequest(input: Record<string, unknown>) {
   return apiFetch<Record<string, unknown>>("/api/document-requests", { method: "POST", json: input });
 }
 
-async function fetchChildren(id: string, authenticated: boolean, record: LooseRecord): Promise<LooseRecord[]> {
+async function fetchChildren(id: string, record: LooseRecord): Promise<LooseRecord[]> {
   const embedded = record.children ?? record.child_documents ?? record.contained_documents;
   if (Array.isArray(embedded)) return embedded as LooseRecord[];
-  const path = authenticated
-    ? `/api/compiled-documents/${id}/children`
-    : `/api/guest/compiled-documents/${id}/children`;
+  const path = `/api/guest/compiled-documents/${id}/children`;
   try {
     const payload = await fetchCanonical(path);
     if (Array.isArray(payload)) return payload;
@@ -47,8 +45,8 @@ async function fetchChildren(id: string, authenticated: boolean, record: LooseRe
   } catch { return []; }
 }
 
-async function fetchAuthors(id: string, authenticated: boolean): Promise<LooseRecord[]> {
-  const path = authenticated ? `/api/document-authors/${id}` : `/api/guest/documents/${id}/authors`;
+async function fetchAuthors(id: string): Promise<LooseRecord[]> {
+  const path = `/api/guest/documents/${id}/authors`;
   try { const payload = await fetchCanonical(path); return Array.isArray(payload.authors) ? payload.authors as LooseRecord[] : []; } catch { return []; }
 }
 

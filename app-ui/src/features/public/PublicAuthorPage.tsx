@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BookOpen, CalendarDays, Layers3, UsersRound } from "lucide-react";
 import { AuthorImage } from "../../components/authors/AuthorImage";
 import { PublicErrorPage, PublicPageShell } from "../../components/public/PublicPageShell";
-import { usePublicSession } from "../../components/public/PublicSessionProvider";
 import { ApiError } from "../../lib/api/http";
 import { fetchPublicAuthorProfile, type PublicAuthorProfile } from "../../lib/api/authors";
 import { getCategoryMeta } from "../../lib/constants/categories";
@@ -48,7 +47,6 @@ export function PublicAuthorPage() {
 }
 
 function AuthorProfileContent({ profile }: { profile: PublicAuthorProfile }) {
-  const { session } = usePublicSession();
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sort, setSort] = useState<WorksSort>("newest");
   const [biographyExpanded, setBiographyExpanded] = useState(false);
@@ -109,7 +107,7 @@ function AuthorProfileContent({ profile }: { profile: PublicAuthorProfile }) {
         <button type="button" className={selectedCategory === "All" ? "is-active" : ""} aria-pressed={selectedCategory === "All"} onClick={() => setSelectedCategory("All")}>All <small>{totalWorks}</small></button>
         {categoryOptions.map((item) => <button type="button" key={item.category} className={selectedCategory === item.category ? "is-active" : ""} aria-pressed={selectedCategory === item.category} onClick={() => setSelectedCategory(item.category)}>{item.category} <small>{item.worksCount}</small></button>)}
       </div>
-      {visibleWorks.length ? <div className="peas-author-works">{visibleWorks.map((work) => <AuthorWorkCard key={`${work.recordType}-${work.id}`} work={work} authenticated={Boolean(session?.authenticated)} />)}</div> : <div className="peas-author-empty"><BookOpen aria-hidden="true" /><p>No public works match this category.</p></div>}
+      {visibleWorks.length ? <div className="peas-author-works">{visibleWorks.map((work) => <AuthorWorkCard key={`${work.recordType}-${work.id}`} work={work} />)}</div> : <div className="peas-author-empty"><BookOpen aria-hidden="true" /><p>No public works match this category.</p></div>}
     </section>
 
     <section className="peas-author-chart-card peas-author-timeline" aria-labelledby="author-timeline-title">
@@ -119,8 +117,8 @@ function AuthorProfileContent({ profile }: { profile: PublicAuthorProfile }) {
   </>;
 }
 
-function AuthorWorkCard({ work, authenticated }: { work: PublicAuthorProfile["works"][number]; authenticated: boolean }) {
-  const base = work.recordType === "compiled" ? `${authenticated ? "user" : "guest"}-compiled` : `${authenticated ? "user" : "guest"}-single`;
+function AuthorWorkCard({ work }: { work: PublicAuthorProfile["works"][number] }) {
+  const base = work.recordType === "compiled" ? "guest-compiled" : "guest-single";
   const documentHref = `/pages/${base}.html?id=${encodeURIComponent(String(work.id))}`;
   return <article className={`peas-author-work-card peas-category-tone-${getCategoryMeta(work.category).tone}`}>
     <div className="peas-author-work-card__topline"><span>{work.category}</span>{formatWorkDate(work) ? <small><CalendarDays aria-hidden="true" /> {formatWorkDate(work)}</small> : null}</div>

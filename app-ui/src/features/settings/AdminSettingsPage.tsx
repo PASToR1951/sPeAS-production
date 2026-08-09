@@ -27,7 +27,7 @@ const administrationTools = [
   {
     label: "Role Management",
     href: "/admin/Components/role-management.html",
-    description: "Assign administrator, content publisher, and registered-user access.",
+    description: "Review administrator accounts and revoke active sessions.",
     icon: ShieldCheck,
   },
 ] as const;

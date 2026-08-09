@@ -34,11 +34,8 @@ export function PublicLoginPage() {
     setBusy("password"); setNotice(null);
     try {
       const session = await signInUsername(schoolId, password);
-      const fallback = session.role === "admin"
-        ? "/admin/dashboard.html"
-        : session.role === "publisher"
-          ? "/admin/Components/news.html"
-          : "/index.html";
+      if (session.role !== "admin") throw new Error("Administrator access is required.");
+      const fallback = "/admin/dashboard.html";
       window.location.assign(redirect || fallback);
     } catch (error) { setNotice({ kind: "error", text: getErrorMessage(error) }); }
     finally { setBusy(null); }
@@ -78,8 +75,8 @@ export function PublicLoginPage() {
 
         <div className="peas-login-heading">
           {mode === "forgot" ? <button className="peas-login-back" type="button" onClick={() => { setMode("login"); setNotice(null); }}><ArrowLeft aria-hidden="true" /> Back to sign in</button> : null}
-          <h1>{String(mode === "forgot" ? content.forgotPasswordTitle || "Forgot Password?" : content.title || "Welcome back")}</h1>
-          <p>{String(mode === "forgot" ? content.forgotPasswordSubtitle || "We will send reset instructions to your registered email." : content.subtitle || "Sign in to access PeAS.")}</p>
+          <h1>{String(mode === "forgot" ? content.forgotPasswordTitle || "Forgot Password?" : "Administrator sign in")}</h1>
+          <p>{String(mode === "forgot" ? content.forgotPasswordSubtitle || "We will send reset instructions to your administrator email." : "Authorized PeAS administrators only.")}</p>
         </div>
 
         {notice ? <div id={noticeId} className={`peas-login-notice is-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"} aria-live="polite">
@@ -142,7 +139,7 @@ export function PublicLoginPage() {
           </Button>
         </form> : <form className="peas-login-form" onSubmit={submitForgot} noValidate aria-describedby={noticeId}>
           <div className="peas-login-field">
-            <label htmlFor="reset-email">Registered email</label>
+            <label htmlFor="reset-email">Administrator email</label>
             <input
               id="reset-email"
               type="email"

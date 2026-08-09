@@ -30,7 +30,7 @@ const DEFAULT_OVERVIEW = {
     {
       id: "access" as const,
       label: "Access",
-      description: "Gives guests, registered readers, publishers, and administrators the right experience while protected files remain controlled.",
+      description: "Gives visitors an abstract-first repository while administrators manage protected files and access requests.",
     },
   ],
   ctaLabel: "Explore the repository",

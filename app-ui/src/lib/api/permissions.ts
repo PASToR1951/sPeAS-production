@@ -40,6 +40,24 @@ export function updatePermissionRequestStatus({
   });
 }
 
+export interface BulkApprovalResult {
+  requested: number;
+  approved: number;
+  failed: number;
+  results: Array<{ id: number; status: "approved" | "already_approved" | "failed"; notificationStatus?: string; code?: string }>;
+}
+
+export function bulkApprovePermissionRequests(requestIds: number[]) {
+  return apiFetch<BulkApprovalResult>("/api/document-requests/bulk-approve", {
+    method: "POST",
+    json: { requestIds },
+  });
+}
+
+export function resendPermissionAccessLink(id: number) {
+  return apiFetch<Record<string, unknown>>(`/api/document-requests/${id}/resend-access`, { method: "POST" });
+}
+
 export function sendApprovalEmail(request: DocumentRequestRecord) {
   return apiFetch<Record<string, unknown>>("/api/email/send-approval", {
     method: "POST",

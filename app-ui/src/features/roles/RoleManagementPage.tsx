@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { UsersRound } from "lucide-react";
+import { KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
 import { PeasEmptyState, PeasErrorState, PeasLoadingState } from "../../components/feedback/PeasStates";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { PeasToaster, toast } from "../../components/ui/toast";
 import { getErrorMessage } from "../../lib/api/http";
-import {
-  fetchManagedUsers,
-  updateManagedUserRole,
-  type ManagedRole,
-  type ManagedUser,
-} from "../../lib/api/roles";
+import { deleteManagedAdministrator, fetchManagedUsers, revokeManagedUserSessions, type ManagedUser } from "../../lib/api/roles";
+import { requestPasswordReset } from "../../lib/api/auth";
 import { AdminPageHeader } from "../../components/layout/AdminPageHeader";
 
 export function RoleManagementPage() {
@@ -19,92 +16,27 @@ export function RoleManagementPage() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   const loadUsers = useCallback(() => {
-    setLoading(true);
-    setError("");
-    fetchManagedUsers()
-      .then(setUsers)
-      .catch((caughtError) => setError(getErrorMessage(caughtError)))
-      .finally(() => setLoading(false));
+    setLoading(true); setError("");
+    fetchManagedUsers().then(setUsers).catch((error) => setError(getErrorMessage(error))).finally(() => setLoading(false));
   }, []);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  const changeRole = async (user: ManagedUser, nextRole: ManagedRole) => {
-    if (nextRole === user.role) return;
-    if (!window.confirm(`Change ${user.name || user.id} from ${roleLabel(user.role)} to ${roleLabel(nextRole)}? Their active sessions will be signed out.`)) {
-      return;
-    }
-
+  async function act(user: ManagedUser, action: "revoke" | "reset" | "delete") {
+    if (action === "delete" && !window.confirm(`Permanently remove administrator ${user.name || user.id}?`)) return;
     setBusyUserId(user.id);
     try {
-      const updated = await updateManagedUserRole(user.id, nextRole);
-      setUsers((current) => current.map((entry) => entry.id === user.id ? updated : entry));
-      toast.success(`${updated.name || updated.id} is now ${roleLabel(updated.role)}.`);
-    } catch (caughtError) {
-      toast.error(getErrorMessage(caughtError));
-    } finally {
-      setBusyUserId(null);
-    }
-  };
+      if (action === "revoke") await revokeManagedUserSessions(user.id);
+      if (action === "reset") await requestPasswordReset(user.email);
+      if (action === "delete") await deleteManagedAdministrator(user.id);
+      toast.success(action === "revoke" ? "Administrator sessions revoked." : action === "reset" ? "Password reset instructions requested." : "Administrator removed.");
+      if (action === "delete") loadUsers();
+    } catch (error) { toast.error(getErrorMessage(error)); }
+    finally { setBusyUserId(null); }
+  }
 
-  return (
-    <main className="peas-admin-island peas-role-management">
-      <PeasToaster />
-      <AdminPageHeader eyebrow="Security & access" title="Role Management" description="Assign administrator, content publisher, or registered-user access. Role changes revoke the user’s active sessions." />
-
-      {loading ? <PeasLoadingState /> : error ? (
-        <PeasErrorState title="Unable to load users" message={error} onRetry={loadUsers} />
-      ) : users.length === 0 ? (
-        <PeasEmptyState title="No users found" description="Provisioned PeAS accounts will appear here." />
-      ) : (
-        <section className="peas-role-table-card" aria-label="PeAS user roles">
-          <div className="peas-role-table-card__summary">
-            <UsersRound aria-hidden="true" />
-            <span>{users.length} managed {users.length === 1 ? "account" : "accounts"}</span>
-          </div>
-          <div className="peas-role-table-wrap">
-            <table className="peas-role-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>School ID</th>
-                  <th>Current access</th>
-                  <th>Assign role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td><strong>{user.name || user.id}</strong><small>{user.email}</small></td>
-                    <td>{user.display_username || user.username || user.id}</td>
-                    <td><Badge tone={user.role === "admin" ? "green" : user.role === "publisher" ? "gold" : "blue"}>{roleLabel(user.role)}</Badge></td>
-                    <td>
-                      <select
-                        aria-label={`Role for ${user.name || user.id}`}
-                        disabled={busyUserId === user.id}
-                        value={user.role}
-                        onChange={(event) => void changeRole(user, event.currentTarget.value as ManagedRole)}
-                      >
-                        <option value="user">Registered User</option>
-                        <option value="publisher">Content Publisher</option>
-                        <option value="admin">Administrator</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-    </main>
-  );
-}
-
-function roleLabel(role: ManagedRole) {
-  if (role === "admin") return "Administrator";
-  if (role === "publisher") return "Content Publisher";
-  return "Registered User";
+  return <main className="peas-admin-island peas-role-management"><PeasToaster />
+    <AdminPageHeader eyebrow="Security & access" title="Administrator Accounts" description="PeAS permits explicitly provisioned administrator accounts only. New administrators are created through the deployment bootstrap command." />
+    {loading ? <PeasLoadingState /> : error ? <PeasErrorState title="Unable to load administrators" message={error} onRetry={loadUsers} /> : !users.length ? <PeasEmptyState title="No administrators found" description="Provision an administrator from the server console." /> :
+      <section className="peas-role-table-card" aria-label="PeAS administrators"><div className="peas-role-table-wrap"><table className="peas-role-table"><thead><tr><th>Administrator</th><th>Identifier</th><th>Access</th><th>Security actions</th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{user.name || user.id}</strong><small>{user.email}</small></td><td>{user.display_username || user.username || user.id}</td><td><Badge tone="green"><ShieldCheck aria-hidden="true" /> Administrator</Badge></td><td><div className="peas-row-actions"><Button size="sm" variant="outline" disabled={busyUserId === user.id} onClick={() => void act(user, "revoke")}><UserRoundX aria-hidden="true" /> Revoke sessions</Button><Button size="sm" variant="outline" disabled={busyUserId === user.id} onClick={() => void act(user, "reset")}><KeyRound aria-hidden="true" /> Reset password</Button><Button size="sm" variant="destructive" disabled={busyUserId === user.id || users.length <= 1} onClick={() => void act(user, "delete")}><Trash2 aria-hidden="true" /> Remove</Button></div></td></tr>)}</tbody></table></div></section>}
+  </main>;
 }
