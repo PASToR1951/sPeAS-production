@@ -3,7 +3,7 @@
  * Handles sending emails, including those with attachments
  */
 
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "nodemailer";
 import { ensureDir } from "https://deno.land/std@0.190.0/fs/ensure_dir.ts";
 import { join } from "../deps.ts";
 import { FileCheckService } from './fileCheckService.ts';
@@ -42,19 +42,10 @@ const EMAIL_CONFIG = {
   port: parseInt(Deno.env.get("SMTP_PORT") || "465"),
   username: secretFromEnvironment("SMTP_USERNAME"),
   password: secretFromEnvironment("SMTP_PASSWORD"),
-  useTLS: Deno.env.get("SMTP_TLS") !== "false",    // True by default
+  useTLS: Deno.env.get("SMTP_TLS") !== "false", // true = implicit TLS; false = STARTTLS
   connectTimeout: 30000, // 30 seconds timeout for connection
   sendTimeout: 60000,    // 60 seconds timeout for sending operations
-  retryAttempts: 2,      // Retry attempts on connection failure
-  maxRetries: 3,         // Maximum retries for any operation
 };
-
-// Configure email fallbacks
-let emailServiceAvailable = true;      // Flag to track if email service is working
-let lastEmailAttemptTime = 0;          // Track the last time we tried to send email
-const emailRetryInterval = 5 * 60000;  // 5 minutes in milliseconds before trying again
-const maxConsecutiveFailures = 3;      // After this many failures, wait for retry interval
-let consecutiveFailures = 0;           // Track consecutive failures
 
 // Fix for from address format
 const getFormattedFromAddress = () => {
@@ -94,8 +85,19 @@ const getFormattedFromAddress = () => {
 if (!EMAIL_CONFIG.username || !EMAIL_CONFIG.password) {
 }
 
-// Initialize SMTP client
-let smtpClient: SMTPClient | null = null;
+type SmtpMessage = {
+  from: string;
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  replyTo?: string;
+  attachments?: unknown[];
+};
+
+// Nodemailer opens a fresh SMTP connection for each message unless pooling is
+// enabled. That avoids retaining a stale socket between unrelated requests.
+let smtpTransport: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 // Add file existence verification and debug mode to the email service
 const DEBUG_MODE = true; // Enable more verbose debugging
@@ -104,45 +106,45 @@ const DEBUG_MODE = true; // Enable more verbose debugging
  * Initializes the SMTP client with the provided configuration
  */
 function initializeClient() {
-  // Don't attempt to initialize if we've determined service is unavailable recently
-  const currentTime = Date.now();
-  if (!emailServiceAvailable && (currentTime - lastEmailAttemptTime) < emailRetryInterval) {
-        return null;
+  if (!EMAIL_CONFIG.username || !EMAIL_CONFIG.password) return null;
+
+  if (!smtpTransport) {
+    smtpTransport = nodemailer.createTransport({
+      host: EMAIL_CONFIG.hostname,
+      port: EMAIL_CONFIG.port,
+      secure: EMAIL_CONFIG.useTLS,
+      // SMTP_TLS=false means the connection must be upgraded with STARTTLS;
+      // credentials must never fall back to an unencrypted connection.
+      requireTLS: !EMAIL_CONFIG.useTLS,
+      auth: {
+        user: EMAIL_CONFIG.username,
+        pass: EMAIL_CONFIG.password,
+      },
+      connectionTimeout: EMAIL_CONFIG.connectTimeout,
+      greetingTimeout: EMAIL_CONFIG.connectTimeout,
+      socketTimeout: EMAIL_CONFIG.sendTimeout,
+      tls: { minVersion: "TLSv1.2" },
+    });
   }
-  
-  lastEmailAttemptTime = currentTime;
-  
-  if (!smtpClient) {
-    try {
-      if (!EMAIL_CONFIG.username || !EMAIL_CONFIG.password) {
-        emailServiceAvailable = false;
-        return null;
-      }
-      
-            
-      smtpClient = new SMTPClient({
-        connection: {
-          hostname: EMAIL_CONFIG.hostname,
-          port: EMAIL_CONFIG.port,
-          tls: EMAIL_CONFIG.useTLS,
-          auth: {
-            username: EMAIL_CONFIG.username,
-            password: EMAIL_CONFIG.password,
-          }
-        },
-        // Add debug option with correct type
-        // SMTP protocol logging can expose message bodies and recipient data.
-        debug: { log: false },
-      });
-            emailServiceAvailable = true;
-      return smtpClient;
-    } catch (error) {
-      emailServiceAvailable = false;
-      return null;
-    }
+
+  return smtpTransport;
+}
+
+async function sendSmtpMessage(
+  message: SmtpMessage,
+): Promise<void> {
+  const client = initializeClient();
+  if (!client) {
+    throw new Error("Failed to initialize SMTP client. Check your email settings.");
   }
-  
-  return smtpClient;
+
+  try {
+    await client.sendMail(message);
+  } catch (error) {
+    smtpTransport = null;
+    client.close();
+    throw error;
+  }
 }
 
 export async function sendContactInquiryEmail(input: {
@@ -153,9 +155,6 @@ export async function sendContactInquiryEmail(input: {
   subject: string;
   message: string;
 }): Promise<void> {
-  const client = initializeClient();
-  if (!client) throw new Error("SMTP_UNAVAILABLE");
-
   const emailSubject = `[PeAS Contact][${input.referenceCode}] ${input.subject}`;
   const text = [
     `Reference: ${input.referenceCode}`,
@@ -173,12 +172,12 @@ export async function sendContactInquiryEmail(input: {
     <p>${escapeContactHtml(input.message).replaceAll("\n", "<br>")}</p>
   `;
 
-  await client.send({
+  await sendSmtpMessage({
     from: getFormattedFromAddress(),
     to: input.recipient,
     replyTo: input.visitorEmail,
     subject: emailSubject,
-    content: text,
+    text,
     html,
   });
 }
@@ -217,6 +216,10 @@ export async function sendPasswordResetEmail(input: {
   if (!result?.success) {
     throw new Error("Password reset email could not be delivered");
   }
+  await logEmailActivity("PASSWORD_RESET_EMAIL_SENT", {
+    recipient: input.recipient,
+    subject: "Reset your PeAS administrator password",
+  });
 }
 
 /**
@@ -447,9 +450,16 @@ export async function sendEmailWithAttachment(
       };
     }
     
-    // Try to initialize the SMTP client
+    // Validate that the SMTP transport can be constructed before doing any
+    // potentially expensive attachment work.
     try {
-    initializeClient();
+      if (!initializeClient()) {
+        return {
+          success: false,
+          error: "Failed to initialize SMTP client",
+          attachment_success: false
+        };
+      }
     } catch (initError) {
       await logEmailActivity("EMAIL_INIT_ERROR", {
         recipient: to,
@@ -459,14 +469,6 @@ export async function sendEmailWithAttachment(
       return {
         success: false,
         error: initError instanceof Error ? initError.message : String(initError),
-        attachment_success: false
-      };
-    }
-    
-    if (!smtpClient) {
-      return {
-        success: false,
-        error: "Failed to initialize SMTP client",
         attachment_success: false
       };
     }
@@ -658,13 +660,7 @@ export async function sendEmailWithAttachment(
     // Send the email with better error handling
     try {
         
-    // Initialize the SMTP client before attempting to send
-    const client = initializeClient();
-    if (!client) {
-      throw new Error("Failed to initialize SMTP client. Check your email settings.");
-    }
-    
-    await client.send(message);
+    await sendSmtpMessage(message);
         
     // Log clear confirmation about attachment status
     if (filePath && message.attachments) {
@@ -1076,13 +1072,7 @@ sPeAS - Library Document Management System
     // Send the email with better error handling
     try {
         
-    // Initialize the SMTP client before attempting to send
-    const client = initializeClient();
-    if (!client) {
-      throw new Error("Failed to initialize SMTP client. Check your email settings.");
-    }
-    
-    await client.send(message);
+    await sendSmtpMessage(message);
           
     // Log clear confirmation about attachment status
     if (fileExists) {

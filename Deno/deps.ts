@@ -27,7 +27,4 @@ export { FormDataReader } from "https://deno.land/x/oak@v12.6.1/multipart.ts";
 // PostgreSQL client
 export { Pool, PoolClient } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 
-// SMTP client
-export { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
-
 // Other dependencies can be added here

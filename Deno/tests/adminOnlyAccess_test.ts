@@ -105,6 +105,10 @@ Deno.test("administrator password recovery emails a single-use link without a do
   assertStringIncludes(authentication, "minPasswordLength: 14");
   assertStringIncludes(emailService, "single-use link expires in one hour");
   assertStringIncludes(emailService, "if (!result?.success)");
+  assertStringIncludes(emailService, 'import nodemailer from "nodemailer"');
+  assertStringIncludes(emailService, "requireTLS: !EMAIL_CONFIG.useTLS");
+  assertStringIncludes(emailService, 'logEmailActivity("PASSWORD_RESET_EMAIL_SENT"');
+  assertEquals(emailService.includes("denomailer@1.6.0"), false);
   assertStringIncludes(bootstrap, 'required(\n  "Administrator email"');
   assert(!authentication.includes("AUTH_ALLOWED_EMAIL_DOMAIN"));
   assert(!bootstrap.includes("AUTH_ALLOWED_EMAIL_DOMAIN"));
