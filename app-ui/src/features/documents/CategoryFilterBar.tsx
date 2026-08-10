@@ -14,6 +14,21 @@ export function CategoryFilterBar({ categories, selectedCategory, onSelectCatego
 
   return (
     <div className="peas-category-filter-bar" role="group" aria-label="Document categories">
+      <label className="peas-category-filter-select-wrap">
+        <span className="sr-only">Document category</span>
+        <select
+          className="peas-category-filter-select"
+          value={selectedCategory}
+          aria-label="Document category"
+          onChange={(event) => onSelectCategory(event.target.value as DocumentCategory)}
+        >
+          {CATEGORY_ORDER.map((categoryValue) => {
+            const category = getCategoryMeta(categoryValue);
+            const count = categoryValue === "All" ? allCount : countByCategory.get(categoryValue) ?? 0;
+            return <option value={category.value} key={category.value}>{category.label} ({count} {count === 1 ? "entry" : "entries"})</option>;
+          })}
+        </select>
+      </label>
       {CATEGORY_ORDER.map((categoryValue) => {
         const category = getCategoryMeta(categoryValue);
         const count = categoryValue === "All" ? allCount : countByCategory.get(categoryValue) ?? 0;

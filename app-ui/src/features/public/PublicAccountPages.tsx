@@ -534,8 +534,8 @@ function Profile() {
   const name = profile ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ") || profile.name : session?.user?.name || session?.username || "PeAS user";
   const imageUrl = selectedImage || profileImageUrl(profile?.profile_picture) || String(session?.user?.image || "");
   // Do not render a credential form until the server explicitly confirms that
-  // this account owns a credential password. This keeps Microsoft-only and
-  // temporarily unavailable profile states safe by default.
+  // this account owns a credential password. This keeps temporarily
+  // unavailable profile states safe by default.
   const canChangePassword = profile?.can_change_password === true;
   const passwordChecks = passwordRequirements(newPassword);
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
@@ -664,7 +664,7 @@ function Profile() {
                 </Button>
               </div>
             </form>
-          ) : <div className="peas-profile-managed"><LockKeyhole aria-hidden="true" /><h3>Password managed by your institution</h3><p>This account signs in through Microsoft. Manage your password through your university identity provider.</p></div> : <div className="peas-profile-managed"><PeasInlineSpinner label="Loading security options" /></div>}
+          ) : <div className="peas-profile-managed"><LockKeyhole aria-hidden="true" /><h3>Password unavailable</h3><p>Ask a PeAS operator to create a password credential for this account.</p></div> : <div className="peas-profile-managed"><PeasInlineSpinner label="Loading security options" /></div>}
         </section>
       </div>
     </>

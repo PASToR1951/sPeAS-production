@@ -4,7 +4,7 @@ import { AuthShell } from "../../components/public/PublicPageShell";
 import { InteractiveImageDistortion } from "../../components/public/InteractiveImageDistortion";
 import { Button } from "../../components/ui/button";
 import { getErrorMessage } from "../../lib/api/http";
-import { requestPasswordReset, safeSameOriginRedirect, signInMicrosoft, signInUsername } from "../../lib/api/auth";
+import { requestPasswordReset, safeSameOriginRedirect, signInUsername } from "../../lib/api/auth";
 import { experienceBlockProps, usePublicExperience } from "../../lib/api/experience";
 
 const FACADE_IMAGE_URL = "/Components/images/spud_facade.jpg";
@@ -22,7 +22,7 @@ export function PublicLoginPage() {
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [busy, setBusy] = useState<"password" | "microsoft" | "forgot" | null>(null);
+  const [busy, setBusy] = useState<"password" | "forgot" | null>(null);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
   const redirect = safeSameOriginRedirect(new URLSearchParams(window.location.search).get("redirect"), "");
@@ -46,7 +46,7 @@ export function PublicLoginPage() {
     if (canvasMode) return;
     if (!email.trim()) return setNotice({ kind: "error", text: "Enter your registered email address." });
     setBusy("forgot"); setNotice(null);
-    try { await requestPasswordReset(email); setNotice({ kind: "success", text: "If the address is registered, a reset link has been sent." }); }
+    try { await requestPasswordReset(email); setNotice({ kind: "success", text: "If this administrator email is registered, a reset link has been sent." }); }
     catch (error) { setNotice({ kind: "error", text: getErrorMessage(error) }); }
     finally { setBusy(null); }
   };
@@ -120,23 +120,6 @@ export function PublicLoginPage() {
             {busy === "password" ? <LoaderCircle className="peas-spin" aria-hidden="true" /> : null}
             {busy === "password" ? "Signing in…" : String(content.submitLabel || "Sign in")}
           </Button>
-          <div className="peas-login-divider"><span>or continue with</span></div>
-          <Button
-            className="peas-login-microsoft"
-            disabled={busy !== null || canvasMode}
-            size="lg"
-            variant="outline"
-            type="button"
-            onClick={async () => {
-              setBusy("microsoft");
-              setNotice(null);
-              try { await signInMicrosoft(redirect || "/auth/landing.html"); }
-              catch (error) { setNotice({ kind: "error", text: getErrorMessage(error) }); setBusy(null); }
-            }}
-          >
-            {busy === "microsoft" ? <LoaderCircle className="peas-spin" aria-hidden="true" /> : <span className="peas-microsoft-mark" aria-hidden="true"><i /><i /><i /><i /></span>}
-            {busy === "microsoft" ? "Connecting…" : "Microsoft"}
-          </Button>
         </form> : <form className="peas-login-form" onSubmit={submitForgot} noValidate aria-describedby={noticeId}>
           <div className="peas-login-field">
             <label htmlFor="reset-email">Administrator email</label>
@@ -145,7 +128,7 @@ export function PublicLoginPage() {
               type="email"
               autoCapitalize="none"
               autoComplete="email"
-              placeholder="name@su.edu.ph"
+              placeholder="admin@example.com"
               spellCheck={false}
               value={email}
               onChange={(event) => setEmail(event.currentTarget.value)}

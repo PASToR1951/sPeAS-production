@@ -32,14 +32,6 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/author-visits/stats", (route) => route.fulfill({ json: { success: true, topAuthors: [] } }));
   await page.route("**/api/document-requests", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/admin/notifications", (route) => route.fulfill({ json: { notifications: [{ id: 1, type: "author_profile_incomplete", entityType: "author", entityId: "author-1", severity: "urgent", title: "Complete author profile", message: "Incomplete Author is missing directory information.", actionPath: "/admin/Components/author-list.html?author=author-1&action=complete", isRead: false, resolved: false, createdAt: "2026-08-01T00:00:00.000Z" }], summary: { total: 1, unread: 1, urgent: 1 } } }));
-  await page.route("**/api/admin/auth/microsoft-status", (route) => route.fulfill({ json: {
-    enabled: false,
-    clientIdConfigured: false,
-    clientSecretConfigured: false,
-    tenantIdConfigured: false,
-    allowedEmailDomain: "spud.edu.ph",
-    callbackUrl: "http://localhost:8000/api/auth/callback/microsoft",
-  } }));
 });
 
 test("admin notification bell exposes urgent author action", async ({ page }) => {
@@ -116,7 +108,7 @@ test("admin shell uses solid surfaces and an accessible profile menu", async ({ 
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
   await expect(page.locator(".peas-admin-profile-menu")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Profile" })).toHaveAttribute("href", "/pages/UserProfile.html");
+  await expect(menu.getByRole("menuitem", { name: "Profile" })).toHaveCount(0);
   await expect(menu.getByRole("menuitem", { name: "Settings" })).toHaveAttribute("href", "/admin/Components/admin_settings.html");
   await expect(menu.getByRole("menuitem", { name: "Logout" })).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -164,10 +156,23 @@ test("admin routes keep one shell, identity, and navigation set", async ({ page 
   await expect(page.getByRole("heading", { name: "Welcome back, Admin" })).toBeVisible();
   await expect(navigation.getByRole("link")).toHaveText(ADMIN_LINKS);
 
-  await page.getByRole("navigation", { name: "Utilities" }).getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.locator(".peas-admin-shell")).toHaveAttribute("data-shell-instance", "preserved");
   await expect(navigation.getByRole("link")).toHaveText(ADMIN_LINKS);
+});
+
+test("reports and system logs live in Settings instead of the sidebar", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 670 });
+  await page.goto("/admin/dashboard.html");
+  const sidebar = page.locator(".peas-admin-sidebar");
+  await expect(sidebar.getByRole("link", { name: "Operational Reports" })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "System Logs" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await expect(page.locator(".peas-settings-tool-card").filter({ hasText: "Operational Reports" })).toBeVisible();
+  await expect(page.locator(".peas-settings-tool-card").filter({ hasText: "System Logs" })).toBeVisible();
 });
 
 test("contact inquiry drawer has animated open and close states", async ({ page }) => {
@@ -208,45 +213,44 @@ test("contact inquiry drawer has animated open and close states", async ({ page 
   await expect(detail).toHaveCount(0);
 });
 
-test("settings exposes the administrator tools and owns their navigation state", async ({ page }) => {
+test("settings remains available from the administrator profile menu", async ({ page }) => {
   await page.goto("/admin/Components/admin_settings.html");
 
   const tools = page.locator(".peas-settings-tool-card");
-  await expect(tools).toHaveCount(3);
+  await expect(tools).toHaveCount(4);
   await expect(tools).toHaveText([
     /Operational Reports.*Review repository inventory, archive activity, and category distribution.*Open/s,
+    /System Logs.*Review security events, repository activity, and administrator changes.*Open/s,
     /Experience Studio.*Manage the content and presentation of the public PeAS experience.*Open/s,
-    /Role Management.*Assign administrator, content publisher, and registered-user access.*Open/s,
+    /Role Management.*Review administrator accounts and revoke active sessions.*Open/s,
   ]);
   await expect(tools.nth(0)).toHaveAttribute("href", "/admin/Components/reports.html");
-  await expect(tools.nth(1)).toHaveAttribute("href", "/admin/Components/experience-studio.html");
-  await expect(tools.nth(2)).toHaveAttribute("href", "/admin/Components/role-management.html");
+  await expect(tools.nth(1)).toHaveAttribute("href", "/admin/Components/admin_logs.html");
+  await expect(tools.nth(2)).toHaveAttribute("href", "/admin/Components/experience-studio.html");
+  await expect(tools.nth(3)).toHaveAttribute("href", "/admin/Components/role-management.html");
 
   const navigation = page.getByRole("navigation", { name: "Utilities" });
-  await expect(navigation.getByRole("link", { name: "Settings" })).toHaveClass(/is-active/);
+  await expect(navigation.getByRole("link", { name: "Settings" })).toHaveCount(0);
+  await expect(navigation.getByRole("button", { name: "Logout" })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: "Operational Reports" })).toHaveCount(0);
 
   await tools.nth(0).click();
   await expect(page).toHaveURL(/\/admin\/Components\/reports\.html$/);
   await expect(page.getByRole("heading", { name: "Operational Reports" })).toBeVisible();
-  await expect(navigation.getByRole("link", { name: "Operational Reports" })).toHaveClass(/is-active/);
 
-  await navigation.getByRole("link", { name: "Settings" }).click();
-  await tools.nth(2).click();
+  await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await tools.nth(3).click();
   await expect(page).toHaveURL(/\/admin\/Components\/role-management\.html$/);
-  await expect(page.getByRole("heading", { name: "Role Management" })).toBeVisible();
-  await expect(navigation.getByRole("link", { name: "Settings" })).toHaveClass(/is-active/);
+  await expect(page.getByRole("heading", { name: "Administrator Accounts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open profile menu for Admin M User" })).toBeVisible();
 });
 
-test("settings explains Microsoft sign-in setup and reports server readiness", async ({ page }) => {
+test("settings contains administrator profile and workspace tools", async ({ page }) => {
   await page.goto("/admin/Components/admin_settings.html");
-
-  const setup = page.locator(".peas-microsoft-setup");
-  await expect(setup.getByRole("heading", { name: "Enable Microsoft sign-in" })).toBeVisible();
-  await expect(setup.getByText("Needs setup", { exact: true })).toBeVisible();
-  await expect(setup.getByText("0 of 3 values detected", { exact: true })).toBeVisible();
-  await expect(setup.getByText("MICROSOFT_CLIENT_SECRET", { exact: true })).toBeVisible();
-  await expect(setup.getByText("http://localhost:8000/api/auth/callback/microsoft", { exact: true })).toBeVisible();
-  await expect(setup.getByRole("link", { name: /Open Microsoft Entra admin center/ })).toHaveAttribute("href", "https://entra.microsoft.com/");
+  await expect(page.getByText("Profile picture", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Administration tools" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Role Management/ })).toBeVisible();
 });
 
 test("collapsed navigation identifies icon-only controls with tooltips", async ({ page }) => {
@@ -417,6 +421,108 @@ test("legacy audit targets are React admin entries", async ({ request, baseURL }
     expect(html).not.toContain("tailwindcss.com");
     expect(html).not.toContain("fonts.googleapis.com");
   }
+});
+
+test("system logs provide a filterable, expandable operational console", async ({ page }) => {
+  const requests: URL[] = [];
+  await page.route("**/api/system-logs/summary", (route) => route.fulfill({ json: {
+    summary: { login: 3, download: 2, author_reference_data: 4 },
+    recentDownloads: [], recentLogins: [], recentDocumentActions: [],
+  } }));
+  await page.route("**/api/system-logs?*", (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url);
+    const offset = Number(url.searchParams.get("offset") || 0);
+    const logs = offset === 25 ? [{
+      id: 26, timestamp: "2026-08-01T08:15:00.000Z", log_type: "login", user_id: "admin-02",
+      username: "admin-02", action: "User login", status: "success", ip_address: "127.0.0.1", details: {},
+    }] : [{
+      id: 25, timestamp: "2026-08-02T04:30:00.000Z", log_type: "author_reference_data", user_id: "admin-01",
+      username: "admin-01", action: "department.create", status: "success", related_id: "12", ip_address: "127.0.0.1",
+      details: { role: "admin", department: "Computer Science" },
+    }];
+    return route.fulfill({ json: { logs, total: 26, limit: 25, offset } });
+  });
+
+  await page.goto("/admin/Components/admin_logs.html");
+  await expect(page.getByRole("heading", { name: "System Logs", level: 1 })).toBeVisible();
+  await expect(page.getByText("Events · last 7 days").locator("..")).toContainText("9");
+  const desktopTable = page.locator(".peas-system-logs-table-wrap");
+  await expect(desktopTable.getByText("Department create")).toBeVisible();
+  const clipping = await page.evaluate(() => {
+    const apply = document.querySelector<HTMLElement>(".peas-system-logs-apply")!;
+    const consoleBox = document.querySelector<HTMLElement>(".peas-system-logs-toolbar")!.getBoundingClientRect();
+    const badges = [...document.querySelectorAll<HTMLElement>(".peas-system-log-type, .peas-system-log-status")].filter((element) => element.offsetParent !== null);
+    const applyBox = apply.getBoundingClientRect();
+    return {
+      applyInsideToolbar: applyBox.right <= consoleBox.right && applyBox.left >= consoleBox.left,
+      applyTextFits: apply.scrollWidth <= apply.clientWidth,
+      badgesFit: badges.every((badge) => badge.scrollWidth <= badge.clientWidth && badge.scrollHeight <= badge.clientHeight),
+    };
+  });
+  expect(clipping).toEqual({ applyInsideToolbar: true, applyTextFits: true, badgesFit: true });
+
+  const detailButton = page.getByRole("button", { name: "Show details for Department create" });
+  await detailButton.focus();
+  await detailButton.press("Enter");
+  await expect(page.getByRole("button", { name: "Hide details for Department create" })).toHaveAttribute("aria-expanded", "true");
+  await expect(desktopTable.getByText("Computer Science")).toBeVisible();
+  await expect(desktopTable.getByText("127.0.0.1")).toBeVisible();
+
+  await page.getByLabel("Actor or user ID").fill("admin-01");
+  await page.getByLabel("Event type").selectOption("author_reference_data");
+  await page.getByLabel("Status").selectOption("success");
+  await page.getByLabel("From", { exact: true }).fill("2026-08-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-08-10");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("type")).toBe("author_reference_data");
+  expect(requests.at(-1)?.searchParams.get("username")).toBe("admin-01");
+  expect(requests.at(-1)?.searchParams.get("from")).toContain("2026-08-01T00:00:00+08:00");
+  expect(requests.at(-1)?.searchParams.get("to")).toContain("2026-08-10T23:59:59.999+08:00");
+
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("offset")).toBe("25");
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("type")).toBeNull();
+
+  await page.addScriptTag({ content: axeSource });
+  const critical = await page.evaluate(async () => (await (window as any).axe.run(document)).violations.filter((item: any) => item.impact === "critical"));
+  expect(critical).toEqual([]);
+});
+
+test("system logs use compact event cards without mobile overflow", async ({ page }) => {
+  await page.route("**/api/system-logs/summary", (route) => route.fulfill({ json: { summary: {}, recentDownloads: [], recentLogins: [], recentDocumentActions: [] } }));
+  await page.route("**/api/system-logs?*", (route) => route.fulfill({ json: { logs: [{
+    id: 1, timestamp: "2026-08-02T04:30:00.000Z", log_type: "security", username: "administrator-with-a-very-long-identifier",
+    action: "administrator_sessions_revoked", status: "warning", details: { targetUserId: "reader-123" },
+  }], total: 1, limit: 25, offset: 0 } }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/Components/admin_logs.html");
+  await expect(page.locator(".peas-system-logs-mobile-list")).toBeVisible();
+  await expect(page.locator(".peas-system-logs-table-wrap")).toBeHidden();
+  const mobileList = page.locator(".peas-system-logs-mobile-list");
+  await mobileList.getByRole("button", { name: /Administrator sessions revoked/ }).click();
+  await expect(mobileList.getByText("reader-123")).toBeVisible();
+  const metrics = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.viewport);
+});
+
+test("document permission filters share one control baseline", async ({ page }) => {
+  await page.goto("/admin/Components/document-permissions.html");
+  await expect(page.getByRole("heading", { name: "Document Permissions" })).toBeVisible();
+  const positions = await page.evaluate(() => {
+    const selectors = [
+      ".peas-permissions-toolbar .peas-search-input",
+      ".peas-permissions-toolbar .peas-sort-select",
+      ".peas-permissions-toolbar .peas-date-trigger__surface",
+    ];
+    return selectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)].map((element) => {
+      const box = element.getBoundingClientRect();
+      return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+    }));
+  });
+  expect(new Set(positions.map((position) => position.top)).size).toBe(1);
+  expect(new Set(positions.map((position) => position.bottom)).size).toBe(1);
 });
 
 async function mockAdminIdentity(page: Page) {

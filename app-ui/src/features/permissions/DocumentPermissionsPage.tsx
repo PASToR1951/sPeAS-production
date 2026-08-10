@@ -282,13 +282,6 @@ export function DocumentPermissionsPage() {
           Refresh
         </Button></>} />
 
-      <section className="peas-summary-grid" aria-label="Permission request summary">
-        <SummaryCard label="All Requests" value={summary.all} active={status === "all"} onClick={() => setStatus("all")} />
-        <SummaryCard label="Pending" value={summary.pending} active={status === "pending"} onClick={() => setStatus("pending")} />
-        <SummaryCard label="Approved" value={summary.approved} active={status === "approved"} onClick={() => setStatus("approved")} />
-        <SummaryCard label="Rejected" value={summary.rejected} active={status === "rejected"} onClick={() => setStatus("rejected")} />
-      </section>
-
       <section className="peas-permissions-toolbar" aria-label="Permission filters">
         {selectedIds.size ? <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>Clear selection</Button> : null}
         <PeasSearchInput
@@ -348,6 +341,13 @@ export function DocumentPermissionsPage() {
           </div>
         </>
       )}
+
+      <section className="peas-summary-grid" aria-label="Permission request summary">
+        <SummaryCard label="All Requests" value={summary.all} active={status === "all"} onClick={() => setStatus("all")} />
+        <SummaryCard label="Pending" value={summary.pending} active={status === "pending"} onClick={() => setStatus("pending")} />
+        <SummaryCard label="Approved" value={summary.approved} active={status === "approved"} onClick={() => setStatus("approved")} />
+        <SummaryCard label="Rejected" value={summary.rejected} active={status === "rejected"} onClick={() => setStatus("rejected")} />
+      </section>
 
       <PeasPagination
         page={page}

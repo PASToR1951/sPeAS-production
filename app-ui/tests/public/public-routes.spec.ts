@@ -19,6 +19,65 @@ for (const route of routes) {
   });
 }
 
+test("administrator password recovery sends the account email and accepts the magic-link token", async ({ page }) => {
+  let resetRequest: Record<string, unknown> | null = null;
+  let passwordUpdate: Record<string, unknown> | null = null;
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "null",
+  }));
+  await page.route("**/api/auth/request-password-reset", (route) => {
+    resetRequest = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true }),
+    });
+  });
+
+  await page.goto("/log-in.html");
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await page.getByLabel("Administrator email").fill("External.Admin@Example.com");
+  await page.getByRole("button", { name: "Send reset instructions" }).click();
+
+  expect(resetRequest).toEqual({
+    email: "external.admin@example.com",
+    redirectTo: "/reset-password.html",
+  });
+  await expect(page.getByRole("status")).toContainText("reset link has been sent");
+
+  await page.route("**/api/auth/reset-password", (route) => {
+    passwordUpdate = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true }),
+    });
+  });
+  await page.goto("/reset-password.html?token=single-use-token");
+  await page.getByLabel("New password").fill("A-longer-password-2026");
+  await page.getByLabel("Confirm password").fill("A-longer-password-2026");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  expect(passwordUpdate).toEqual({
+    newPassword: "A-longer-password-2026",
+    token: "single-use-token",
+  });
+  await expect(page.getByRole("status")).toContainText("Password updated");
+});
+
+test("invalid password reset links fail closed", async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "null",
+  }));
+  await page.goto("/reset-password.html?error=INVALID_TOKEN");
+  await expect(page.getByRole("alert")).toContainText("invalid or has expired");
+  await expect(page.getByRole("button", { name: "Reset password" })).toBeDisabled();
+});
+
 test("FAQ page supports searchable, categorized, accessible answers", async ({ page }) => {
   await page.goto("/faq.html");
 
@@ -1251,6 +1310,7 @@ test("login uses paired branding and a centered university seal on the campus fa
   expect(sealLayout.width).toBeGreaterThanOrEqual(testInfo.project.name !== "pixel-7" ? 160 : 80);
   await expect(page.locator(".peas-auth-home")).toHaveCount(0);
   await expect(page.locator("#password")).toHaveAttribute("placeholder", "Enter your password");
+  await expect(page.locator(".peas-login-form button[type='submit']")).toHaveCount(1);
 
   const viewportWidth = page.viewportSize()?.width ?? 0;
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewportWidth);

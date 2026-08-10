@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import {
   Archive,
   Bell,
-  ClipboardList,
   ChevronDown,
   FileText,
   Tags,
@@ -14,11 +13,9 @@ import {
   MailQuestion,
   PanelLeftClose,
   PanelLeftOpen,
-  ScrollText,
   Settings,
   ShieldCheck,
   UploadCloud,
-  UserRound,
   UsersRound,
   X,
   AlertTriangle,
@@ -85,15 +82,6 @@ const navItems: AdminNavigationItem[] = [
 
 const utilityItems: AdminNavigationItem[] = [
   { label: "View Site", href: "/index.html", icon: Home, roles: ["admin"] as WorkspaceRole[] },
-  { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ["admin"] as WorkspaceRole[], activePaths: ["/admin/Components/most-viewed-works.html", "/admin/Components/most-viewed-authors.html", "/admin/Components/trending-topics.html", "/admin/Components/search-analytics.html"] },
-  { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ["admin"] as WorkspaceRole[] },
-  {
-    label: "Settings",
-    href: "/admin/Components/admin_settings.html",
-    icon: Settings,
-    roles: ["admin"] as WorkspaceRole[],
-    activePaths: ["/admin/Components/role-management.html"],
-  },
 ];
 
 export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: AdminLayoutProps) {
@@ -224,7 +212,6 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
         collapsed={collapsed}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
-        onLogout={handleLogout}
         contactNewCount={contactNewCount}
         role={workspaceRole}
         isMobileViewport={isMobileViewport}
@@ -311,7 +298,6 @@ function AdminSidebar({
   collapsed,
   mobileOpen,
   onCloseMobile,
-  onLogout,
   contactNewCount,
   role,
   isMobileViewport,
@@ -319,7 +305,6 @@ function AdminSidebar({
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  onLogout: () => void;
   contactNewCount: number;
   role: WorkspaceRole;
   isMobileViewport: boolean;
@@ -359,12 +344,6 @@ function AdminSidebar({
 
         <nav className="peas-admin-nav peas-admin-nav--utility" aria-label="Utilities">
           {visibleUtilityItems.map((item) => <AdminNavLink item={item} tooltipEnabled={showCollapsedTooltips} key={item.href} />)}
-          <SidebarTooltip enabled={showCollapsedTooltips} label="Logout">
-            <Button className="peas-admin-logout" variant="ghost" aria-label="Logout" onClick={onLogout}>
-              <LogOut aria-hidden="true" />
-              <span>Logout</span>
-            </Button>
-          </SidebarTooltip>
         </nav>
       </aside>
     </TooltipProvider>
@@ -422,12 +401,6 @@ function AdminProfileMenu({
           </div>
 
           <div className="peas-admin-profile-menu__items">
-            <DropdownMenuItem asChild>
-              <a href="/pages/UserProfile.html">
-                <UserRound aria-hidden="true" />
-                <span>Profile</span>
-              </a>
-            </DropdownMenuItem>
             {role === "admin" ? (
               <DropdownMenuItem asChild>
                 <a href="/admin/Components/admin_settings.html">

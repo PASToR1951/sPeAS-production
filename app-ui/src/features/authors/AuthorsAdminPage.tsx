@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
   createAffiliation,
+  createAuthor,
   createDepartment,
   deleteAffiliation,
   deleteDepartment,
@@ -104,9 +105,14 @@ export function AuthorsAdminPage() {
   return (
     <main className="peas-admin-island peas-authors-admin">
       <PeasToaster />
-      <AdminPageHeader eyebrow="Repository people" title="Authors" description="Manage author directory records, departments, affiliations, and linked works." />
+      <AdminPageHeader
+        eyebrow="Repository people"
+        title="Authors"
+        description="Manage author directory records, departments, affiliations, and linked works."
+        actions={<Button onClick={() => { setTab("authors"); setEditing({ id: "", fullName: "", worksCount: 0, raw: {} }); }}><Plus aria-hidden="true" /> New Author</Button>}
+      />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList aria-label="Author directory sections">
+        <TabsList className="peas-author-tabs" aria-label="Author directory sections">
           <TabsTrigger value="authors">Authors</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="affiliations">Affiliations</TabsTrigger>
@@ -335,7 +341,7 @@ function AuthorEditDialog({ author, references, referenceError, referenceLoading
           return null;
         });
       }
-      await updateAuthor(author.id, {
+      const payload = {
         full_name: normalizeAuthorEditValue(form.fullName),
         spud_id: normalizeAuthorEditValue(form.spudId),
         department: form.department || null,
@@ -343,8 +349,14 @@ function AuthorEditDialog({ author, references, referenceError, referenceLoading
         email: normalizeAuthorEditValue(form.email),
         bio: form.biography.trim(),
         profilePicUrl: profilePicture,
-      });
-      toast.success(profileComplete ? "Author record updated." : "Author saved; profile still needs attention.");
+      };
+      if (author.id) {
+        await updateAuthor(author.id, payload);
+        toast.success(profileComplete ? "Author record updated." : "Author saved; profile still needs attention.");
+      } else {
+        await createAuthor({ ...payload, created_source: "author_directory" });
+        toast.success(profileComplete ? "Author record created." : "Author created; profile still needs attention.");
+      }
       onSaved();
     } catch (caughtError) {
       const fieldErrors = getAuthorUpdateFieldErrors(caughtError);

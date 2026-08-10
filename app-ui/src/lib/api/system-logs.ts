@@ -71,10 +71,13 @@ function normalizeSystemLog(raw: Record<string, unknown>): SystemLogRecord {
   return {
     id: numericNullable(raw.id),
     logType: stringifyNullable(raw.log_type ?? raw.logType) ?? undefined,
+    userId: stringifyNullable(raw.user_id ?? raw.userId),
     username: stringifyNullable(raw.username),
     action: stringifyNullable(raw.action),
     status: stringifyNullable(raw.status),
     details: raw.details,
+    ipAddress: stringifyNullable(raw.ip_address ?? raw.ipAddress),
+    relatedId: stringifyNullable(raw.related_id ?? raw.relatedId),
     timestamp: stringifyNullable(raw.timestamp),
     formattedTimestamp: stringifyNullable(raw.formatted_timestamp ?? raw.formattedTimestamp),
     raw,

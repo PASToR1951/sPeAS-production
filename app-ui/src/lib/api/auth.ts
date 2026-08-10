@@ -90,18 +90,10 @@ export async function signInUsername(username: string, password: string) {
   } satisfies SessionResponse;
 }
 
-export async function signInMicrosoft(callbackURL = "/auth/landing.html") {
-  const response = await apiFetch<{ url: string }>("/api/auth/sign-in/social", {
-    method: "POST",
-    json: { provider: "microsoft", callbackURL, errorCallbackURL: "/log-in.html" },
-  });
-  window.location.assign(response.url);
-}
-
 export function requestPasswordReset(email: string) {
   return apiFetch<unknown>("/api/auth/request-password-reset", {
     method: "POST",
-    json: { email: email.trim(), redirectTo: "/reset-password.html" },
+    json: { email: email.trim().toLowerCase(), redirectTo: "/reset-password.html" },
   });
 }
 

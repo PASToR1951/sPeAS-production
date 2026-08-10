@@ -283,10 +283,13 @@ export interface ActivityCoverage {
 export interface SystemLogRecord {
   id?: number;
   logType?: string;
+  userId?: string | null;
   username?: string | null;
   action?: string | null;
   status?: string | null;
   details?: unknown;
+  ipAddress?: string | null;
+  relatedId?: string | null;
   timestamp?: string | null;
   formattedTimestamp?: string | null;
   raw: Record<string, unknown>;
