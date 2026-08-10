@@ -50,7 +50,6 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:18080}
       BETTER_AUTH_URL: ${PUBLIC_APP_URL:-http://localhost:18080}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
-      AUTH_ALLOWED_EMAIL_DOMAIN: ${AUTH_ALLOWED_EMAIL_DOMAIN:-spud.edu.ph}
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
       STORAGE_ROOT: /app/storage
       NEWS_MEDIA_WORKER_ENABLED: "false"

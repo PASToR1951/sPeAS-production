@@ -56,10 +56,6 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL}
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
-      AUTH_ALLOWED_EMAIL_DOMAIN: ${AUTH_ALLOWED_EMAIL_DOMAIN:-spud.edu.ph}
-      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
-      MICROSOFT_CLIENT_SECRET_FILE: /run/secrets/microsoft_client_secret
-      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
       STORAGE_ROOT: /app/storage
       NEWS_MEDIA_WORKER_ENABLED: "false"
@@ -77,7 +73,6 @@ services:
     secrets:
       - db_app_password
       - better_auth_secret
-      - microsoft_client_secret
       - smtp_password
     volumes:
       - storage-data:/app/storage
@@ -204,7 +199,5 @@ secrets:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/db_app_password
   better_auth_secret:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/better_auth_secret
-  microsoft_client_secret:
-    file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/microsoft_client_secret
   smtp_password:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/smtp_password

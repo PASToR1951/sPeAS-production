@@ -58,6 +58,8 @@ Deno/uploads/
 Deno/logs/
 uploads/
 logs/
+!app-ui/src/features/logs/
+!app-ui/src/features/logs/**
 *.log
 *.exe
 initdb_log.txt

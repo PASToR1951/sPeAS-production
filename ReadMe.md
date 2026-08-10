@@ -81,9 +81,9 @@ publishes ports 80 and 443.
    ```
 
    Choose **Install PeAS on a new server**. The wizard asks for the domain,
-   immutable images, Microsoft Entra app registration, SMTP relay, Restic, and
-   GHCR credentials. Secret values use hidden prompts and mode-`0600` files
-   below `/etc/peas/secrets`.
+   immutable images, SMTP relay, Restic, and GHCR
+   credentials. Secret values use hidden prompts and mode-`0600` files below
+   `/etc/peas/secrets`.
 5. Create the first administrator from the menu, or without placing a password
    in shell history:
 
@@ -113,17 +113,19 @@ restore confirmation phrase, backup retention, and staging rehearsal are in
 The latest codebase comparison, completed checks, and remaining go-live gates
 are recorded in [`ops/RELEASE_READINESS_AUDIT.md`](ops/RELEASE_READINESS_AUDIT.md).
 
-### Microsoft and email credentials
+### Authentication and email credentials
 
-The Entra Web redirect URI is
-`https://<PRODUCTION_DOMAIN>/api/auth/callback/microsoft`. The client secret is
-mounted only into the web container through a Docker secret.
+Administrator authentication uses a PeAS School ID and password only. Accounts
+are created with `peas-deploy bootstrap-admin`; an operator can add or replace
+an existing administrator credential with `peas-deploy set-admin-password`.
+Password-reset magic links are sent only to the email stored on the selected
+administrator account, and administrator emails may use any valid domain.
+Maintain at least two tested administrator accounts before deploying an
+authentication migration.
 
 Outgoing email uses SMTP username/password authentication. For port 587,
 choose `SMTP_TLS=false`; the client then negotiates STARTTLS. For implicit TLS
-on port 465, choose `SMTP_TLS=true`. Exchange Online basic SMTP passwords are
-not supported; use an institution-approved SMTP relay, Azure Communication
-Services SMTP credentials, or another compatible relay.
+on port 465, choose `SMTP_TLS=true`. Use an institution-approved SMTP relay.
 
 ## Release and legacy-route policy
 

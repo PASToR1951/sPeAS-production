@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0, Mandatory)]
-    [ValidateSet('install','configure','configure-integrations','configure-microsoft','configure-email','deploy','rollback','backup','restore','bootstrap-admin','doctor','status','logs','verify')]
+    [ValidateSet('install','configure','configure-email','deploy','rollback','backup','restore','bootstrap-admin','set-admin-password','doctor','status','logs','verify')]
     [string]$Command,
     [string]$Domain,
     [string]$AcmeEmail,
@@ -101,13 +101,12 @@ function Invoke-Compose([string[]]$Arguments, [switch]$AllowFailure) {
     return Invoke-Native docker $args -AllowFailure:$AllowFailure
 }
 function Validate-Config {
-    $required = 'PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','AUTH_ALLOWED_EMAIL_DOMAIN','PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','PEAS_RELEASE_ID','MICROSOFT_CLIENT_ID','MICROSOFT_TENANT_ID','SMTP_HOST','SMTP_USERNAME','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY'
+    $required = 'PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','PEAS_RELEASE_ID','SMTP_HOST','SMTP_USERNAME','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY'
     foreach ($key in $required) { Assert-True (-not [string]::IsNullOrWhiteSpace((Get-Config $key))) "Missing configuration: $key" }
     Assert-True ((Get-Config PUBLIC_APP_URL) -match '^https://') 'PUBLIC_APP_URL must use HTTPS'
     Assert-True ((Get-Config BETTER_AUTH_URL) -ceq (Get-Config PUBLIC_APP_URL)) 'BETTER_AUTH_URL must equal PUBLIC_APP_URL'
     foreach ($key in 'PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE') { Assert-True (Test-ImageDigest (Get-Config $key)) "$key must be a complete image digest" }
-    foreach ($key in 'MICROSOFT_CLIENT_ID','MICROSOFT_TENANT_ID') { Assert-True ((Get-Config $key) -match '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') "$key must be a UUID" }
-    foreach ($name in 'db_admin_password','db_app_password','better_auth_secret','microsoft_client_secret','smtp_password','restic_password') { Assert-True (Test-Path (Join-Path $secretsDir $name)) "Missing secret: $name" }
+    foreach ($name in 'db_admin_password','db_app_password','better_auth_secret','smtp_password','restic_password') { Assert-True (Test-Path (Join-Path $secretsDir $name)) "Missing secret: $name" }
 }
 function Wait-Healthy([string]$ServiceName, [int]$Timeout=240) {
     $id = (& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q $ServiceName).Trim()
@@ -204,7 +203,6 @@ function Invoke-Deploy([string]$Digest) {
 }
 function Prompt-Config([string]$Key,[string]$Label,[string]$Default='') { $current=Get-Config $Key $Default; $value=Read-Host "$Label [$current]"; if(-not $value){$value=$current}; Assert-True ($value) "$Key is required"; Set-ConfigValue $Key $value; $script:Config[$Key]=$value }
 function Prompt-Secret([string]$Name,[string]$Label,[switch]$Replace) { $path=Join-Path $secretsDir $Name; if((Test-Path $path) -and -not $Replace){return}; if((Test-Path $path) -and $Replace -and (Read-Host "$Label exists. Replace it? [y/N]") -notmatch '^[Yy]$'){return}; Write-Secret $Name (Read-SecretValue $Label -Confirm) }
-function Configure-Microsoft { Write-Info 'Microsoft Entra sign-in configuration'; Write-Host "Redirect URI: $(Get-Config BETTER_AUTH_URL 'https://YOUR_DOMAIN')/api/auth/callback/microsoft"; Prompt-Config AUTH_ALLOWED_EMAIL_DOMAIN 'Allowed institutional email domain' 'spud.edu.ph'; Prompt-Config MICROSOFT_CLIENT_ID 'Microsoft Entra client ID'; Prompt-Config MICROSOFT_TENANT_ID 'Microsoft Entra tenant ID'; Prompt-Secret microsoft_client_secret 'Microsoft Entra client secret' -Replace }
 function Configure-Email { Write-Info 'outgoing email configuration'; Prompt-Config SMTP_HOST 'SMTP host'; Prompt-Config SMTP_PORT 'SMTP port' '587'; Prompt-Config SMTP_TLS 'Implicit TLS (true for 465, false for STARTTLS)' 'false'; Prompt-Config SMTP_USERNAME 'SMTP username / sender email'; Prompt-Config CONTACT_RECIPIENT_EMAIL 'Contact recipient email' (Get-Config SMTP_USERNAME); Prompt-Secret smtp_password 'SMTP password' -Replace }
 function Restart-AppIfRunning { $id=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q app 2>$null).Trim(); if($id){Invoke-Compose @('up','-d','--force-recreate','app'); Wait-Healthy app; Invoke-Verify} }
 function Install-ScheduledTasks {
@@ -226,7 +224,7 @@ function Install-Host {
     $exclude=@('.git','node_modules','storage','test-results'); Get-ChildItem -LiteralPath $sourceRoot -Force | Where-Object {$_.Name -notin $exclude} | Copy-Item -Destination $current -Recurse -Force
     $script:repoRoot=$current
     @("PUBLIC_APP_URL=https://$Domain","BETTER_AUTH_URL=https://$Domain","ACME_EMAIL=$AcmeEmail","PEAS_IMAGE=$Image","PEAS_RELEASE_ID=initial","PEAS_SECRETS_DIR=$secretsDir","PEAS_REPO_ROOT=$current") | Set-Content $configFile -Encoding utf8NoBOM
-    Load-Config; Prompt-Config PEAS_POSTGRES_IMAGE 'Pinned PostgreSQL image digest'; Prompt-Config PEAS_CADDY_IMAGE 'Pinned Caddy image digest'; Prompt-Config PEAS_CLAMAV_IMAGE 'Pinned ClamAV image digest'; Prompt-Config PEAS_UTILITY_IMAGE 'Pinned Alpine utility image digest'; Configure-Microsoft; Configure-Email; Prompt-Config RESTIC_REPOSITORY 'Restic S3 repository URL'
+    Load-Config; Prompt-Config PEAS_POSTGRES_IMAGE 'Pinned PostgreSQL image digest'; Prompt-Config PEAS_CADDY_IMAGE 'Pinned Caddy image digest'; Prompt-Config PEAS_CLAMAV_IMAGE 'Pinned ClamAV image digest'; Prompt-Config PEAS_UTILITY_IMAGE 'Pinned Alpine utility image digest'; Configure-Email; Prompt-Config RESTIC_REPOSITORY 'Restic S3 repository URL'
     Prompt-Secret restic_password 'Restic repository password'; Prompt-Secret s3_access_key_id 'S3 access key ID'; Prompt-Secret s3_secret_access_key 'S3 secret access key'
     foreach($name in 'db_admin_password','db_app_password','better_auth_secret'){if(-not(Test-Path(Join-Path $secretsDir $name))){Write-Secret $name (New-RandomSecret)}}
     Set-ConfigValue RESTIC_PASSWORD_FILE (Join-Path $secretsDir 'restic_password'); Set-ConfigValue PEAS_REPO_ROOT $current; Load-Config; Validate-Config
@@ -246,15 +244,14 @@ Enter-OperationLock
 try {
     switch($Command){
         install { Install-Host }
-        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','AUTH_ALLOWED_EMAIL_DOMAIN','MICROSOFT_CLIENT_ID','MICROSOFT_TENANT_ID','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ACCESS_TOKEN_TTL_HOURS','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
-        configure-integrations { Load-Config; Configure-Microsoft; Configure-Email; Load-Config; Validate-Config; Restart-AppIfRunning }
-        configure-microsoft { Load-Config; Configure-Microsoft; Load-Config; Validate-Config; Restart-AppIfRunning }
+        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ACCESS_TOKEN_TTL_HOURS','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
         configure-email { Load-Config; Configure-Email; Load-Config; Validate-Config; Restart-AppIfRunning }
         deploy { if(-not $Image){throw '-Image is required'}; Invoke-Deploy $Image }
         rollback { Load-Config; if(-not $Image){$Image=Get-Config PEAS_IMAGE_PREVIOUS}; Invoke-Deploy $Image }
         backup { Invoke-Backup }
         restore { Invoke-Restore $Snapshot }
         bootstrap-admin { Load-Config; Validate-Config; Invoke-Compose @('run','--rm','--interactive','--tty','app','task','admin:bootstrap') }
+        set-admin-password { Load-Config; Validate-Config; Invoke-Compose @('run','--rm','--interactive','--tty','app','task','admin:set-password') }
         doctor { Invoke-Doctor }
         status { Load-Config; Validate-Config; Invoke-Compose @('ps'); if(Test-Path $stateFile){Get-Content $stateFile -Tail 5} }
         logs { Load-Config; $output=& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') logs --tail 200 $Service 2>&1; if($LASTEXITCODE -ne 0){throw 'Unable to read Compose logs'}; $output -replace '(?i)(password|secret|token|authorization)([=:])\S+','$1$2[REDACTED]' }

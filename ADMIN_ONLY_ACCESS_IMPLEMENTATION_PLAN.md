@@ -16,7 +16,7 @@ This document describes the implemented design, operational requirements, rollou
 - Publisher-specific behavior is removed; administrators own the complete publication workflow.
 - Public navigation no longer advertises registration, reader login, saved items, history, annotations, or profiles.
 - The remaining login page is explicitly labeled **Administrator sign in**.
-- Microsoft sign-in cannot create a user just in time. It can authenticate only an already provisioned administrator account.
+- Authentication uses an explicitly provisioned School ID and password only.
 
 Administrator accounts are provisioned with the existing `bootstrap-admin` command. It may create additional administrators when the supplied identity does not already exist. Maintain at least two administrators to avoid operational lockout.
 
@@ -26,7 +26,8 @@ The former Role Management page now:
 
 - lists administrators only;
 - revokes all sessions for a selected administrator;
-- starts the existing password-reset workflow;
+- sends a single-use, one-hour password-reset magic link to the email stored on
+  the selected administrator account, without restricting its email domain;
 - removes an administrator only when another administrator remains;
 - prevents self-removal from the active session; and
 - serializes deletion checks in the database to prevent concurrent requests from deleting the final administrators.
@@ -171,7 +172,7 @@ Database-backed staging acceptance should additionally cover:
 - migration refusal with zero administrators and without backup attestation;
 - deletion of legacy accounts, sessions, reset records, and private data;
 - retention of anonymous aggregate reporting;
-- Microsoft sign-in refusal for an unknown email;
+- refusal of runtime administrator sign-up;
 - absence of file paths and URLs in every public DTO;
 - denials for all stream, page, generic file, child, foreword, and legacy paths;
 - verification expiry, hashing, single use, duplicates, and throttling;
@@ -190,7 +191,7 @@ Database-backed staging acceptance should additionally cover:
 5. Enter maintenance mode and revoke legacy sessions.
 6. Set the backup attestation and apply the forward migration.
 7. Deploy backend and frontend from the same release.
-8. Verify admin password and Microsoft login, public abstract access, email verification, single approval, bulk approval, mail delivery, inline viewing, download, resend, and revocation.
+8. Verify administrator password login and reset, public abstract access, email verification, single approval, bulk approval, mail delivery, inline viewing, download, resend, and revocation.
 9. Monitor the operational signals above throughout the compatibility period.
 
 Rollback requires restoring the verified pre-migration database backup together with the previous application release. Rolling back only the application image is unsafe because deleted accounts and private data cannot be reconstructed from the migrated database.
@@ -199,7 +200,7 @@ Rollback requires restoring the verified pre-migration database backup together 
 
 ### Required before public production traffic
 
-- Maintain two or more administrators and enforce Microsoft Entra MFA and conditional access.
+- Maintain two or more administrators, use unique long passwords, and test the password-reset path regularly.
 - Configure a managed CAPTCHA or equivalent challenge and a distributed IP/email rate limiter; in-memory limits are per process.
 - Add an edge rule blocking direct storage paths and ensuring the API is the only file-delivery origin.
 - Define institutional retention periods, then schedule deletion or anonymization of rejected, expired, and old approved-request PII while preserving anonymous counts.

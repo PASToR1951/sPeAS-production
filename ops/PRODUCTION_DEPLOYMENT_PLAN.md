@@ -11,8 +11,8 @@ placeholders and must be replaced with institution-owned values.
 3. Mark its GitHub repository `ARCHIVED DEVELOPMENT REPOSITORY — NOT APPROVED
    FOR DEPLOYMENT` and restrict access to maintainers.
 4. Rotate every production-bound secret independently. Do not reuse the old
-   Better Auth secret, database password, SMTP password, Azure secret, or
-   administrator password.
+   Better Auth secret, database password, SMTP password, or administrator
+   password.
 5. Keep the old repository until production has passed go-live and one full
    restore drill. If it was public, ask the data owner whether personal data
    requires formal history removal and incident handling.
@@ -118,8 +118,7 @@ placeholders and must be replaced with institution-owned values.
    when IPv6 is routed and firewalled correctly.
 5. Open only the selected SSH port, 80, and 443. Do not open 8000 or 5432.
 6. Provision an S3-compatible bucket with versioning/retention and a
-   Restic-only credential. Prepare SMTP credentials and, if enabled, Entra
-   credentials.
+   Restic-only credential. Prepare SMTP credentials.
 7. Copy the reviewed repository to the server. Do not execute an unreviewed
    `curl | sh` command.
 
@@ -218,10 +217,9 @@ before claiming a supported simultaneous-user count.
    .\install.ps1
    ```
 
-3. Read each prompt carefully. Enter Microsoft Entra, SMTP, and S3 secrets only
-   at hidden prompts. The script writes them below `/etc/peas/secrets` mode
-   `0600`; it does not print them or put them in Git. Use the displayed Entra
-   redirect URI exactly.
+3. Read each prompt carefully. Enter SMTP and S3 secrets only at hidden
+   prompts. The script writes them below `/etc/peas/secrets` mode `0600`; it
+   does not print them or put them in Git.
 4. When asked for GHCR authentication, paste the read-only token into the
    hidden prompt. Confirm Docker login succeeded without copying the token into
    shell history.

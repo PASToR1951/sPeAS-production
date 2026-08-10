@@ -32,13 +32,13 @@ audit_event() {
 
 usage() {
   cat <<'EOF'
-Usage: peas-deploy <install|configure|configure-integrations|configure-microsoft|configure-email|deploy|rollback|backup|restore|bootstrap-admin|doctor|status|logs|verify>
+Usage: peas-deploy <install|configure|configure-email|deploy|rollback|backup|restore|bootstrap-admin|set-admin-password|doctor|status|logs|verify>
   install --domain DOMAIN --acme-email EMAIL --image IMAGE@sha256:DIGEST [--ssh-port PORT]
   configure --set KEY=VALUE [--set KEY=VALUE ...]
-  configure-integrations | configure-microsoft | configure-email
+  configure-email
   deploy IMAGE@sha256:DIGEST
   rollback [IMAGE@sha256:DIGEST]
-  backup | restore SNAPSHOT | bootstrap-admin | doctor | status | logs [SERVICE] | verify
+  backup | restore SNAPSHOT | bootstrap-admin | set-admin-password | doctor | status | logs [SERVICE] | verify
 EOF
 }
 
@@ -99,7 +99,7 @@ generate_secret_if_missing() {
 }
 
 validate_config() {
-  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL AUTH_ALLOWED_EMAIL_DOMAIN PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE PEAS_RELEASE_ID MICROSOFT_CLIENT_ID MICROSOFT_TENANT_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY)
+  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE PEAS_RELEASE_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY)
   local key smtp_port="${SMTP_PORT:-465}" smtp_tls="${SMTP_TLS:-true}"
   for key in "${required[@]}"; do [[ -n "${!key:-}" ]] || die "missing configuration: $key"; done
   [[ "$PUBLIC_APP_URL" == https://* ]] || die "PUBLIC_APP_URL must use HTTPS"
@@ -107,14 +107,11 @@ validate_config() {
   for key in PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE; do
     is_image_digest "${!key}" || die "$key must end in a complete @sha256 image digest"
   done
-  [[ "$MICROSOFT_CLIENT_ID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || die "MICROSOFT_CLIENT_ID must be an Entra application UUID"
-  [[ "$MICROSOFT_TENANT_ID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || die "MICROSOFT_TENANT_ID must be an Entra tenant UUID"
-  [[ "$AUTH_ALLOWED_EMAIL_DOMAIN" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "AUTH_ALLOWED_EMAIL_DOMAIN is invalid"
   [[ "$SMTP_USERNAME" == *@* ]] || die "SMTP_USERNAME must be an email address"
   [[ "$CONTACT_RECIPIENT_EMAIL" == *@* ]] || die "CONTACT_RECIPIENT_EMAIL must be an email address"
   [[ "$smtp_port" =~ ^[0-9]+$ ]] && ((smtp_port >= 1 && smtp_port <= 65535)) || die "SMTP_PORT must be between 1 and 65535"
   [[ "$smtp_tls" == true || "$smtp_tls" == false ]] || die "SMTP_TLS must be true or false"
-  for key in db_admin_password db_app_password better_auth_secret microsoft_client_secret smtp_password restic_password; do
+  for key in db_admin_password db_app_password better_auth_secret smtp_password restic_password; do
     [[ -s "$SECRETS_DIR/$key" ]] || die "missing secret: $key"
   done
 }
@@ -403,6 +400,13 @@ bootstrap_admin() {
   compose run --rm --interactive --tty app task admin:bootstrap
 }
 
+set_admin_password() {
+  require_root
+  load_config
+  validate_config
+  compose run --rm --interactive --tty app task admin:set-password
+}
+
 prompt_value() {
   local prompt="$1" default="${2:-}" answer
   if [[ -n "$default" ]]; then
@@ -464,20 +468,9 @@ prompt_secret_update() {
   unset value
 }
 
-configure_microsoft_values() {
-  info "Microsoft Entra sign-in configuration"
-  printf '%s\n' "Register a Web application first and set its redirect URI to:"
-  printf '  %s/api/auth/callback/microsoft\n' "${BETTER_AUTH_URL:-${PUBLIC_APP_URL:-https://YOUR_DOMAIN}}"
-  prompt_config_value AUTH_ALLOWED_EMAIL_DOMAIN "Allowed institutional email domain" "spud.edu.ph"
-  prompt_config_value MICROSOFT_CLIENT_ID "Microsoft Entra application (client) ID"
-  prompt_config_value MICROSOFT_TENANT_ID "Microsoft Entra directory (tenant) ID"
-  prompt_secret_update microsoft_client_secret "Microsoft Entra client secret value"
-}
-
 configure_email_values() {
   info "outgoing email configuration"
   printf '%s\n' "Use an institutional relay or a provider that accepts SMTP username/password authentication."
-  printf '%s\n' "For Microsoft 365, use an approved OAuth-capable relay or Azure Communication Services SMTP; Exchange Online basic SMTP passwords are not supported."
   prompt_config_value SMTP_HOST "SMTP host"
   prompt_config_value SMTP_PORT "SMTP port" "587"
   prompt_config_value SMTP_TLS "Use implicit TLS (true for port 465; false for STARTTLS on port 587)" "false"
@@ -495,27 +488,6 @@ restart_app_after_configuration() {
   else
     info "credentials saved; they will be loaded on the next deployment"
   fi
-}
-
-configure_integrations() {
-  require_root
-  load_config
-  configure_microsoft_values
-  configure_email_values
-  load_config
-  validate_config
-  restart_app_after_configuration
-  info "Microsoft sign-in and email configuration completed"
-}
-
-configure_microsoft() {
-  require_root
-  load_config
-  configure_microsoft_values
-  load_config
-  validate_config
-  restart_app_after_configuration
-  info "Microsoft sign-in configuration completed"
 }
 
 configure_email() {
@@ -574,7 +546,6 @@ install_host() {
   prompt_config_if_missing PEAS_CADDY_IMAGE "Pinned Caddy image (for example caddy:2-alpine@sha256:...)"
   prompt_config_if_missing PEAS_CLAMAV_IMAGE "Pinned ClamAV image (for example clamav/clamav@sha256:...)"
   prompt_config_if_missing PEAS_UTILITY_IMAGE "Pinned backup utility image (for example alpine:3.21@sha256:...)"
-  configure_microsoft_values
   configure_email_values
   prompt_config_if_missing RESTIC_REPOSITORY "Restic S3 repository URL"
   prompt_secret_if_missing restic_password "Restic repository password"
@@ -699,7 +670,7 @@ case "$command" in
       key="${assignment%%=*}"
       value="${assignment#*=}"
       case "$key" in
-        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|AUTH_ALLOWED_EMAIL_DOMAIN|MICROSOFT_CLIENT_ID|MICROSOFT_TENANT_ID|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|RESTIC_REPOSITORY|DOCUMENT_ACCESS_TOKEN_TTL_HOURS|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES)
+        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|RESTIC_REPOSITORY|DOCUMENT_ACCESS_TOKEN_TTL_HOURS|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES)
           [[ -n "$value" ]] || die "$key cannot be empty"
           set_config_value "$key" "$value"
           ;;
@@ -710,16 +681,6 @@ case "$command" in
     validate_config
     info "configuration updated without printing secret values"
     audit_event configure
-    ;;
-  configure-integrations)
-    ((${#POSITIONAL[@]} == 0)) || die "configure-integrations takes no arguments"
-    configure_integrations
-    audit_event configure-integrations
-    ;;
-  configure-microsoft)
-    ((${#POSITIONAL[@]} == 0)) || die "configure-microsoft takes no arguments"
-    configure_microsoft
-    audit_event configure-microsoft
     ;;
   configure-email)
     ((${#POSITIONAL[@]} == 0)) || die "configure-email takes no arguments"
@@ -750,6 +711,11 @@ case "$command" in
     ((${#POSITIONAL[@]} == 0)) || die "bootstrap-admin takes no arguments"
     bootstrap_admin
     audit_event bootstrap-admin
+    ;;
+  set-admin-password)
+    ((${#POSITIONAL[@]} == 0)) || die "set-admin-password takes no arguments"
+    set_admin_password
+    audit_event set-admin-password
     ;;
   doctor)
     ((${#POSITIONAL[@]} == 0)) || die "doctor takes no arguments"

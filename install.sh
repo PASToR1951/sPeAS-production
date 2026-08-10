@@ -61,8 +61,7 @@ first_install() {
     "  - production DNS name and ACME email" \
     "  - PeAS GHCR image pinned as @sha256:..." \
     "  - pinned PostgreSQL, Caddy, ClamAV, and Alpine utility image digests" \
-    "  - Microsoft Entra client ID, tenant ID, and client secret value" \
-    "  - SMTP relay credentials (Exchange Online basic SMTP passwords are not supported)" \
+    "  - SMTP relay credentials" \
     "  - Restic S3 repository credentials and a GHCR read-only token"
   printf '\nSecrets are entered with hidden prompts and stored under /etc/peas/secrets.\n\n'
 
@@ -140,28 +139,26 @@ main_menu() {
       "PeAS Ubuntu Server Installation" \
       "================================" \
       "  1) Install PeAS on a new server" \
-      "  2) Configure Microsoft sign-in and email" \
-      "  3) Configure Microsoft sign-in only" \
-      "  4) Configure outgoing email only" \
-      "  5) Create the first administrator" \
-      "  6) Deploy an application update" \
-      "  7) Run production readiness checks" \
-      "  8) Show service status" \
-      "  9) Create an encrypted backup" \
-      " 10) Advanced recovery and logs" \
+      "  2) Configure outgoing email" \
+      "  3) Create an administrator" \
+      "  4) Set an administrator password" \
+      "  5) Deploy an application update" \
+      "  6) Run production readiness checks" \
+      "  7) Show service status" \
+      "  8) Create an encrypted backup" \
+      "  9) Advanced recovery and logs" \
       "  0) Exit"
     read -r -p "Choose an option: " choice </dev/tty || true
     case "$choice" in
       1) first_install ;;
-      2) run_action run_as_root "$(deploy_program)" configure-integrations ;;
-      3) run_action run_as_root "$(deploy_program)" configure-microsoft ;;
-      4) run_action run_as_root "$(deploy_program)" configure-email ;;
-      5) run_action run_as_root "$(deploy_program)" bootstrap-admin ;;
-      6) deploy_update ;;
-      7) run_action run_as_root "$(deploy_program)" doctor ;;
-      8) run_action run_as_root "$(deploy_program)" status ;;
-      9) run_action run_as_root "$(deploy_program)" backup ;;
-      10) advanced_menu ;;
+      2) run_action run_as_root "$(deploy_program)" configure-email ;;
+      3) run_action run_as_root "$(deploy_program)" bootstrap-admin ;;
+      4) run_action run_as_root "$(deploy_program)" set-admin-password ;;
+      5) deploy_update ;;
+      6) run_action run_as_root "$(deploy_program)" doctor ;;
+      7) run_action run_as_root "$(deploy_program)" status ;;
+      8) run_action run_as_root "$(deploy_program)" backup ;;
+      9) advanced_menu ;;
       0) printf 'Goodbye.\n'; return ;;
       *) printf 'Choose a listed option.\n' >&2 ;;
     esac

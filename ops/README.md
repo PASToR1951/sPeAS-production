@@ -37,8 +37,8 @@ The installer:
 4. Creates `/opt/peas`, `/etc/peas`, `/etc/peas/secrets`, backup staging, and
    audit/state directories with restrictive modes.
 5. Prompts for pinned PostgreSQL, Caddy, ClamAV, and Alpine utility image
-   digests, Microsoft Entra, SMTP, and the S3-compatible Restic repository. It
-   generates database, Better Auth, and Restic secrets with mode `0600`;
+   digests, SMTP, and the S3-compatible Restic
+   repository. It generates database, Better Auth, and Restic secrets with mode `0600`;
    operator-supplied credentials are never committed or printed.
 6. Initializes and verifies the encrypted Restic repository, installs daily
    backup and 15-minute health-check timers, logs in to GHCR using a token read
@@ -89,16 +89,13 @@ history:
 sudo peas-deploy bootstrap-admin
 ```
 
-The Entra Web redirect URI is
-`https://<PRODUCTION_DOMAIN>/api/auth/callback/microsoft`. Its client secret
-and the SMTP password are separate Docker secret files. Run
-`sudo peas-deploy configure-integrations` (or choose the matching menu option)
-to rotate both integrations later.
+Administrator authentication is password-only. Before an authentication
+cutover, confirm every administrator owns a password credential. Use the
+interactive `sudo peas-deploy set-admin-password` command to add or replace an
+existing administrator credential without placing it in shell history.
 
 `SMTP_TLS` selects implicit TLS: use `true` with port 465, or `false` with port
-587 so the client negotiates STARTTLS. Do not use an Exchange Online mailbox
-password or app password. Use an approved SMTP relay, Azure Communication
-Services SMTP credentials, or another compatible service.
+587 so the client negotiates STARTTLS. Use an approved SMTP relay.
 
 ## Routine commands
 
@@ -106,9 +103,8 @@ Services SMTP credentials, or another compatible service.
 sudo peas-deploy status
 sudo peas-deploy doctor
 sudo peas-deploy verify
-sudo peas-deploy configure-integrations
-sudo peas-deploy configure-microsoft
 sudo peas-deploy configure-email
+sudo peas-deploy set-admin-password
 sudo peas-deploy logs app
 sudo peas-deploy backup
 sudo peas-deploy deploy ghcr.io/OWNER/REPOSITORY@sha256:NEW_DIGEST

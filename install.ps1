@@ -37,18 +37,17 @@ while ($true) {
 PeAS Windows 11 Server Installation
 ===================================
   1) Install PeAS on a new server
-  2) Configure Microsoft sign-in and email
-  3) Configure Microsoft sign-in only
-  4) Configure outgoing email only
-  5) Create the first administrator
-  6) Deploy an application update
-  7) Run production readiness checks
-  8) Show service status
-  9) Create an encrypted backup
- 10) View service logs
- 11) Verify public HTTPS endpoints
- 12) Roll back application image
- 13) Restore a Restic snapshot
+  2) Configure outgoing email
+  3) Create an administrator
+  4) Set an administrator password
+  5) Deploy an application update
+  6) Run production readiness checks
+  7) Show service status
+  8) Create an encrypted backup
+  9) View service logs
+ 10) Verify public HTTPS endpoints
+ 11) Roll back application image
+ 12) Restore a Restic snapshot
   0) Exit
 '@
     $choice = Read-Host 'Choose an option'
@@ -59,21 +58,20 @@ PeAS Windows 11 Server Installation
             $image = Read-Required 'PeAS image digest (ghcr.io/...@sha256:...)'
             & $localDeploy install -Domain $domain -AcmeEmail $email -Image $image
         } }
-        '2' { Invoke-Action { & (Get-DeployProgram) configure-integrations } }
-        '3' { Invoke-Action { & (Get-DeployProgram) configure-microsoft } }
-        '4' { Invoke-Action { & (Get-DeployProgram) configure-email } }
-        '5' { Invoke-Action { & (Get-DeployProgram) bootstrap-admin } }
-        '6' { Invoke-Action { & (Get-DeployProgram) deploy -Image (Read-Required 'New PeAS image digest') } }
-        '7' { Invoke-Action { & (Get-DeployProgram) doctor } }
-        '8' { Invoke-Action { & (Get-DeployProgram) status } }
-        '9' { Invoke-Action { & (Get-DeployProgram) backup } }
-        '10' { Invoke-Action { & (Get-DeployProgram) logs -Service (Read-Host 'Service [app]' | ForEach-Object { if ($_) { $_ } else { 'app' } }) } }
-        '11' { Invoke-Action { & (Get-DeployProgram) verify } }
-        '12' { Invoke-Action {
+        '2' { Invoke-Action { & (Get-DeployProgram) configure-email } }
+        '3' { Invoke-Action { & (Get-DeployProgram) bootstrap-admin } }
+        '4' { Invoke-Action { & (Get-DeployProgram) set-admin-password } }
+        '5' { Invoke-Action { & (Get-DeployProgram) deploy -Image (Read-Required 'New PeAS image digest') } }
+        '6' { Invoke-Action { & (Get-DeployProgram) doctor } }
+        '7' { Invoke-Action { & (Get-DeployProgram) status } }
+        '8' { Invoke-Action { & (Get-DeployProgram) backup } }
+        '9' { Invoke-Action { & (Get-DeployProgram) logs -Service (Read-Host 'Service [app]' | ForEach-Object { if ($_) { $_ } else { 'app' } }) } }
+        '10' { Invoke-Action { & (Get-DeployProgram) verify } }
+        '11' { Invoke-Action {
             $image = Read-Host 'Rollback digest (blank uses recorded previous image)'
             if ($image) { & (Get-DeployProgram) rollback -Image $image } else { & (Get-DeployProgram) rollback }
         } }
-        '13' { Invoke-Action { & (Get-DeployProgram) restore -Snapshot (Read-Required 'Exact Restic snapshot ID') } }
+        '12' { Invoke-Action { & (Get-DeployProgram) restore -Snapshot (Read-Required 'Exact Restic snapshot ID') } }
         '0' { return }
         default { Write-Warning 'Choose a listed option.' }
     }
