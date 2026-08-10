@@ -428,9 +428,20 @@ app.use(async (ctx, next) => {
 // SECTION: Routes Setup
 // -----------------------------
 
-// Better Auth owns everything under /api/auth/* (sign-in/username,
-// sign-in/social, callback/microsoft, get-session, sign-out, password
-// reset...). Registered first so nothing can shadow it.
+// PeAS is password-only. Reject external-provider entry points before the
+// broad Better Auth mount so a future configuration change cannot enable them
+// accidentally.
+router.all("/api/auth/sign-in/social", (ctx) => {
+  ctx.response.status = 404;
+  ctx.response.body = { error: "Not found" };
+});
+router.all("/api/auth/callback/(.*)", (ctx) => {
+  ctx.response.status = 404;
+  ctx.response.body = { error: "Not found" };
+});
+
+// Better Auth owns password sign-in, sessions, sign-out, and password reset
+// under /api/auth/*. Registered after the password-only guards.
 router.all("/api/auth/(.*)", webHandler((req) => auth.handler(req)));
 
 // Compatibility aliases must be registered before the broad

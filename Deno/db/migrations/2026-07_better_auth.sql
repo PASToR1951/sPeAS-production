@@ -35,9 +35,8 @@ UPDATE public.users SET role = 'user' WHERE role IS NULL OR role = 'guest';
 UPDATE public.users SET username = lower(id) WHERE username IS NULL;
 UPDATE public.users SET display_username = id WHERE display_username IS NULL;
 
--- Email: normalize, dedupe (keep most recently active), fill gaps with
--- placeholders. Placeholder domain must NOT be the school domain, otherwise
--- Microsoft account linking could mis-match.
+-- Email: normalize, dedupe (keep most recently active), and fill gaps with
+-- placeholders that cannot receive account-recovery messages.
 UPDATE public.users SET email = lower(btrim(email)) WHERE email IS NOT NULL;
 UPDATE public.users SET email = NULL WHERE email = '';
 WITH ranked AS (
@@ -60,8 +59,11 @@ ALTER TABLE public.users ALTER COLUMN email SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_uidx ON public.users (email);
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_uidx ON public.users (username);
 
--- Admin-provisioned school emails are trustworthy.
-UPDATE public.users SET email_verified = true WHERE email LIKE '%@spud.edu.ph';
+-- Operator-provisioned administrator emails are trusted regardless of domain.
+UPDATE public.users
+SET email_verified = true
+WHERE lower(role) = 'admin'
+  AND email NOT LIKE '%@no-email.speas.invalid';
 
 DROP TRIGGER IF EXISTS users_updated_at ON public.users;
 CREATE TRIGGER users_updated_at

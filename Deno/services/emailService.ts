@@ -183,6 +183,42 @@ export async function sendContactInquiryEmail(input: {
   });
 }
 
+export async function sendPasswordResetEmail(input: {
+  recipient: string;
+  administratorName?: string | null;
+  resetUrl: string;
+}): Promise<void> {
+  const administratorName = input.administratorName?.trim() || "Administrator";
+  const text = [
+    `Hi ${administratorName},`,
+    "",
+    "A password reset was requested for your PeAS administrator account.",
+    "Use the secure link below to choose a new password. This single-use link expires in one hour.",
+    "",
+    input.resetUrl,
+    "",
+    "If you did not request this reset, you can ignore this email. Your password will remain unchanged.",
+  ].join("\n");
+  const html = `
+    <h1>Reset your PeAS password</h1>
+    <p>Hi ${escapeContactHtml(administratorName)},</p>
+    <p>A password reset was requested for your PeAS administrator account.</p>
+    <p>Use the secure link below to choose a new password. This single-use link expires in one hour.</p>
+    <p><a href="${escapeContactHtml(input.resetUrl)}">Reset password</a></p>
+    <p>If you did not request this reset, you can ignore this email. Your password will remain unchanged.</p>
+  `;
+
+  const result = await sendEmailWithAttachment(
+    input.recipient,
+    "Reset your PeAS administrator password",
+    text,
+    html,
+  );
+  if (!result?.success) {
+    throw new Error("Password reset email could not be delivered");
+  }
+}
+
 /**
  * Logs email activity to a file for tracking purposes
  * @param action The action being performed

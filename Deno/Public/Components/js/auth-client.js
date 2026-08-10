@@ -6,8 +6,8 @@
  * it. `userInfo` in web storage is a display-only cache — never trust it
  * for gating, always confirm with getSession().
  *
- * Exposes window.PeasAuth = { getSession, signInUsername, signInMicrosoft,
- * signOut, storeUserInfo, clearUserInfo, redirectByRole }.
+ * Exposes window.PeasAuth = { getSession, signInUsername, signOut,
+ * storeUserInfo, clearUserInfo, redirectByRole }.
  */
 (function () {
   const STORAGE_KEYS = ['userInfo', 'session_token', 'accessToken', 'user', 'userData', 'auth', 'role'];
@@ -73,29 +73,6 @@
     };
   }
 
-  /**
-   * Starts the Microsoft (school account) sign-in flow. Navigates away on
-   * success; throws if the flow could not be started.
-   */
-  async function signInMicrosoft(callbackURL, errorCallbackURL) {
-    const response = await fetch('/api/auth/sign-in/social', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        provider: 'microsoft',
-        callbackURL: callbackURL || '/auth/landing.html',
-        errorCallbackURL: errorCallbackURL || '/log-in.html'
-      })
-    });
-    let data = null;
-    try { data = await response.json(); } catch (_error) { /* ignore */ }
-    if (!response.ok || !data || !data.url) {
-      throw new Error((data && (data.message || data.error)) || 'Microsoft sign-in is not available right now.');
-    }
-    window.location.href = data.url;
-  }
-
   /** Revokes the session server-side and clears the local display cache. */
   async function signOut() {
     try {
@@ -149,7 +126,6 @@
   window.PeasAuth = {
     getSession: getSession,
     signInUsername: signInUsername,
-    signInMicrosoft: signInMicrosoft,
     signOut: signOut,
     storeUserInfo: storeUserInfo,
     clearUserInfo: clearUserInfo,

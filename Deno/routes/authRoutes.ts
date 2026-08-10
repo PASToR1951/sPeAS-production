@@ -1,10 +1,8 @@
 import { Route } from "./index.ts";
 import { RouterContext } from "../deps.ts";
 import { auth } from "../config/auth.ts";
-import { microsoftSignInConfiguration } from "../config/auth.ts";
 import { getSessionFromHeaders } from "../services/sessionService.ts";
 import { client } from "../db/denopost_conn.ts";
-import { isAuthenticated, isAdmin } from "../middleware/authMiddleware.ts";
 
 /**
  * Transitional logout shims.
@@ -48,8 +46,14 @@ const logout = async (ctx: RouterContext<any, any, any>) => {
     // The redirect below must happen regardless of sign-out errors
   }
 
-  ctx.response.headers.set("Location", `/index.html?loggedOut=true&t=${Date.now()}`);
-  ctx.response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  ctx.response.headers.set(
+    "Location",
+    `/index.html?loggedOut=true&t=${Date.now()}`,
+  );
+  ctx.response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate",
+  );
   ctx.response.headers.set("Pragma", "no-cache");
   ctx.response.headers.set("Expires", "0");
   ctx.response.headers.set("Clear-Site-Data", '"cache", "cookies", "storage"');
@@ -58,14 +62,6 @@ const logout = async (ctx: RouterContext<any, any, any>) => {
 };
 
 export const authRoutes: Route[] = [
-  {
-    method: "GET",
-    path: "/api/admin/auth/microsoft-status",
-    handler: (ctx) => {
-      ctx.response.body = microsoftSignInConfiguration;
-    },
-    middleware: [isAuthenticated, isAdmin],
-  },
   { method: "POST", path: "/logout", handler: logout },
   { method: "GET", path: "/logout", handler: logout },
   { method: "POST", path: "/auth/logout", handler: logout },

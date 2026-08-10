@@ -2,7 +2,7 @@
 -- Quantifies the data the migration has to normalize; nothing is modified.
 
 -- 1. Users without an email (will receive <id>@no-email.speas.invalid placeholders;
---    they cannot use Microsoft sign-in or email password reset until fixed).
+--    they cannot use email password reset until fixed).
 SELECT count(*) AS users_without_email FROM users WHERE email IS NULL OR btrim(email) = '';
 
 -- 2. Duplicate emails (case-insensitive). Only the row with the most recent
@@ -14,17 +14,18 @@ GROUP BY 1
 HAVING count(*) > 1;
 
 -- 3. Credentials that are NOT PBKDF2 hashes (plaintext leftovers). These are
---    excluded from the account backfill: those users must use Microsoft
---    sign-in or get an admin password reset.
+--    excluded from the account backfill: those users need an operator-set
+--    credential or an administrator password reset.
 SELECT count(*) AS non_pbkdf2_credentials FROM credentials WHERE password NOT LIKE 'pbkdf2_sha256$%';
 
--- 4. Users with no credential row at all (Microsoft-only users after cutover).
+-- 4. Users with no credential row at all (operator action is required).
 SELECT count(*) AS users_without_credentials
 FROM users u LEFT JOIN credentials c ON c.user_id = u.id
 WHERE c.id IS NULL;
 
--- 5. Emails outside the school domain (kept as-is, but they cannot be linked
---    to Microsoft sign-in and are not marked verified).
-SELECT count(*) AS non_school_emails
-FROM users
-WHERE email IS NOT NULL AND lower(email) NOT LIKE '%@spud.edu.ph';
+-- 5. Administrators without a deliverable email cannot use password reset.
+SELECT count(*) AS administrators_without_recovery_email
+FROM users u
+JOIN roles r ON r.id = u.role_id
+WHERE lower(r.role_name) = 'admin'
+  AND (u.email IS NULL OR btrim(u.email) = '');

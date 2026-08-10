@@ -17,9 +17,14 @@ async function promptSync(label: string): Promise<string> {
 
 const userId = Deno.env.get("BOOTSTRAP_ADMIN_ID") || await promptSync("Administrator ID: ");
 const name = Deno.env.get("BOOTSTRAP_ADMIN_NAME") || await promptSync("Full name: ");
-const email = (Deno.env.get("BOOTSTRAP_ADMIN_EMAIL") || await promptSync("School email: ")).toLowerCase();
-const expectedDomain = (Deno.env.get("AUTH_ALLOWED_EMAIL_DOMAIN") ?? "spud.edu.ph").toLowerCase();
-if (!email.endsWith(`@${expectedDomain}`)) throw new Error(`Email must use @${expectedDomain}`);
+const email = required(
+  "Administrator email",
+  Deno.env.get("BOOTSTRAP_ADMIN_EMAIL") ||
+    await promptSync("Administrator email: "),
+).toLowerCase();
+if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  throw new Error("Enter a valid administrator email address");
+}
 const password = Deno.env.get("BOOTSTRAP_ADMIN_PASSWORD") || await promptSync("Password: ");
 const confirmation = Deno.env.get("BOOTSTRAP_ADMIN_PASSWORD") ? password : await promptSync("Confirm password: ");
 if (password !== confirmation) throw new Error("Passwords do not match");

@@ -1,6 +1,5 @@
 import { betterAuth } from "better-auth";
 import { username } from "better-auth/plugins";
-import { APIError } from "better-auth/api";
 import pg from "pg";
 import { dotenvConfig } from "../deps.ts";
 import { hashPassword, verifyPassword } from "../utils/hashPassword.ts";
@@ -19,30 +18,30 @@ try {
   // Missing .env is fine; Docker provides real environment variables.
 }
 
-for (const name of [
-  "BETTER_AUTH_SECRET",
-  "MICROSOFT_CLIENT_ID",
-  "MICROSOFT_CLIENT_SECRET",
-  "MICROSOFT_TENANT_ID",
-  "PGUSER",
-  "PGPASSWORD",
-  "PGDATABASE",
-  "PGHOST",
-  "PGPORT",
-]) {
+for (
+  const name of [
+    "BETTER_AUTH_SECRET",
+    "PGUSER",
+    "PGPASSWORD",
+    "PGDATABASE",
+    "PGHOST",
+    "PGPORT",
+  ]
+) {
   const filePath = Deno.env.get(`${name}_FILE`);
   if (!Deno.env.get(name) && filePath) {
     try {
       const value = (await Deno.readTextFile(filePath)).trim();
       if (value) Deno.env.set(name, value);
     } catch (error) {
-      throw new Error(`Unable to read ${name}_FILE: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Unable to read ${name}_FILE: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 }
-
-const ALLOWED_EMAIL_DOMAIN = (Deno.env.get("AUTH_ALLOWED_EMAIL_DOMAIN") ?? "spud.edu.ph")
-  .toLowerCase();
 
 const baseURL = Deno.env.get("BETTER_AUTH_URL") ??
   Deno.env.get("PUBLIC_APP_URL") ??
@@ -51,27 +50,6 @@ const baseURL = Deno.env.get("BETTER_AUTH_URL") ??
 const secret = Deno.env.get("BETTER_AUTH_SECRET");
 if (!secret) {
   throw new Error("BETTER_AUTH_SECRET environment variable is required");
-}
-
-const microsoftClientId = Deno.env.get("MICROSOFT_CLIENT_ID") ?? "";
-const microsoftClientSecret = Deno.env.get("MICROSOFT_CLIENT_SECRET") ?? "";
-const microsoftTenantId = Deno.env.get("MICROSOFT_TENANT_ID") ?? "";
-const callbackBaseURL = baseURL.replace(/\/+$/, "");
-export const microsoftSignInEnabled = Boolean(
-  microsoftClientId && microsoftClientSecret && microsoftTenantId,
-);
-export const microsoftSignInConfiguration = {
-  enabled: microsoftSignInEnabled,
-  clientIdConfigured: Boolean(microsoftClientId),
-  clientSecretConfigured: Boolean(microsoftClientSecret),
-  tenantIdConfigured: Boolean(microsoftTenantId),
-  allowedEmailDomain: ALLOWED_EMAIL_DOMAIN,
-  callbackUrl: `${callbackBaseURL}/api/auth/callback/microsoft`,
-} as const;
-if (!microsoftSignInEnabled) {
-  console.warn(
-    "[auth] MICROSOFT_CLIENT_ID/SECRET/TENANT_ID not set - Microsoft sign-in is disabled",
-  );
 }
 
 // Better Auth keeps its own small pool (npm:pg); the rest of the app keeps
@@ -148,10 +126,6 @@ export const auth = betterAuth({
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
-    accountLinking: {
-      enabled: true,
-      trustedProviders: ["microsoft"],
-    },
   },
 
   verification: {
@@ -164,44 +138,26 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    // Accounts are provisioned by admins or via Microsoft sign-in; there is
-    // no self-registration with a password.
+    // Accounts are provisioned by an operator; there is no self-registration.
     disableSignUp: true,
+    minPasswordLength: 14,
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
     password: {
       hash: hashPassword,
       verify: ({ password, hash }) => verifyPassword(password, hash),
     },
     sendResetPassword: async ({ user, url }) => {
-      const { sendEmailWithAttachment } = await import(
+      const { sendPasswordResetEmail } = await import(
         "../services/emailService.ts"
       );
-      const subject = "sPeAS password reset";
-      const text =
-        `Hi ${user.name},\n\nA password reset was requested for your sPeAS account. ` +
-        `Open the link below to choose a new password. The link expires in 1 hour.\n\n${url}\n\n` +
-        `If you did not request this, you can ignore this email.`;
-      const html = `<p>Hi ${user.name},</p>` +
-        `<p>A password reset was requested for your sPeAS account. ` +
-        `Click the button below to choose a new password. The link expires in 1 hour.</p>` +
-        `<p><a href="${url}" style="display:inline-block;padding:10px 18px;background:#046937;color:#E6E6E6;text-decoration:none;border-radius:6px;">Reset password</a></p>` +
-        `<p>If you did not request this, you can ignore this email.</p>`;
-      await sendEmailWithAttachment(user.email, subject, text, html);
+      await sendPasswordResetEmail({
+        recipient: user.email,
+        administratorName: user.name,
+        resetUrl: url,
+      });
     },
   },
-
-  socialProviders: microsoftSignInEnabled
-    ? {
-      microsoft: {
-        clientId: microsoftClientId,
-        clientSecret: microsoftClientSecret,
-        // Restrict sign-in to the school tenant at the Azure level.
-        tenantId: microsoftTenantId,
-        prompt: "select_account",
-        // Entra returns profile photos as base64; keep them out of the flow.
-        disableProfilePhoto: true,
-      },
-    }
-    : {},
 
   databaseHooks: {
     session: {
@@ -234,24 +190,6 @@ export const auth = betterAuth({
           } catch (error) {
             console.error("login audit log failed:", error);
           }
-        },
-      },
-    },
-    user: {
-      create: {
-        // Accounts are provisioned explicitly by an operator. Microsoft may
-        // link to an existing administrator, but it may never create one.
-        before: async (user) => {
-          const email = (user.email ?? "").toLowerCase();
-          if (!email.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
-            throw new APIError("FORBIDDEN", {
-              message:
-                `Only @${ALLOWED_EMAIL_DOMAIN} accounts can sign in to sPeAS.`,
-            });
-          }
-          throw new APIError("FORBIDDEN", {
-            message: "This administrator account has not been provisioned in PeAS.",
-          });
         },
       },
     },
