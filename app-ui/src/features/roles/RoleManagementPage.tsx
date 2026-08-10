@@ -28,7 +28,7 @@ export function RoleManagementPage() {
       if (action === "revoke") await revokeManagedUserSessions(user.id);
       if (action === "reset") await requestPasswordReset(user.email);
       if (action === "delete") await deleteManagedAdministrator(user.id);
-      toast.success(action === "revoke" ? "Administrator sessions revoked." : action === "reset" ? `Password reset link sent to ${user.email}.` : "Administrator removed.");
+      toast.success(action === "revoke" ? "Administrator sessions revoked." : action === "reset" ? `Password reset requested for ${user.email}. Check the inbox and spam folder.` : "Administrator removed.");
       if (action === "delete") loadUsers();
     } catch (error) { toast.error(getErrorMessage(error)); }
     finally { setBusyUserId(null); }
