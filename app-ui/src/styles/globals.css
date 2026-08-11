@@ -6308,7 +6308,7 @@ body:has(#react-public-root) {
   border-bottom: 1px solid rgba(226, 232, 240, 0.86);
   display: grid;
   gap: 18px;
-  grid-template-columns: auto auto minmax(260px, 1fr) auto;
+  grid-template-columns: auto minmax(260px, 1fr) auto auto;
   height: 76px;
   left: 0;
   padding: 0 clamp(18px, 4vw, 64px);
@@ -6406,14 +6406,17 @@ body:has(#react-public-root) {
 }
 
 .peas-public-search-overlay {
+  --peas-search-overlay-block-space: clamp(18px, 7vh, 72px);
+  --peas-search-overlay-inline-space: clamp(14px, 4vw, 64px);
   align-items: start;
   animation: peas-public-search-backdrop-in .22s ease-out both;
   background: rgba(15, 23, 42, .48);
   display: flex;
+  height: 100dvh;
   inset: 0;
   justify-content: center;
-  overflow-y: auto;
-  padding: clamp(18px, 7vh, 72px) clamp(14px, 4vw, 64px);
+  overflow: hidden;
+  padding: var(--peas-search-overlay-block-space) var(--peas-search-overlay-inline-space);
   position: fixed;
   z-index: 100;
 }
@@ -6432,8 +6435,14 @@ body:has(#react-public-root) {
   border: 1px solid rgba(255, 255, 255, .72);
   border-radius: 24px;
   box-shadow: 0 30px 90px rgba(2, 17, 12, .28), 0 1px 0 rgba(255, 255, 255, .68) inset, 0 -1px 0 rgba(255, 255, 255, .26) inset;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--peas-search-overlay-block-space) - var(--peas-search-overlay-block-space));
   max-width: 1180px;
-  min-height: min(680px, calc(100vh - 36px));
+  min-height: min(680px, calc(100dvh - var(--peas-search-overlay-block-space) - var(--peas-search-overlay-block-space)));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: clamp(24px, 4vw, 48px);
   width: 100%;
 }
@@ -6693,9 +6702,10 @@ body:has(#react-public-root) {
   border: 1px solid rgba(211, 219, 214, .9);
   border-radius: 16px;
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: 210px minmax(0, 1fr);
   margin-top: 28px;
-  min-height: 300px;
+  min-height: min(300px, 34dvh);
   overflow: hidden;
 }
 
@@ -6845,7 +6855,8 @@ body:has(#react-public-root) {
 }
 
 .peas-public-search-overlay__results {
-  max-height: 360px;
+  max-height: none;
+  min-height: 0;
   min-width: 0;
   overflow-y: auto;
   padding: 20px 22px;
@@ -7055,28 +7066,65 @@ body:has(#react-public-root) {
 
 @media (max-width: 900px) {
   .peas-public-search-overlay__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .peas-public-search-overlay__workspace { grid-template-columns: 1fr; }
-  .peas-public-search-overlay__scope {
+  .peas-public-search-overlay__workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .peas-public-search-overlay__sidebar {
     border-bottom: 1px solid rgba(211, 219, 214, .9);
     border-right: 0;
     flex-direction: row;
     overflow-x: auto;
+    scrollbar-width: thin;
   }
-  .peas-public-search-overlay__scope > span { align-self: center; margin: 0 4px; }
-  .peas-public-search-overlay__scope button { flex: 0 0 auto; width: auto; }
+  .peas-public-search-overlay__sidebar-title { align-self: center; flex: 0 0 auto; margin: 0 4px; }
+  .peas-public-search-overlay__sidebar-tab { flex: 0 0 auto; width: auto; }
   .peas-public-search-overlay__results { max-height: none; }
 }
 
 @media (max-width: 620px) {
-  .peas-public-search-overlay { padding: 0; }
-  .peas-public-search-overlay__surface { border-radius: 0; min-height: 100dvh; padding: 22px 16px; }
+  .peas-public-search-overlay {
+    --peas-search-overlay-block-space: 0px;
+    --peas-search-overlay-inline-space: 0px;
+    padding: 0;
+  }
+  .peas-public-search-overlay__surface {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .peas-public-search-overlay__header { gap: 14px; margin-bottom: 20px; }
+  .peas-public-search-overlay h2 { font-size: clamp(2rem, 10vw, 2.75rem); margin: 7px 0 9px; }
+  .peas-public-search-overlay__header p { font-size: .88rem; line-height: 1.5; }
   .peas-public-search-overlay__filters { grid-template-columns: 1fr; }
   .peas-public-search-overlay__header-actions .peas-ui-button { display: none; }
   .peas-public-search-overlay__query { grid-template-columns: auto minmax(0, 1fr) auto; padding: 10px; }
   .peas-public-search-overlay__submit { grid-column: 1 / -1; width: 100%; }
+  .peas-public-search-overlay__workspace { flex: 0 0 auto; margin-top: 22px; min-height: min(420px, 58dvh); }
+  .peas-public-search-overlay__sidebar { padding: 10px; }
   .peas-public-search-overlay__collection-shortcuts,
+  .peas-public-search-overlay__collection-grid,
+  .peas-public-search-overlay__agenda-grid,
   .peas-public-search-overlay__result-groups { grid-template-columns: 1fr; }
+  .peas-public-search-overlay__results { padding: 18px 16px; }
   .peas-public-search-overlay__results-heading > span { display: none; }
+}
+
+@media (max-height: 760px) and (min-width: 621px) {
+  .peas-public-search-overlay { --peas-search-overlay-block-space: 14px; }
+  .peas-public-search-overlay__surface { padding: 22px 28px; }
+  .peas-public-search-overlay__header { margin-bottom: 16px; }
+  .peas-public-search-overlay h2 { font-size: clamp(2rem, 6vh, 3rem); margin: 6px 0 8px; }
+  .peas-public-search-overlay__header p { line-height: 1.4; }
+  .peas-public-search-overlay__form { gap: 14px; }
+  .peas-public-search-overlay__query { min-height: 56px; }
+  .peas-public-search-overlay__filters select,
+  .peas-public-search-overlay__filters input { height: 42px; }
+  .peas-public-search-overlay__workspace { margin-top: 18px; min-height: min(240px, 32dvh); }
 }
 
 @media (prefers-reduced-motion: reduce) {

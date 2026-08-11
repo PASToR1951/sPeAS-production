@@ -93,11 +93,11 @@ export function PublicNavbar() {
         </span>
       </a>
 
+      <NavbarSearch className="peas-public-navbar-search" onFocus={() => { if (!suppressSearchFocusRef.current) setSearchOpen(true); }} />
+
       <nav className="peas-public-navlinks" aria-label="Public navigation">
         {links.map((link) => <a href={link.href} key={link.href} aria-current={isActivePath(link.href) ? "page" : undefined}>{link.label}</a>)}
       </nav>
-
-      <NavbarSearch className="peas-public-navbar-search" onFocus={() => { if (!suppressSearchFocusRef.current) setSearchOpen(true); }} />
 
       <div className="peas-public-nav-actions">
         <a
@@ -129,7 +129,13 @@ export function PublicNavbar() {
                 <X aria-hidden="true" />
               </button>
             </div>
-            <NavbarSearch className="peas-public-mobile-search" />
+            <NavbarSearch
+              className="peas-public-mobile-search"
+              onFocus={() => {
+                setOpen(false);
+                setSearchOpen(true);
+              }}
+            />
             {links.map((link) => (
               <a
                 href={link.href}
