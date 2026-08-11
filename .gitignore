@@ -84,3 +84,5 @@ Deno/scratch/
 *.backup.sql
 *.sqlite
 *.sqlite3
+
+/Documentation
