@@ -260,7 +260,9 @@ test("guest compiled records render the collection overview and child works", as
   await requestDialog.getByRole("checkbox").check();
   await requestDialog.getByRole("button", { name: "Submit access request" }).click();
   expect(accessRequestBody).toMatchObject({ document_id: "53", record_type: "compiled", is_entire_collection: true });
-  await expect(requestDialog.getByRole("status")).toContainText("We’ve received your request.");
+  await expect(requestDialog.getByRole("status")).toContainText("Check your inbox and spam folder.");
+  await expect(requestDialog.getByRole("status")).toContainText("Verification does not grant document access automatically.");
+  await expect(requestDialog.getByRole("status")).toContainText("If your request is approved, you will receive a separate secure access link by email.");
   await expect(requestDialog.getByText("REQ-71", { exact: true })).toBeVisible();
   await expect(requestDialog.getByRole("button", { name: "Done" })).toBeFocused();
   await requestDialog.getByRole("button", { name: "Done" }).click();
