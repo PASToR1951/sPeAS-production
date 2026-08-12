@@ -170,7 +170,7 @@ export function PublicHomePage() {
                 onChange={setQuery}
                 onSubmit={submitSearch}
                 ariaLabel="Search documents"
-                placeholder="Search by title, author, keyword, or topic"
+                placeholder="Search the repository"
               />
               <select
                 aria-label="Filter search category"

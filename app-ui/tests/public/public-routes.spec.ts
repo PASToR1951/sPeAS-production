@@ -1109,35 +1109,41 @@ test("repository search refreshes catalog data when the visitor returns to the p
 test("home hero covers the initial viewport without a trailing gap", async ({ page }, testInfo) => {
   const viewport = testInfo.project.name !== "pixel-7"
     ? { width: 1536, height: 900 }
-    : { width: 390, height: 844 };
-  await page.route("**/api/experience/public", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      config: {
-        schemaVersion: 2,
-        pages: {
-          landing: {
-            data: {
-              content: [{
-                type: "HeroBlock",
-                props: {
-                  eyebrow: "St. Paul University Dumaguete",
-                  title: "Welcome to the Office of Research & Publications",
-                  body: "Sharing the institution's research activities, initiatives, and publications.",
-                  images: [1, 2, 3, 4].map((number) => ({
-                    url: `/Components/images/${number}.jpg`,
-                    alt: `Research initiative ${number}`,
-                  })),
-                },
-              }],
+    : { width: 342, height: 764 };
+  await page.route("**/api/**", (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/experience/public") {
+      return route.fulfill({ status: 503, json: {} });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        config: {
+          schemaVersion: 2,
+          pages: {
+            landing: {
+              data: {
+                content: [{
+                  type: "HeroBlock",
+                  props: {
+                    eyebrow: "St. Paul University Dumaguete",
+                    title: "Welcome to the Office of Research & Publications",
+                    body: "Sharing the institution's research activities, initiatives, and publications - innovations and scientific discoveries that expand human knowledge and serve the broader community.",
+                    images: [1, 2, 3, 4].map((number) => ({
+                      url: `/Components/images/${number}.jpg`,
+                      alt: `Research initiative ${number}`,
+                    })),
+                  },
+                }],
+              },
             },
+            login: { data: { content: [] } },
+            faq: { data: { content: [] } },
           },
-          login: { data: { content: [] } },
         },
-      },
-    }),
-  }));
+      }),
+    });
+  });
   await page.setViewportSize(viewport);
   await page.goto("/index.html");
 
@@ -1166,6 +1172,31 @@ test("home hero covers the initial viewport without a trailing gap", async ({ pa
   expect(
     (heroBox?.y ?? 0) + (heroBox?.height ?? 0) - ((controlsBox?.y ?? 0) + (controlsBox?.height ?? 0)),
   ).toBeLessThanOrEqual(36);
+
+  if (testInfo.project.name === "pixel-7") {
+    const [kickerBox, headingBox, bodyBox, searchBox, categoriesBox] = await Promise.all([
+      hero.locator(".peas-public-hero-kicker").boundingBox(),
+      hero.getByRole("heading", { name: "Welcome to the Office of Research & Publications" }).boundingBox(),
+      hero.locator(".peas-public-hero__content > p").boundingBox(),
+      hero.locator(".peas-public-hero-search").boundingBox(),
+      hero.getByRole("navigation", { name: "Browse repository by category" }).boundingBox(),
+    ]);
+    for (const box of [kickerBox, headingBox, bodyBox, searchBox, categoriesBox]) {
+      expect(box).not.toBeNull();
+      expect(box?.y ?? 0).toBeGreaterThanOrEqual(heroBox?.y ?? 0);
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
+    }
+    const placeholderFits = await hero.getByRole("searchbox", { name: "Search documents" }).evaluate((input) => {
+      const searchInput = input as HTMLInputElement;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) return false;
+      context.font = getComputedStyle(searchInput).font;
+      return context.measureText(searchInput.placeholder).width <= searchInput.clientWidth;
+    });
+    expect(placeholderFits).toBe(true);
+    expect(controlsBox?.y ?? 0).toBeGreaterThanOrEqual((categoriesBox?.y ?? 0) + (categoriesBox?.height ?? 0) + 12);
+  }
 
   const categoryShortcuts = hero.getByRole("navigation", { name: "Browse repository by category" });
   await expect(categoryShortcuts.getByRole("link")).toHaveCount(4);

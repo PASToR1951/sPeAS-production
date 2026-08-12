@@ -8,6 +8,7 @@ import { NewsPreviewCard } from "../../components/public/NewsPreviewCard";
 import { NewsArticleBody } from "../../components/news/NewsArticleBody";
 import { NewsArticleAuthors, NewsArticleWorks } from "../../components/news/NewsArticleReferences";
 import { PublicPageShell } from "../../components/public/PublicPageShell";
+import { NewsletterSignup } from "../../components/public/NewsletterSignup";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Button } from "../../components/ui/button";
 import { PeasToaster, toast } from "../../components/ui/toast";
@@ -88,6 +89,7 @@ function NewsFeed({ posts, page, totalCount, totalPages, onPageChange }: {
         )}
         {posts.length ? <PeasPagination page={page} totalPages={totalPages} totalCount={totalCount} visibleCount={posts.length} label="News pages" onPageChange={onPageChange} /> : null}
       </section>
+      <NewsletterSignup />
     </>
   );
 }

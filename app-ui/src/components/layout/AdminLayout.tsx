@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Newspaper,
+  Mail,
   MailQuestion,
   PanelLeftClose,
   PanelLeftOpen,
@@ -77,6 +78,7 @@ const navItems: AdminNavigationItem[] = [
   { label: "Authors", href: "/admin/Components/author-list.html", icon: UsersRound, roles: ["admin"] as WorkspaceRole[] },
   { label: "Document Permissions", href: "/admin/Components/document-permissions.html", icon: ShieldCheck, roles: ["admin"] as WorkspaceRole[] },
   { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin"] as WorkspaceRole[] },
+  { label: "Newsletter", href: "/admin/Components/newsletter.html", icon: Mail, roles: ["admin"] as WorkspaceRole[] },
   { label: "Contact Inquiries", href: "/admin/Components/contact-inquiries.html", icon: MailQuestion, roles: ["admin"] as WorkspaceRole[] },
 ];
 
