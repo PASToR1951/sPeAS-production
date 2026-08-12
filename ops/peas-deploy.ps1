@@ -106,7 +106,7 @@ function Validate-Config {
     Assert-True ((Get-Config PUBLIC_APP_URL) -match '^https://') 'PUBLIC_APP_URL must use HTTPS'
     Assert-True ((Get-Config BETTER_AUTH_URL) -ceq (Get-Config PUBLIC_APP_URL)) 'BETTER_AUTH_URL must equal PUBLIC_APP_URL'
     foreach ($key in 'PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE') { Assert-True (Test-ImageDigest (Get-Config $key)) "$key must be a complete image digest" }
-    foreach ($name in 'db_admin_password','db_app_password','better_auth_secret','smtp_password','restic_password') { Assert-True (Test-Path (Join-Path $secretsDir $name)) "Missing secret: $name" }
+    foreach ($name in 'db_admin_password','db_app_password','better_auth_secret','newsletter_token_secret','smtp_password','restic_password') { Assert-True (Test-Path (Join-Path $secretsDir $name)) "Missing secret: $name" }
 }
 function Wait-Healthy([string]$ServiceName, [int]$Timeout=240) {
     $id = (& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q $ServiceName).Trim()
@@ -133,7 +133,7 @@ function Invoke-Backup {
     New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
     $stamp=[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'); $dump=Join-Path $stagingDir "peas-db-$stamp.dump"; $archive=Join-Path $stagingDir "peas-storage-$stamp.tar.gz"; $manifest=Join-Path $stagingDir "manifest-$stamp.txt"
     Invoke-Compose @('up','-d','db'); Wait-Healthy db 180
-    $running=@(); foreach($svc in 'app','media-worker','abstract-worker'){ $id=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q $svc).Trim(); if($id -and ((& docker inspect -f '{{.State.Running}}' $id).Trim() -eq 'true')){$running += $svc} }
+    $running=@(); foreach($svc in 'app','media-worker','abstract-worker','newsletter-worker'){ $id=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q $svc).Trim(); if($id -and ((& docker inspect -f '{{.State.Running}}' $id).Trim() -eq 'true')){$running += $svc} }
     if($running.Count){ Invoke-Compose (@('stop')+$running) }
     try {
         $dbId=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q db).Trim()
@@ -189,7 +189,7 @@ $$;
         Invoke-Native docker @('run','--rm','--volume',"${newStorage}:/data",'--volume',"$($archive.DirectoryName):/restore:ro",(Get-Config PEAS_UTILITY_IMAGE),'tar','-xzf',"/restore/$($archive.Name)",'-C','/data')
     } finally { Invoke-Native docker @('rm','--force',$temp) -AllowFailure | Out-Null }
     [Environment]::SetEnvironmentVariable('PEAS_POSTGRES_VOLUME',$newDb,'Process'); [Environment]::SetEnvironmentVariable('PEAS_STORAGE_VOLUME',$newStorage,'Process')
-    Invoke-Compose @('stop','app','media-worker','abstract-worker','caddy','db') -AllowFailure; Invoke-Compose @('up','-d','db'); Wait-Healthy db 180; Invoke-Compose @('run','--rm','migrate'); Invoke-Compose @('up','-d','app','media-worker','abstract-worker','caddy'); Wait-Healthy app 240; Invoke-Verify
+    Invoke-Compose @('stop','app','media-worker','abstract-worker','newsletter-worker','caddy','db') -AllowFailure; Invoke-Compose @('up','-d','db'); Wait-Healthy db 180; Invoke-Compose @('run','--rm','migrate'); Invoke-Compose @('up','-d','app','media-worker','abstract-worker','newsletter-worker','caddy'); Wait-Healthy app 240; Invoke-Verify
     Set-ConfigValue PEAS_POSTGRES_VOLUME $newDb; Set-ConfigValue PEAS_STORAGE_VOLUME $newStorage; if(Test-ImageDigest $recorded){Set-ConfigValue PEAS_IMAGE $recorded}
     Write-Info 'restore validated; previous volumes remain untouched'
 }
@@ -197,14 +197,14 @@ function Invoke-Deploy([string]$Digest) {
     Load-Config; Validate-Config; Assert-True (Test-ImageDigest $Digest) 'Deploy requires a complete image digest'
     $previous=Get-Config PEAS_IMAGE; Invoke-Backup
     if($previous -ne $Digest){Set-ConfigValue PEAS_IMAGE_PREVIOUS $previous}; Set-ConfigValue PEAS_IMAGE $Digest; Load-Config
-    Invoke-Compose @('pull','app','media-worker','abstract-worker','migrate'); Invoke-Compose @('up','-d','db','clamav'); Wait-Healthy db 180; Wait-Healthy clamav 300
-    Invoke-Compose @('run','--rm','migrate'); Invoke-Compose @('up','-d','app','media-worker','abstract-worker','caddy'); Wait-Healthy app 240; Invoke-Verify
+    Invoke-Compose @('pull','app','media-worker','abstract-worker','newsletter-worker','migrate'); Invoke-Compose @('up','-d','db','clamav'); Wait-Healthy db 180; Wait-Healthy clamav 300
+    Invoke-Compose @('run','--rm','migrate'); Invoke-Compose @('up','-d','app','media-worker','abstract-worker','newsletter-worker','caddy'); Wait-Healthy app 240; Invoke-Verify
     Add-Content $stateFile "$([DateTime]::UtcNow.ToString('o'))`t$Digest`t$(Get-Config PEAS_RELEASE_ID)"; Write-Info "deployment completed: $Digest"
 }
 function Prompt-Config([string]$Key,[string]$Label,[string]$Default='') { $current=Get-Config $Key $Default; $value=Read-Host "$Label [$current]"; if(-not $value){$value=$current}; Assert-True ($value) "$Key is required"; Set-ConfigValue $Key $value; $script:Config[$Key]=$value }
 function Prompt-Secret([string]$Name,[string]$Label,[switch]$Replace) { $path=Join-Path $secretsDir $Name; if((Test-Path $path) -and -not $Replace){return}; if((Test-Path $path) -and $Replace -and (Read-Host "$Label exists. Replace it? [y/N]") -notmatch '^[Yy]$'){return}; Write-Secret $Name (Read-SecretValue $Label -Confirm) }
-function Configure-Email { Write-Info 'outgoing email configuration'; Prompt-Config SMTP_HOST 'SMTP host'; Prompt-Config SMTP_PORT 'SMTP port' '587'; Prompt-Config SMTP_TLS 'Implicit TLS (true for 465, false for STARTTLS)' 'false'; Prompt-Config SMTP_USERNAME 'SMTP username / sender email'; Prompt-Config CONTACT_RECIPIENT_EMAIL 'Contact recipient email' (Get-Config SMTP_USERNAME); Prompt-Secret smtp_password 'SMTP password' -Replace }
-function Restart-AppIfRunning { $id=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q app 2>$null).Trim(); if($id){Invoke-Compose @('up','-d','--force-recreate','app'); Wait-Healthy app; Invoke-Verify} }
+function Configure-Email { Write-Info 'outgoing email configuration'; Prompt-Config SMTP_HOST 'SMTP host'; Prompt-Config SMTP_PORT 'SMTP port' '587'; Prompt-Config SMTP_TLS 'Implicit TLS (true for 465, false for STARTTLS)' 'false'; Prompt-Config SMTP_USERNAME 'SMTP username / sender email'; Prompt-Config CONTACT_RECIPIENT_EMAIL 'Contact recipient email' (Get-Config SMTP_USERNAME); Prompt-Config OFFICE_REPLY_TO_EMAIL 'Newsletter reply-to email' (Get-Config CONTACT_RECIPIENT_EMAIL); Prompt-Config NEWSLETTER_SEND_RATE_PER_MINUTE 'Newsletter messages per minute' '20'; Prompt-Secret smtp_password 'SMTP password' -Replace }
+function Restart-AppIfRunning { $id=(& docker compose --project-name peas-prod --env-file $configFile -f (Join-Path $repoRoot 'docker-compose.production.yml') ps -q app 2>$null).Trim(); if($id){Invoke-Compose @('up','-d','--force-recreate','app','newsletter-worker'); Wait-Healthy app; Invoke-Verify} }
 function Install-ScheduledTasks {
     $pwsh=(Get-Command pwsh).Source; $deployer=Join-Path $root 'current\ops\peas-deploy.ps1'
     $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -226,7 +226,7 @@ function Install-Host {
     @("PUBLIC_APP_URL=https://$Domain","BETTER_AUTH_URL=https://$Domain","ACME_EMAIL=$AcmeEmail","PEAS_IMAGE=$Image","PEAS_RELEASE_ID=initial","PEAS_SECRETS_DIR=$secretsDir","PEAS_REPO_ROOT=$current") | Set-Content $configFile -Encoding utf8NoBOM
     Load-Config; Prompt-Config PEAS_POSTGRES_IMAGE 'Pinned PostgreSQL image digest'; Prompt-Config PEAS_CADDY_IMAGE 'Pinned Caddy image digest'; Prompt-Config PEAS_CLAMAV_IMAGE 'Pinned ClamAV image digest'; Prompt-Config PEAS_UTILITY_IMAGE 'Pinned Alpine utility image digest'; Configure-Email; Prompt-Config RESTIC_REPOSITORY 'Restic S3 repository URL'
     Prompt-Secret restic_password 'Restic repository password'; Prompt-Secret s3_access_key_id 'S3 access key ID'; Prompt-Secret s3_secret_access_key 'S3 secret access key'
-    foreach($name in 'db_admin_password','db_app_password','better_auth_secret'){if(-not(Test-Path(Join-Path $secretsDir $name))){Write-Secret $name (New-RandomSecret)}}
+    foreach($name in 'db_admin_password','db_app_password','better_auth_secret','newsletter_token_secret'){if(-not(Test-Path(Join-Path $secretsDir $name))){Write-Secret $name (New-RandomSecret)}}
     Set-ConfigValue RESTIC_PASSWORD_FILE (Join-Path $secretsDir 'restic_password'); Set-ConfigValue PEAS_REPO_ROOT $current; Load-Config; Validate-Config
     & icacls.exe $configFile '/inheritance:r' '/grant:r' '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
     foreach($port in 80,443){if(-not(Get-NetFirewallRule -DisplayName "PeAS HTTPS $port" -ErrorAction SilentlyContinue)){New-NetFirewallRule -DisplayName "PeAS HTTPS $port" -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port | Out-Null}}

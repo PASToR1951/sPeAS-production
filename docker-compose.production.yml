@@ -67,6 +67,8 @@ services:
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       SMTP_TLS: ${SMTP_TLS:-true}
       CONTACT_RECIPIENT_EMAIL: ${CONTACT_RECIPIENT_EMAIL:?set CONTACT_RECIPIENT_EMAIL}
+      OFFICE_REPLY_TO_EMAIL: ${OFFICE_REPLY_TO_EMAIL:-}
+      NEWSLETTER_TOKEN_SECRET_FILE: /run/secrets/newsletter_token_secret
       DOCUMENT_ACCESS_TOKEN_TTL_HOURS: ${DOCUMENT_ACCESS_TOKEN_TTL_HOURS:-168}
       ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
     expose: ["8000"]
@@ -74,6 +76,7 @@ services:
       - db_app_password
       - better_auth_secret
       - smtp_password
+      - newsletter_token_secret
     volumes:
       - storage-data:/app/storage
       - logs-data:/app/Deno/logs
@@ -143,6 +146,38 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
 
+  newsletter-worker:
+    image: ${PEAS_IMAGE:?set PEAS_IMAGE}
+    command: ["task", "newsletter-worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DENO_ENV: production
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: peas_app
+      PGPASSWORD_FILE: /run/secrets/db_app_password
+      PGDATABASE: peas_db
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+      NEWSLETTER_TOKEN_SECRET_FILE: /run/secrets/newsletter_token_secret
+      NEWSLETTER_SEND_RATE_PER_MINUTE: ${NEWSLETTER_SEND_RATE_PER_MINUTE:-20}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:?set SMTP_USERNAME}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      SMTP_TLS: ${SMTP_TLS:-true}
+      CONTACT_RECIPIENT_EMAIL: ${CONTACT_RECIPIENT_EMAIL:?set CONTACT_RECIPIENT_EMAIL}
+      OFFICE_REPLY_TO_EMAIL: ${OFFICE_REPLY_TO_EMAIL:-}
+    secrets: [db_app_password, smtp_password, newsletter_token_secret]
+    networks: [backend]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=64m]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
   clamav:
     image: ${PEAS_CLAMAV_IMAGE:?set PEAS_CLAMAV_IMAGE to a pinned ClamAV image digest}
     networks: [backend]
@@ -201,3 +236,5 @@ secrets:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/better_auth_secret
   smtp_password:
     file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/smtp_password
+  newsletter_token_secret:
+    file: ${PEAS_SECRETS_DIR:?set PEAS_SECRETS_DIR}/newsletter_token_secret
