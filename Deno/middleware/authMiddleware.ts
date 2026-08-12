@@ -13,6 +13,7 @@ export const CAPABILITIES = [
     "reports:view",
     "reports:export",
     "system:admin",
+    "newsletter:manage",
 ] as const;
 export type Capability = typeof CAPABILITIES[number];
 

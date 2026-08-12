@@ -93,6 +93,7 @@ type SmtpMessage = {
   html?: string;
   replyTo?: string;
   attachments?: unknown[];
+  headers?: Record<string, string>;
 };
 
 // Nodemailer opens a fresh SMTP connection for each message unless pooling is
@@ -145,6 +146,34 @@ async function sendSmtpMessage(
     client.close();
     throw error;
   }
+}
+
+/** Sends one privacy-preserving newsletter message to exactly one recipient. */
+export async function sendNewsletterMessage(input: {
+  recipient: string;
+  subject: string;
+  text: string;
+  html: string;
+  manageUrl?: string;
+  unsubscribeUrl?: string;
+  oneClickUrl?: string;
+}): Promise<void> {
+  const username = EMAIL_CONFIG.username;
+  const from = username.includes("<")
+    ? username.replace(/^\s*"?[^"]*"?\s*</, '"PeAS Repository Updates" <')
+    : `"PeAS Repository Updates" <${username}>`;
+  await sendSmtpMessage({
+    from,
+    to: input.recipient,
+    replyTo: Deno.env.get("OFFICE_REPLY_TO_EMAIL") || Deno.env.get("CONTACT_RECIPIENT_EMAIL") || undefined,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+    headers: input.oneClickUrl && input.unsubscribeUrl ? {
+      "List-Unsubscribe": `<${input.oneClickUrl}>, <${input.unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    } : undefined,
+  });
 }
 
 export async function sendContactInquiryEmail(input: {
