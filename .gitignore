@@ -86,3 +86,4 @@ Deno/scratch/
 *.sqlite3
 
 /Documentation
+/Proposal
