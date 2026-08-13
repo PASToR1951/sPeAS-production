@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Plus, Trash2, UploadCloud, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Plus, RefreshCw, Trash2, UploadCloud, X } from "lucide-react";
 import { ApiError, getErrorMessage } from "../../lib/api/http";
 import { fetchAuthors } from "../../lib/api/authors";
 import type { AuthorRecord } from "../../lib/api/types";
@@ -30,6 +30,12 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { PeasIconButton } from "../../components/ui/peas-button";
 import { normalizeClassificationTerm } from "../../../../shared/classification";
+import {
+  fetchAbstractReviews,
+  reviewDocument,
+  updateAbstractReview,
+  type AbstractReviewItem,
+} from "../../lib/api/documents";
 
 type UploadMode = "single" | "compiled";
 type UploadStep = 1 | 2 | 3 | 4 | 5;
@@ -93,6 +99,18 @@ interface SubmissionProgress {
   detail: string;
 }
 
+interface ExtractionSession {
+  type: UploadMode;
+  title: string;
+  documentId?: number;
+  compiledDocumentId?: number;
+  childDocumentIds?: number[];
+  targetKeys: string[];
+}
+
+const ABSTRACT_POLL_MS = 3_000;
+const ABSTRACT_MANUAL_FALLBACK_MS = 60_000;
+
 const MONTHS = [
   ["01", "January"], ["02", "February"], ["03", "March"], ["04", "April"], ["05", "May"], ["06", "June"],
   ["07", "July"], ["08", "August"], ["09", "September"], ["10", "October"], ["11", "November"], ["12", "December"],
@@ -131,15 +149,67 @@ export function UploadDocumentPage() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<UploadReceipt | null>(null);
+  const [extractionSession, setExtractionSession] = useState<ExtractionSession | null>(null);
+  const [extractionItems, setExtractionItems] = useState<AbstractReviewItem[]>([]);
+  const [abstractDrafts, setAbstractDrafts] = useState<Record<string, string>>({});
+  const [manualEntryTargets, setManualEntryTargets] = useState<Record<string, boolean>>({});
+  const [manualFallbackAvailable, setManualFallbackAvailable] = useState(false);
+  const [extractionPollError, setExtractionPollError] = useState<string | null>(null);
+  const [extractionRefreshToken, setExtractionRefreshToken] = useState(0);
+  const [abstractActionKey, setAbstractActionKey] = useState<string | null>(null);
+  const [publishingExtraction, setPublishingExtraction] = useState(false);
+  const [publicationError, setPublicationError] = useState<string | null>(null);
   const [authors, setAuthors] = useState<AuthorRecord[]>([]);
   const [researchAgendas, setResearchAgendas] = useState<Array<{ id: number; name: string }>>([]);
+  const publicationAttemptedRef = useRef(false);
 
   useEffect(() => {
     void fetchAuthors().then(setAuthors).catch(() => setAuthors([]));
     void fetchResearchAgendas().then(setResearchAgendas).catch(() => setResearchAgendas([]));
   }, []);
 
-  const busy = Boolean(submissionProgress);
+  useEffect(() => {
+    if (!extractionSession) return;
+    setManualFallbackAvailable(false);
+    const timer = window.setTimeout(() => setManualFallbackAvailable(true), ABSTRACT_MANUAL_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [extractionSession]);
+
+  useEffect(() => {
+    if (!extractionSession) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const recordType = extractionSession.type === "compiled" ? "compiled" : "document";
+        const recordId = extractionSession.compiledDocumentId ?? extractionSession.documentId;
+        if (!recordId) throw new Error("The saved upload has no record identifier.");
+        const result = await fetchAbstractReviews(recordType, recordId);
+        if (!active) return;
+        const targetSet = new Set(extractionSession.targetKeys);
+        const items = result.items.filter((item) => targetSet.has(abstractTargetKey(item)));
+        setExtractionItems(items);
+        setAbstractDrafts((current) => {
+          const next = { ...current };
+          for (const item of items) {
+            const key = abstractTargetKey(item);
+            if (!(key in next) && item.candidate) next[key] = item.candidate;
+          }
+          return next;
+        });
+        setExtractionPollError(null);
+      } catch (error) {
+        if (active) setExtractionPollError(getErrorMessage(error));
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), ABSTRACT_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [extractionSession, extractionRefreshToken]);
+
+  const busy = Boolean(submissionProgress) || Boolean(extractionSession);
   const steps = mode === "single" ? singleSteps : compiledSteps;
   const dirty = useMemo(() => isSingleFormDirty(singleForm) || isCompiledFormDirty(compiledForm), [compiledForm, singleForm]);
 
@@ -222,6 +292,92 @@ export function UploadDocumentPage() {
     setErrors((current) => ({ ...current, [key]: error }));
   }
 
+  function beginExtraction(session: ExtractionSession) {
+    publicationAttemptedRef.current = false;
+    setExtractionSession(session);
+    setExtractionItems([]);
+    setAbstractDrafts({});
+    setManualEntryTargets({});
+    setManualFallbackAvailable(false);
+    setExtractionPollError(null);
+    setExtractionRefreshToken(0);
+    setAbstractActionKey(null);
+    setPublishingExtraction(false);
+    setPublicationError(null);
+  }
+
+  async function confirmAbstract(item: AbstractReviewItem) {
+    const key = abstractTargetKey(item);
+    const draft = (abstractDrafts[key] ?? "").trim();
+    if (!draft) {
+      toast.error("Enter an abstract before confirming.");
+      return;
+    }
+    if ([...draft].length > 10_000) {
+      toast.error("Abstract must be 10,000 Unicode characters or fewer.");
+      return;
+    }
+    setAbstractActionKey(key);
+    try {
+      const unchangedCandidate = Boolean(item.candidate) && draft === item.candidate?.trim();
+      const updated = await updateAbstractReview(
+        item.targetType === "compiled_foreword" ? "compiled-foreword" : "document",
+        item.targetId,
+        unchangedCandidate ? { action: "accept_candidate" } : { action: "save_manual", abstract: draft },
+      );
+      setExtractionItems((current) => current.map((entry) => abstractTargetKey(entry) === key ? updated : entry));
+      setAbstractDrafts((current) => ({ ...current, [key]: updated.currentAbstract ?? draft }));
+      toast.success(unchangedCandidate ? "Extracted abstract confirmed." : "Manual abstract saved.");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setAbstractActionKey(null);
+    }
+  }
+
+  async function publishExtractionSession(session: ExtractionSession) {
+    setPublishingExtraction(true);
+    setPublicationError(null);
+    try {
+      const recordId = session.compiledDocumentId ?? session.documentId;
+      if (!recordId) throw new Error("The saved upload has no record identifier.");
+      await reviewDocument(recordId, session.type === "compiled", "approved", true);
+      setReceipt({
+        type: session.type,
+        title: session.title,
+        documentId: session.documentId,
+        compiledDocumentId: session.compiledDocumentId,
+        childDocumentIds: session.childDocumentIds,
+        pendingReview: false,
+      });
+      if (session.type === "single") setSingleForm(initialSingleForm);
+      else setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
+      setExtractionSession(null);
+      setExtractionItems([]);
+      setAbstractDrafts({});
+      setManualEntryTargets({});
+      toast.success(session.type === "compiled" ? "Publication published successfully." : "Document published successfully.");
+    } catch (error) {
+      setPublicationError(getErrorMessage(error));
+    } finally {
+      setPublishingExtraction(false);
+    }
+  }
+
+  function retryPublication() {
+    if (!extractionSession || publishingExtraction) return;
+    publicationAttemptedRef.current = true;
+    void publishExtractionSession(extractionSession);
+  }
+
+  useEffect(() => {
+    if (!extractionSession || publicationAttemptedRef.current) return;
+    if (extractionItems.length !== extractionSession.targetKeys.length) return;
+    if (!extractionItems.every((item) => item.status === "accepted" || item.status === "unavailable")) return;
+    publicationAttemptedRef.current = true;
+    void publishExtractionSession(extractionSession);
+  }, [extractionItems, extractionSession]);
+
   async function handleSingleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateSingleAll(singleForm, !isPublisher, researchAgendas);
@@ -267,11 +423,21 @@ export function UploadDocumentPage() {
       });
       setSubmissionProgress({ label: "Finalizing document…", value: 94, stage: 3, detail: "The repository record was created. PeAS is refreshing related author and document information." });
       await fetchAuthors().then(setAuthors).catch(() => undefined);
-      setSubmissionProgress({ label: "Upload complete", value: 100, stage: 3, detail: "The PDF and repository information were saved successfully." });
       const pendingReview = document.review_status === "pending_review";
-      setReceipt({ type: "single", title: singleForm.title.trim(), documentId: document.id, pendingReview });
-      setSingleForm(initialSingleForm);
-      toast.success(pendingReview ? "Document submitted for administrator review." : "Document published successfully.");
+      if (pendingReview && !singleForm.abstract.trim()) {
+        setSubmissionProgress({ label: "Starting abstract extraction…", value: 100, stage: 3, detail: "The PDF and repository information were saved. PeAS is now extracting the abstract for confirmation." });
+        beginExtraction({
+          type: "single",
+          title: singleForm.title.trim(),
+          documentId: document.id,
+          targetKeys: [`document:${document.id}`],
+        });
+      } else {
+        setSubmissionProgress({ label: "Upload complete", value: 100, stage: 3, detail: "The PDF and repository information were saved successfully." });
+        setReceipt({ type: "single", title: singleForm.title.trim(), documentId: document.id, pendingReview });
+        setSingleForm(initialSingleForm);
+        toast.success(pendingReview ? "Document submitted for administrator review." : "Document published successfully.");
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 422 && error.payload && typeof error.payload === "object") {
         const fields = (error.payload as { fields?: Record<string, string> }).fields;
@@ -374,11 +540,27 @@ export function UploadDocumentPage() {
       await fetchAuthors().then(setAuthors).catch(() => undefined);
       setSubmissionProgress({ label: "Linking studies to publication…", value: 96, stage: 3, detail: `PeAS is connecting ${childDocumentIds.length} ${childDocumentIds.length === 1 ? "study" : "studies"} to the compiled publication.` });
       await linkDocumentsToCompilation(compiled.id, childDocumentIds);
-      setSubmissionProgress({ label: "Upload complete", value: 100, stage: 3, detail: "All PDFs, records, classifications, and publication links were saved successfully." });
-      const pendingReview = compiled.reviewStatus === "pending_review";
-      setReceipt({ type: "compiled", title: compiledTitle, compiledDocumentId: compiled.id, childDocumentIds, pendingReview });
-      setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
-      toast.success(pendingReview ? "Publication submitted for administrator review." : "Publication published successfully.");
+      const targetKeys: string[] = [];
+      if (compiledForm.forewordFile && !compiledForm.forewordAbstract.trim()) targetKeys.push(`compiled_foreword:${compiled.id}`);
+      sectionsWithFiles.forEach((section, index) => {
+        if (!section.abstract.trim()) targetKeys.push(`document:${childDocumentIds[index]}`);
+      });
+      const pendingReview = compiled.reviewStatus === "pending_review" || targetKeys.length > 0;
+      if (targetKeys.length > 0) {
+        setSubmissionProgress({ label: "Starting abstract extraction…", value: 100, stage: 3, detail: "All files and records were saved. PeAS is now extracting the missing abstracts for confirmation." });
+        beginExtraction({
+          type: "compiled",
+          title: compiledTitle,
+          compiledDocumentId: compiled.id,
+          childDocumentIds,
+          targetKeys,
+        });
+      } else {
+        setSubmissionProgress({ label: "Upload complete", value: 100, stage: 3, detail: "All PDFs, records, classifications, and publication links were saved successfully." });
+        setReceipt({ type: "compiled", title: compiledTitle, compiledDocumentId: compiled.id, childDocumentIds, pendingReview });
+        setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
+        toast.success(pendingReview ? "Publication submitted for administrator review." : "Publication published successfully.");
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 422 && error.payload && typeof error.payload === "object") {
         const fields = (error.payload as { fields?: Record<string, string> }).fields;
@@ -436,7 +618,7 @@ export function UploadDocumentPage() {
                   <>
                     <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} researchAgendas={researchAgendas} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setSingleForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />
+                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -450,7 +632,7 @@ export function UploadDocumentPage() {
                   <>
                     <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} researchAgendas={researchAgendas} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setCompiledForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />
+                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -1008,6 +1190,94 @@ function ChecklistRow({ label, value, ready, optional = false }: { label: string
 
 function CompletionPanel({ receipt, isPublisher, onUploadAnother }: { receipt: UploadReceipt; isPublisher: boolean; onUploadAnother: () => void }) {
   return <section className="peas-upload-completion"><CheckCircle2 aria-hidden="true" /><h2>{receipt.pendingReview ? "Files saved; extraction queued" : "Your upload is published"}</h2><p><strong>{receipt.title}</strong> has been processed successfully.</p><p>{receipt.pendingReview ? "The publication remains private until an administrator resolves every required abstract and approves it." : "The document is now available in the repository."}</p><div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><div className="peas-upload-completion__actions"><Button type="button" variant="outline" onClick={onUploadAnother}>Upload another</Button>{!receipt.pendingReview && !isPublisher ? <Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html")}>View documents</Button> : null}</div></section>;
+}
+
+function AbstractExtractionPanel({
+  session,
+  items,
+  drafts,
+  manualEntryTargets,
+  manualFallbackAvailable,
+  pollError,
+  actionKey,
+  publishing,
+  publicationError,
+  onDraftChange,
+  onManualEntry,
+  onConfirm,
+  onRetryPoll,
+  onRetryPublication,
+}: {
+  session: ExtractionSession;
+  items: AbstractReviewItem[];
+  drafts: Record<string, string>;
+  manualEntryTargets: Record<string, boolean>;
+  manualFallbackAvailable: boolean;
+  pollError: string | null;
+  actionKey: string | null;
+  publishing: boolean;
+  publicationError: string | null;
+  onDraftChange: (key: string, value: string) => void;
+  onManualEntry: (key: string) => void;
+  onConfirm: (item: AbstractReviewItem) => void;
+  onRetryPoll: () => void;
+  onRetryPublication: () => void;
+}) {
+  const itemMap = new Map(items.map((item) => [abstractTargetKey(item), item]));
+  const resolved = items.filter((item) => item.status === "accepted" || item.status === "unavailable").length;
+
+  return <section className="peas-upload-extraction" aria-labelledby="upload-extraction-title">
+    <header>
+      <div><h2 id="upload-extraction-title">Confirm extracted abstracts</h2><p>The files and repository records are saved. Confirm each abstract before PeAS publishes {session.type === "compiled" ? "the publication" : "the document"}.</p></div>
+      <Badge tone={resolved === session.targetKeys.length ? "green" : "gold"}>{resolved} of {session.targetKeys.length} confirmed</Badge>
+    </header>
+    {pollError ? <div className="peas-upload-extraction__notice" role="alert"><div><strong>Extraction status is temporarily unavailable.</strong><span>{pollError}</span></div><Button type="button" size="sm" variant="outline" onClick={onRetryPoll}><RefreshCw aria-hidden="true" /> Retry status</Button></div> : null}
+    <div className="peas-upload-extraction__list" aria-live="polite">
+      {session.targetKeys.map((key, index) => {
+        const item = itemMap.get(key);
+        if (!item) return <article className="peas-upload-extraction__item" key={key}><header><div><h3>{session.targetKeys.length === 1 ? "Abstract" : `Abstract ${index + 1}`}</h3><p>Waiting for the extraction job…</p></div><Badge tone="slate">Queued</Badge></header></article>;
+        const itemResolved = item.status === "accepted" || item.status === "unavailable";
+        const noCandidate = item.status === "failed" || (item.status === "needs_review" && !item.candidate);
+        const showEditor = Boolean(item.candidate) || noCandidate || manualEntryTargets[key];
+        const canChooseManual = manualFallbackAvailable && !showEditor && !itemResolved;
+        const draft = drafts[key] ?? "";
+        const characterCount = [...draft].length;
+        const working = actionKey === key;
+        return <article className="peas-upload-extraction__item" key={key}>
+          <header><div><h3>{item.title}</h3><p>{item.targetType === "compiled_foreword" ? "Collection foreword" : item.documentType}</p></div><Badge tone={itemResolved ? "green" : item.status === "failed" ? "rose" : "gold"}>{formatExtractionStatus(item)}</Badge></header>
+          {itemResolved ? <p className="peas-upload-extraction__confirmed"><CheckCircle2 aria-hidden="true" /> Abstract confirmed.</p> : null}
+          {!itemResolved && item.status === "processing" ? <p className="peas-upload-extraction__waiting">PeAS is reading the PDF. This can take longer when OCR is required.</p> : null}
+          {!itemResolved && item.status === "queued" ? <p className="peas-upload-extraction__waiting">The extraction job is queued and will begin shortly.</p> : null}
+          {noCandidate ? <p className="peas-upload-extraction__error" role="alert">{item.status === "failed" ? "Automatic extraction failed. Enter the abstract manually to continue." : "No abstract was found in the PDF. Enter it manually to continue."}</p> : null}
+          {showEditor && !itemResolved ? <div className="peas-upload-extraction__editor">
+            <label htmlFor={`upload-abstract-${item.targetType}-${item.targetId}`}>{item.candidate && !manualEntryTargets[key] ? "Extracted abstract" : "Manual abstract"}</label>
+            <Textarea id={`upload-abstract-${item.targetType}-${item.targetId}`} value={draft} rows={7} disabled={working || publishing} aria-invalid={characterCount > 10_000 || undefined} onChange={(event) => onDraftChange(key, event.currentTarget.value)} />
+            <div className="peas-upload-extraction__editor-actions"><span className={characterCount > 10_000 ? "is-invalid" : ""}>{characterCount.toLocaleString()} / 10,000 characters</span><Button type="button" disabled={working || publishing || !draft.trim() || characterCount > 10_000} onClick={() => onConfirm(item)}>{working ? "Saving…" : "Confirm abstract"}</Button></div>
+          </div> : null}
+          {canChooseManual ? <Button type="button" variant="outline" disabled={publishing} onClick={() => onManualEntry(key)}>Enter abstract manually</Button> : null}
+        </article>;
+      })}
+    </div>
+    {publishing ? <div className="peas-upload-extraction__publishing" role="status"><RefreshCw aria-hidden="true" /><div><strong>Publishing your upload…</strong><span>Every required abstract is confirmed.</span></div></div> : null}
+    {publicationError ? <div className="peas-upload-extraction__notice" role="alert"><div><strong>Abstracts were saved, but publication did not finish.</strong><span>{publicationError}</span></div><Button type="button" onClick={onRetryPublication}>Retry publication</Button></div> : null}
+  </section>;
+}
+
+function abstractTargetKey(item: Pick<AbstractReviewItem, "targetType" | "targetId">): string {
+  return `${item.targetType}:${item.targetId}`;
+}
+
+function formatExtractionStatus(item: AbstractReviewItem): string {
+  if (item.status === "needs_review" && !item.candidate) return "Manual entry required";
+  const labels: Record<AbstractReviewItem["status"], string> = {
+    queued: "Queued",
+    processing: "Extracting",
+    needs_review: "Ready to confirm",
+    accepted: "Confirmed",
+    unavailable: "Resolved",
+    failed: "Extraction failed",
+  };
+  return labels[item.status];
 }
 
 function SubmissionError({ message }: { message: string }) {

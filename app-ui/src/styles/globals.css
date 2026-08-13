@@ -1453,6 +1453,35 @@ body.peas-editor-open { overflow: hidden; }
 .peas-upload-completion h2 { color: var(--foreground); font-size: 1.25rem; margin: 0; }
 .peas-upload-completion p { color: #52655a; font-size: .88rem; line-height: 1.45; margin: 0; }
 .peas-upload-completion__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.peas-upload-extraction { background: var(--card, #fff); border: 1px solid #dfe8e3; border-radius: 14px; display: grid; gap: 18px; padding: clamp(18px, 2.5vw, 26px); }
+.peas-upload-extraction > header { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+.peas-upload-extraction > header h2 { color: var(--foreground); font-size: 1.15rem; margin: 0 0 5px; }
+.peas-upload-extraction > header p { color: #64756c; font-size: .84rem; line-height: 1.5; margin: 0; max-width: 650px; }
+.peas-upload-extraction__list { display: grid; gap: 12px; }
+.peas-upload-extraction__item { background: #f8fbf9; border: 1px solid #e1e9e4; border-radius: 12px; display: grid; gap: 12px; padding: 16px; }
+.peas-upload-extraction__item > header { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.peas-upload-extraction__item h3 { color: var(--foreground); font-size: .95rem; margin: 0 0 3px; }
+.peas-upload-extraction__item header p,
+.peas-upload-extraction__waiting { color: #687970; font-size: .78rem; line-height: 1.45; margin: 0; }
+.peas-upload-extraction__confirmed { align-items: center; color: #176b43; display: flex; font-size: .82rem; font-weight: 750; gap: 7px; margin: 0; }
+.peas-upload-extraction__confirmed svg { height: 17px; width: 17px; }
+.peas-upload-extraction__error { background: #fff1f0; border-radius: 9px; color: #9f2d27; font-size: .8rem; line-height: 1.45; margin: 0; padding: 10px 12px; }
+.peas-upload-extraction__editor { display: grid; gap: 8px; }
+.peas-upload-extraction__editor > label { color: var(--foreground); font-size: .78rem; font-weight: 800; }
+.peas-upload-extraction__editor textarea { background: #fff; }
+.peas-upload-extraction__editor textarea[aria-invalid="true"] { border-color: #d14343; }
+.peas-upload-extraction__editor-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.peas-upload-extraction__editor-actions > span { color: #718078; font-size: .72rem; font-weight: 700; }
+.peas-upload-extraction__editor-actions > span.is-invalid { color: #b42318; }
+.peas-upload-extraction__notice { align-items: center; background: #fff8e9; border: 1px solid #ead8aa; border-radius: 10px; display: flex; gap: 14px; justify-content: space-between; padding: 13px 14px; }
+.peas-upload-extraction__notice > div { display: grid; gap: 2px; }
+.peas-upload-extraction__notice strong { color: var(--foreground); font-size: .82rem; }
+.peas-upload-extraction__notice span { color: #6e6250; font-size: .76rem; line-height: 1.4; }
+.peas-upload-extraction__publishing { align-items: center; background: #eef7f1; border-radius: 10px; color: #176b43; display: flex; gap: 12px; padding: 14px; }
+.peas-upload-extraction__publishing > svg { animation: peas-spin .9s linear infinite; height: 20px; width: 20px; }
+.peas-upload-extraction__publishing > div { display: grid; gap: 2px; }
+.peas-upload-extraction__publishing strong { font-size: .84rem; }
+.peas-upload-extraction__publishing span { color: #526b5e; font-size: .75rem; }
 .peas-upload-page .peas-upload-actions { background: #fbfdfc; border-top-color: #dfe8e3; margin-top: 2px; padding-top: 18px; }
 .peas-upload-page .peas-upload-actions .peas-ui-button { min-height: 44px; }
 
@@ -1465,6 +1494,12 @@ body.peas-editor-open { overflow: hidden; }
   .peas-upload-progress li:not(:last-child)::after { left: 17px; right: calc(-50% + 17px); top: 16px; }
   .peas-upload-panel > header,
   .peas-upload-review > div:first-child { display: grid; gap: 8px; }
+  .peas-upload-extraction > header,
+  .peas-upload-extraction__item > header,
+  .peas-upload-extraction__notice { align-items: stretch; flex-direction: column; }
+  .peas-upload-extraction__editor-actions { align-items: stretch; flex-direction: column; }
+  .peas-upload-extraction__editor-actions .peas-ui-button,
+  .peas-upload-extraction__notice .peas-ui-button { justify-content: center; width: 100%; }
   .peas-upload-required-note { justify-self: start; }
   .peas-study-card__summary { grid-template-columns: auto minmax(0, 1fr) auto; }
   .peas-study-card__summary .peas-ui-badge { grid-column: 2; justify-self: start; }
