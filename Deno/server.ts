@@ -80,6 +80,7 @@ import {
 } from "./shared/legacyPublicPaths.ts";
 import { authorNameKey } from "../shared/authorName.ts";
 import abstractReviewRoutes from "./routes/abstractReviewRoutes.ts";
+import { isMutationMethod, maintenanceRequested } from "./services/maintenanceState.ts";
 // Import the document view controller
 // TODO: Fix DocumentViewController implementation
 // import { DocumentViewController } from "./controllers/documentViewController.ts";
@@ -134,6 +135,7 @@ const PUBLIC_ERROR_STATUSES = new Set<number>([400, 401, 403, 404, 408, 429, 500
 export const SERVER_START_TIME = Date.now();
 let serverReady = false;
 const isProduction = (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "production";
+const isRecoveryMode = (Deno.env.get("PEAS_RECOVERY_MODE") ?? "false").toLowerCase() === "true";
 
 async function verifyProductionReadiness() {
   if (!isProduction) return;
@@ -210,6 +212,19 @@ app.use(async (ctx, next) => {
       ctx.response.body = { message: "Internal server error" };
     }
   }
+});
+
+// Native Windows backups use a short, file-backed maintenance contract. New
+// mutations fail closed while reads and health checks remain available. The
+// supervisor subsequently stops all children before PostgreSQL is dumped.
+app.use(async (ctx, next) => {
+  if (!isMutationMethod(ctx.request.method)) return await next();
+  if (!await maintenanceRequested("web")) return await next();
+  ctx.response.status = 503;
+  ctx.response.headers.set("Retry-After", "120");
+  ctx.response.headers.set("Cache-Control", "no-store");
+  ctx.response.type = "application/json";
+  ctx.response.body = { error: "maintenance", message: "PeAS is creating a recovery point. Retry shortly." };
 });
 
 const publicAliases: Record<string, string> = {
@@ -1316,7 +1331,7 @@ async function startServer() {
     // Run database diagnostics
     await diagnoseDatabaseIssues();
 
-    setInterval(() => void cleanupDocumentAnnotations().catch((error) => console.error("Document annotation cleanup failed:", error)), 15 * 60 * 1000);
+    if (!isRecoveryMode) setInterval(() => void cleanupDocumentAnnotations().catch((error) => console.error("Document annotation cleanup failed:", error)), 15 * 60 * 1000);
     
     try {
       await verifyLegacyVisitCounterTables();
@@ -1334,10 +1349,10 @@ async function startServer() {
       console.error("Operational reporting schema is unavailable:", error instanceof Error ? error.message : error);
     }
     await verifyProductionReadiness();
-    if (Deno.env.get("NEWS_MEDIA_WORKER_ENABLED") !== "false") await startNewsMediaWorker();
-    setInterval(() => void cleanupNewsMedia().catch((error) => console.error("News media cleanup failed:", error)), 60 * 60 * 1000);
+    if (!isRecoveryMode && Deno.env.get("NEWS_MEDIA_WORKER_ENABLED") !== "false") await startNewsMediaWorker();
+    if (!isRecoveryMode) setInterval(() => void cleanupNewsMedia().catch((error) => console.error("News media cleanup failed:", error)), 60 * 60 * 1000);
     await registerLegacyPublicRelease(LEGACY_PUBLIC_RELEASE_ID);
-    await startContactNotificationWorker();
+    if (!isRecoveryMode) await startContactNotificationWorker();
     serverReady = true;
     
     // Note: `router` is already registered on the app (routes added to it
@@ -1460,16 +1475,18 @@ const documentRequestRoutes = createDocumentRequestRoutes(documentRequestControl
 
 // Durable request-email jobs are claimed atomically. A failed delivery is
 // rescheduled by the model without exposing or persisting a raw access token.
-setInterval(() => {
-  void processDocumentRequestEmailQueue(documentRequestModel).catch((error) =>
-    console.error("Document request email worker failed", error)
-  );
-}, 5_000);
-setInterval(() => {
-  void documentRequestModel.expireUnverifiedRequests().catch((error) =>
-    console.error("Unverified document request cleanup failed", error)
-  );
-}, 15 * 60_000);
+if (!isRecoveryMode) {
+  setInterval(() => {
+    void processDocumentRequestEmailQueue(documentRequestModel).catch((error) =>
+      console.error("Document request email worker failed", error)
+    );
+  }, 5_000);
+  setInterval(() => {
+    void documentRequestModel.expireUnverifiedRequests().catch((error) =>
+      console.error("Unverified document request cleanup failed", error)
+    );
+  }, 15 * 60_000);
+}
 
 // Add document request routes
 app.use(documentRequestRoutes.routes());

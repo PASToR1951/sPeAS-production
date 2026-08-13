@@ -1,5 +1,9 @@
 import { startAbstractWorker } from "./services/abstractExtractionWorkerService.ts";
 
+if ((Deno.env.get("PEAS_RECOVERY_MODE") ?? "false").toLowerCase() === "true") {
+  console.log("Abstract worker disabled in PeAS recovery mode");
+  Deno.exit(0);
+}
 const stop = await startAbstractWorker();
 console.log("Abstract extraction worker started");
 

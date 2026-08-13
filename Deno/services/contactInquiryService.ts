@@ -266,6 +266,7 @@ export async function processNextContactNotification() {
 }
 
 export async function startContactNotificationWorker() {
+  const { maintenanceRequested } = await import("./maintenanceState.ts");
   const notificationConfiguration = getContactNotificationConfiguration();
   if (!notificationConfiguration.configured) {
     console.warn("Contact email notifications require configuration", {
@@ -279,6 +280,7 @@ export async function startContactNotificationWorker() {
   let running = false;
   const run = async () => {
     if (running) return;
+    if (await maintenanceRequested("contact-worker")) return;
     running = true;
     try {
       for (let processed = 0; processed < 20; processed++) {

@@ -61,6 +61,11 @@ pinned Linux containers through Docker Compose: Caddy, PostgreSQL 17, the Deno
 web process, media/OCR workers, and ClamAV. Restic runs on the host. Only Caddy
 publishes ports 80 and 443.
 
+The currently deployed native Windows topology has a separate recovery path.
+Use [`ops/NATIVE_WINDOWS_RECOVERY.md`](ops/NATIVE_WINDOWS_RECOVERY.md) and
+`ops/peas-native-recovery.ps1`; Docker-volume backup commands do not protect
+native `C:\ProgramData\PeAS` data.
+
 1. Build and publish a signed semantic release through
    `.github/workflows/release.yml`.
 2. Resolve the published GHCR image to its immutable `@sha256:` digest.

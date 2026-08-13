@@ -1,5 +1,10 @@
 # PeAS production operations
 
+> Native Windows installations rooted at `C:\ProgramData\PeAS` use
+> [`NATIVE_WINDOWS_RECOVERY.md`](NATIVE_WINDOWS_RECOVERY.md) and
+> `peas-native-recovery.ps1`. The Compose backup below cannot protect a native
+> PostgreSQL cluster or native filesystem storage.
+
 `install.sh` is the interactive operator entry point. It calls `peas-deploy`,
 which operates on an immutable GHCR image and never builds application source
 on the production host.

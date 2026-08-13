@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "appRoot": "C:\\ProgramData\\PeAS",
+  "repoRoot": "C:\\ProgramData\\PeAS\\current",
+  "postgresBin": "C:\\ProgramData\\PeAS\\postgres\\bin",
+  "databaseHost": "127.0.0.1",
+  "databasePort": 5432,
+  "databaseUser": "postgres",
+  "databasePasswordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\db_admin_password",
+  "writePauseLimitSeconds": 120,
+  "maintenanceExpiryMinutes": 10,
+  "minimumFreeBytes": 10737418240,
+  "repositories": [
+    {
+      "id": "usb-a",
+      "type": "usb",
+      "volumeLabel": "PEAS-BACKUP-A",
+      "fileSystem": "NTFS",
+      "repositoryPath": "PeAS-Restic",
+      "passwordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\restic-usb-a-password",
+      "enabled": true
+    },
+    {
+      "id": "usb-b",
+      "type": "usb",
+      "volumeLabel": "PEAS-BACKUP-B",
+      "fileSystem": "NTFS",
+      "repositoryPath": "PeAS-Restic",
+      "passwordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\restic-usb-b-password",
+      "enabled": true
+    }
+  ],
+  "retention": {
+    "hourly": 48,
+    "daily": 30,
+    "monthly": 12,
+    "yearly": 7
+  },
+  "excludedRelativePaths": [
+    "storage\\news-media\\staging",
+    "config\\secrets\\restic-*-password",
+    "config\\secrets\\*bitlocker*",
+    "config\\secrets\\*delete*credential*",
+    "current\\Deno\\.cache",
+    "staging",
+    "restore"
+  ]
+}

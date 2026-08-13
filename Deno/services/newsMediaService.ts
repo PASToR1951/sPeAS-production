@@ -592,10 +592,12 @@ export async function reconcileNewsMedia() {
 }
 
 export async function startNewsMediaWorker() {
+  const { maintenanceRequested } = await import("./maintenanceState.ts");
   const workerId = `media-${crypto.randomUUID()}`;
   let running = false;
   const run = async () => {
     if (running) return;
+    if (await maintenanceRequested("media-worker")) return;
     running = true;
     try {
       for (let i = 0; i < 2; i++) {

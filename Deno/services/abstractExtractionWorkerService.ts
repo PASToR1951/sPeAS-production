@@ -343,6 +343,7 @@ export async function verifyAbstractWorkerDependencies(): Promise<void> {
 }
 
 export async function startAbstractWorker(): Promise<() => void> {
+  const { maintenanceRequested } = await import("./maintenanceState.ts");
   try {
     await verifyAbstractWorkerDependencies();
   } catch (err) {
@@ -352,6 +353,7 @@ export async function startAbstractWorker(): Promise<() => void> {
   let running = false;
   const run = async () => {
     if (running) return;
+    if (await maintenanceRequested("abstract-worker")) return;
     running = true;
     try {
       await recoverStaleAbstractJobs();

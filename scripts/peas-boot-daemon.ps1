@@ -16,10 +16,40 @@ $startupReportDir = Join-Path $logs 'startup-reports'
 # Generation-specific name avoids the legacy lock handle that can remain open
 # in a PostgreSQL child after an older supervisor exits unexpectedly.
 $bootLockPath = Join-Path $logs 'boot-daemon-v2.lock'
+$stateRoot = if ($env:PEAS_STATE_ROOT) { $env:PEAS_STATE_ROOT } else { Join-Path $AppRoot 'state' }
+$maintenanceRequestPath = Join-Path $stateRoot 'maintenance-request.json'
+$maintenanceAckPath = Join-Path $stateRoot 'maintenance-ack-supervisor.json'
 
 function Write-Log([string]$Message) {
     $line = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [peas-boot] $Message"
     Add-Content -LiteralPath $bootLog -Value $line -ErrorAction SilentlyContinue
+}
+
+function Get-ActiveMaintenanceRequest {
+    if (-not (Test-Path -LiteralPath $maintenanceRequestPath)) { return $null }
+    try {
+        $request = Get-Content -LiteralPath $maintenanceRequestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        if (-not $request.id -or -not $request.expiresAt) { return $null }
+        if ([DateTimeOffset]::Parse($request.expiresAt) -le [DateTimeOffset]::UtcNow) { return $null }
+        return $request
+    } catch {
+        Write-Log "WARNING: Maintenance request is unreadable; treating it as active: $($_.Exception.Message)"
+        return [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000000'; reason = 'unreadable' }
+    }
+}
+
+function Write-MaintenanceAcknowledgement([object]$Request) {
+    New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
+    $payload = [ordered]@{
+        requestId = [string]$Request.id
+        component = 'supervisor'
+        acknowledgedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        pid = $PID
+        childrenStopped = $true
+    } | ConvertTo-Json
+    $temporary = "$maintenanceAckPath.$PID.tmp"
+    Set-Content -LiteralPath $temporary -Value $payload -Encoding utf8NoBOM
+    Move-Item -LiteralPath $temporary -Destination $maintenanceAckPath -Force
 }
 
 # A SYSTEM AtStartup task and the user logon fallback can overlap. Hold an
@@ -100,6 +130,8 @@ if (-not (Test-Path -LiteralPath $emailScript)) { Write-Log "ERROR: Startup emai
 if (-not (Test-Path -LiteralPath $envFile)) { Write-Log "ERROR: Environment file not found: $envFile"; exit 1 }
 
 $env:PATH = "$pgBin;$(Split-Path -Parent $deno);$env:PATH"
+$env:PEAS_APP_ROOT = $AppRoot
+$env:PEAS_STATE_ROOT = $stateRoot
 $env:HOST = '0.0.0.0'
 if (-not $env:PORT) { $env:PORT = '80' }
 
@@ -430,6 +462,26 @@ try {
 
 while ($true) {
     Start-Sleep -Seconds 5
+    $maintenance = Get-ActiveMaintenanceRequest
+    if ($maintenance) {
+        Write-Log "Maintenance request $($maintenance.id) detected; stopping PeAS writer processes."
+        $processIds = @($media, $abstract, $web) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }
+        if ($processIds) { Stop-Process -Id $processIds -Force -ErrorAction SilentlyContinue }
+        Write-MaintenanceAcknowledgement $maintenance
+        while (Get-ActiveMaintenanceRequest) { Start-Sleep -Seconds 2 }
+        Remove-Item -LiteralPath $maintenanceAckPath -Force -ErrorAction SilentlyContinue
+        Write-Log 'Maintenance request cleared; restarting PeAS children.'
+        try {
+            $media = Start-PeasProcess 'Media worker' $mediaArgs (Join-Path $logs 'media-worker.out.log') (Join-Path $logs 'media-worker.err.log')
+            $abstract = Start-PeasProcess 'Abstract worker' $abstractArgs (Join-Path $logs 'abstract-worker.out.log') (Join-Path $logs 'abstract-worker.err.log')
+            $web = Start-PeasProcess 'Web server' $webArgs (Join-Path $logs 'web.out.log') (Join-Path $logs 'web.err.log')
+            $null = Wait-PeasReady $web
+            Write-Log 'PeAS children restarted after maintenance.'
+        } catch {
+            Write-Log "ERROR restarting after maintenance: $($_.Exception.Message)"
+        }
+        continue
+    }
     if ($media.HasExited) {
         Write-Log 'Media worker exited; restarting.'
         try {
