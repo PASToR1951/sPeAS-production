@@ -1,5 +1,6 @@
 import { join } from "../deps.ts";
 import { createHash } from "node:crypto";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
 import { STORAGE_ROOT } from "../config/storage.ts";
 
 export type AbstractMethod = "pdf_text" | "ocr" | "none";
@@ -215,6 +216,20 @@ export function parsePdfInfo(output: string): PdfInspection | null {
   return { pageCount, encrypted };
 }
 
+export async function inspectPdfBytes(bytes: Uint8Array): Promise<PdfInspection | null> {
+  try {
+    const document = await PDFDocument.load(bytes, {
+      ignoreEncryption: true,
+      updateMetadata: false,
+    });
+    const pageCount = document.getPageCount();
+    if (!Number.isSafeInteger(pageCount) || pageCount <= 0) return null;
+    return { pageCount, encrypted: document.isEncrypted };
+  } catch {
+    return null;
+  }
+}
+
 export async function inspectPdfFile(filePath: string): Promise<PdfInspection | null> {
   try {
     const output = await new Deno.Command("pdfinfo", {
@@ -225,6 +240,14 @@ export async function inspectPdfFile(filePath: string): Promise<PdfInspection | 
     if (!output.success) return null;
     return parsePdfInfo(new TextDecoder().decode(output.stdout));
   } catch {
-    return null;
+    // Native Windows deployments may not have Poppler on PATH. Keep upload
+    // validation available with the already-pinned in-process PDF parser;
+    // the extraction worker can still report its richer CLI dependencies as
+    // unavailable without making every valid PDF upload fail.
+    try {
+      return await inspectPdfBytes(await Deno.readFile(filePath));
+    } catch {
+      return null;
+    }
   }
 }

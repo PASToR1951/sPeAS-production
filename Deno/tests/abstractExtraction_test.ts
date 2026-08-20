@@ -1,8 +1,10 @@
 import {
   extractAbstractFromText,
+  inspectPdfBytes,
   normalizePdfText,
   scoreAbstractCandidate,
 } from "../services/abstractExtractionService.ts";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
 
 const body = "This study examines resilient communities and documents the methods used by the research team. The results indicate meaningful improvements across the measured outcomes. These findings provide a practical basis for future institutional planning and community action.";
 
@@ -55,4 +57,20 @@ Deno.test("applies score additions and penalties at their boundaries", () => {
   if (!long.flags.includes("candidate_too_long")) throw new Error("Oversized candidate was not flagged");
   const toc = scoreAbstractCandidate("Chapter one........................................ 12", false, false);
   if (!toc.flags.includes("table_of_contents_pattern")) throw new Error("TOC penalty was not flagged");
+});
+
+Deno.test("inspects a valid PDF without native Poppler tools", async () => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.addPage();
+
+  const inspection = await inspectPdfBytes(await pdf.save());
+  if (!inspection) throw new Error("Expected the in-process PDF inspection to succeed");
+  if (inspection.pageCount !== 2) throw new Error(`Expected two pages, received ${inspection.pageCount}`);
+  if (inspection.encrypted) throw new Error("A newly created PDF should not be encrypted");
+});
+
+Deno.test("rejects invalid bytes during in-process PDF inspection", async () => {
+  const inspection = await inspectPdfBytes(new TextEncoder().encode("%PDF-not-a-valid-document"));
+  if (inspection) throw new Error("Invalid PDF bytes should not pass inspection");
 });
