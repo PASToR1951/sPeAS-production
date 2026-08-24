@@ -43,13 +43,11 @@ export const METRIC_DEFINITIONS = {
   author_records: "Every author-directory row, including authors without linked works.",
   published_authors: "Distinct authors linked to an active, approved, public top-level work or an eligible active child of a public compilation.",
   pending_uploads: "Non-archived top-level singles and compilations with pending_review status; child studies are excluded.",
-  pending_access_requests: "Every access request whose current status is pending, regardless of submission date.",
   uploaded_entries: "Top-level singles and compilations created during the selected period, regardless of current review status.",
   repository_views: "One successful authorized public or registered-reader metadata/detail request. Administrator and publisher previews are excluded.",
   repository_downloads: "One successful authorized attachment/file response. Inline PDF viewing is not a download.",
   guest_views: "Successful public repository metadata/detail requests made without a registered-reader session.",
   registered_views: "Successful public repository metadata/detail requests made by a registered-reader session.",
-  approved_request_downloads: "Successful attachment responses delivered through an approved outsider request.",
   active_registered_readers: "Distinct signed-in readers with role user and at least one successful repository view or download in the selected period.",
   active_registered_users: "Deprecated compatibility alias for active_registered_readers.",
   site_page_views: "Successful tracked public HTML page loads during the selected period. Reloading counts again.",
@@ -69,7 +67,6 @@ export const METRIC_DEFINITIONS = {
   top_activity_topic_share: "Topic share is each topic's approved-topic work-view attributions divided by all approved-topic attributions in the filtered result.",
   topic_work_views: "Views of public works associated with an approved topic. A work contributes once per distinct topic association.",
   document_types: "Active non-archived top-level catalog entries grouped by document type/category; current snapshot only.",
-  request_statuses: "Requests submitted during the selected period grouped by their current pending, approved, or rejected status.",
   registered_reader_activity: "Aggregate registered-reader views, downloads, active users, and average interactions; no identities are exposed.",
   reader_views: "Registered-reader repository views during the selected period.",
   reader_downloads: "Registered-reader attachment downloads during the selected period.",
@@ -120,7 +117,7 @@ export interface OperationalReport {
     authorRecords: number;
     publishedAuthors: number;
   };
-  workflow: { pendingUploads: number; pendingAccessRequests: number };
+  workflow: { pendingUploads: number };
   activity: {
     sitePageViews: { total: number; guest: number; registered: number };
     siteVisits: { total: number; guest: number; registered: number };
@@ -134,7 +131,6 @@ export interface OperationalReport {
     topicWorkViews: number;
     guestViews: number;
     registeredViews: number;
-    approvedRequestDownloads: number;
     activeRegisteredUsers: number;
     homeVisits: { total: number; guest: number; registered: number };
     activeRegisteredReaders: number;
@@ -152,10 +148,7 @@ export interface OperationalReport {
     mostViewedAuthors: RankedAuthor[];
     trendingTopics: RankedTopic[];
   };
-  distributions: {
-    documentTypes: Array<{ label: string; count: number }>;
-    requestStatuses: Array<{ status: "pending" | "approved" | "rejected"; count: number }>;
-  };
+  distributions: { documentTypes: Array<{ label: string; count: number }> };
   registeredReaderSummary: {
     activeUsers: number;
     views: number;
@@ -413,7 +406,7 @@ async function tableExists(connection: any, table: string): Promise<boolean> {
   return Boolean(result.rows[0]?.exists);
 }
 
-async function incrementRepositoryRollup(connection: any, grain: "hour" | "day", input: { recordType: "document" | "compiled"; recordId: number; audience: "guest" | "registered" | "approved_request"; action: "view" | "download" }, bucket: Date): Promise<void> {
+async function incrementRepositoryRollup(connection: any, grain: "hour" | "day", input: { recordType: "document" | "compiled"; recordId: number; audience: "guest" | "registered"; action: "view" | "download" }, bucket: Date): Promise<void> {
   const column = input.action === "view" ? "view_count" : "download_count";
   await connection.queryObject(`
     INSERT INTO repository_activity_rollups
@@ -632,16 +625,14 @@ export async function createAnalyticsSessionCookie(audience: AnalyticsAudience, 
 export async function recordRepositoryActivity(input: {
   recordType: "document" | "compiled";
   recordId: number;
-  audience: "guest" | "registered" | "approved_request";
+  audience: "guest" | "registered";
   action: "view" | "download";
   registeredUserId?: string;
 }): Promise<void> {
   if (!writesEnabledByEnvironment() || !Number.isSafeInteger(input.recordId) || input.recordId <= 0) return;
   if (!(["document", "compiled"] as const).includes(input.recordType)) return;
-  if (!(["guest", "registered", "approved_request"] as const).includes(input.audience)) return;
+  if (!(["guest", "registered"] as const).includes(input.audience)) return;
   if (!(["view", "download"] as const).includes(input.action)) return;
-  if (input.action === "download" && input.audience === "guest") return;
-  if (input.action === "view" && input.audience === "approved_request") return;
   try {
     await withTransaction(async (connection) => {
       if (!await isV2WriteGateOpen(connection)) return;
@@ -816,7 +807,7 @@ async function queryRankedWorks(connection: any, window: ReportWindow, metric: "
     ), activity AS (
       SELECT ra.record_type, ra.record_id,
              SUM(ra.view_count) FILTER (WHERE ra.audience IN ('guest', 'registered'))::BIGINT AS views,
-             SUM(ra.download_count) FILTER (WHERE ra.audience IN ('registered', 'approved_request'))::BIGINT AS downloads
+             SUM(ra.download_count)::BIGINT AS downloads
       FROM repository_activity_rollups ra
       WHERE ${range.clause}
       GROUP BY ra.record_type, ra.record_id
@@ -908,16 +899,13 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
         SELECT COUNT(*) FROM compiled_documents WHERE deleted_at IS NULL AND review_status = 'pending_review'
       ) AS count
     `);
-    const pendingRequestResult = await connection.queryObject("SELECT COUNT(*)::BIGINT AS count FROM document_requests WHERE status = 'pending'");
-
     const repositoryRange = rollupRange("ra", window);
     const repositoryActivityResult = await connection.queryObject(`
       SELECT COALESCE(SUM(view_count) FILTER (WHERE audience IN ('guest', 'registered')), 0)::BIGINT AS views,
-             COALESCE(SUM(download_count) FILTER (WHERE audience IN ('registered', 'approved_request')), 0)::BIGINT AS downloads,
+             COALESCE(SUM(download_count), 0)::BIGINT AS downloads,
              COALESCE(SUM(view_count) FILTER (WHERE audience = 'guest'), 0)::BIGINT AS guest_views,
              COALESCE(SUM(view_count) FILTER (WHERE audience = 'registered'), 0)::BIGINT AS registered_views,
-             COALESCE(SUM(download_count) FILTER (WHERE audience = 'registered'), 0)::BIGINT AS registered_downloads,
-             COALESCE(SUM(download_count) FILTER (WHERE audience = 'approved_request'), 0)::BIGINT AS approved_request_downloads
+             COALESCE(SUM(download_count) FILTER (WHERE audience = 'registered'), 0)::BIGINT AS registered_downloads
       FROM repository_activity_rollups ra WHERE ${repositoryRange.clause}
     `, repositoryRange.params);
 
@@ -1002,7 +990,7 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
     const repositorySeriesResult = await connection.queryObject(`
       SELECT ${bucketExpression("ra.bucket_start", window.bucket)}::TEXT AS bucket,
              COALESCE(SUM(ra.view_count) FILTER (WHERE ra.audience IN ('guest', 'registered')), 0)::BIGINT AS views,
-             COALESCE(SUM(ra.download_count) FILTER (WHERE ra.audience IN ('registered', 'approved_request')), 0)::BIGINT AS downloads
+             COALESCE(SUM(ra.download_count), 0)::BIGINT AS downloads
       FROM repository_activity_rollups ra WHERE ${repositoryRange.clause}
       GROUP BY ${bucketExpression("ra.bucket_start", window.bucket)}
       ORDER BY ${bucketExpression("ra.bucket_start", window.bucket)}
@@ -1113,24 +1101,13 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
         WHERE cd.deleted_at IS NULL
       ) entries GROUP BY label ORDER BY label
     `);
-    const requestRange = timestampRange("created_at", window);
-    const requestStatusResult = await connection.queryObject(`
-      SELECT status, COUNT(*)::BIGINT AS count FROM document_requests
-      WHERE ${requestRange.clause} AND status IN ('pending', 'approved', 'rejected')
-      GROUP BY status
-    `, requestRange.params);
-    const requestCounts = new Map<string, number>(requestStatusResult.rows.map((row: Record<string, unknown>) => [String(row.status), count(row.count, "request.status")]));
-    const requestStatuses = (["pending", "approved", "rejected"] as const).map((status) => ({ status, count: requestCounts.get(status) ?? 0 }));
-
     const repositoryActivity = (repositoryActivityResult.rows[0] ?? {}) as Record<string, unknown>;
     const repositoryViews = count(repositoryActivity.views, "activity.repositoryViews");
     const repositoryDownloads = count(repositoryActivity.downloads, "activity.repositoryDownloads");
     const guestViews = count(repositoryActivity.guest_views, "activity.guestViews");
     const registeredViews = count(repositoryActivity.registered_views, "activity.registeredViews");
     const registeredDownloads = count(repositoryActivity.registered_downloads, "activity.registeredDownloads");
-    const approvedRequestDownloads = count(repositoryActivity.approved_request_downloads, "activity.approvedRequestDownloads");
     if (repositoryViews !== guestViews + registeredViews) throw new Error("REPORTING_INVARIANT_REPOSITORY_VIEWS");
-    if (repositoryDownloads !== registeredDownloads + approvedRequestDownloads) throw new Error("REPORTING_INVARIANT_REPOSITORY_DOWNLOADS");
 
     const pageActivity = (pageActivityResult.rows[0] ?? {}) as Record<string, unknown>;
     const sitePageViews = count(pageActivity.views, "activity.sitePageViews");
@@ -1175,7 +1152,7 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
         authorRecords: count((authorResult.rows[0] as Record<string, unknown> | undefined)?.count, "inventory.authorRecords"),
         publishedAuthors: count((publishedResult.rows[0] as Record<string, unknown> | undefined)?.count, "inventory.publishedAuthors"),
       },
-      workflow: { pendingUploads: count((pendingUploadResult.rows[0] as Record<string, unknown> | undefined)?.count, "workflow.pendingUploads"), pendingAccessRequests: count((pendingRequestResult.rows[0] as Record<string, unknown> | undefined)?.count, "workflow.pendingAccessRequests") },
+      workflow: { pendingUploads: count((pendingUploadResult.rows[0] as Record<string, unknown> | undefined)?.count, "workflow.pendingUploads") },
       activity: {
         sitePageViews: { total: sitePageViews, guest: guestPageViews, registered: registeredPageViews },
         siteVisits: { total: totalSiteVisits, guest: siteVisits.guest, registered: siteVisits.registered },
@@ -1189,7 +1166,6 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
         topicWorkViews,
         guestViews,
         registeredViews,
-        approvedRequestDownloads,
         activeRegisteredUsers: readerUsers,
         homeVisits: { guest: home.guest, registered: home.registered, total: home.guest + home.registered },
         activeRegisteredReaders: readerUsers,
@@ -1204,7 +1180,6 @@ export async function getOperationalReport(rangeKey: ReportRange, now = new Date
       },
       distributions: {
         documentTypes: typesResult.rows.map((value: Record<string, unknown>) => ({ label: String(value.label ?? "Unknown"), count: count(value.count, "distribution.documentType") })),
-        requestStatuses,
       },
       registeredReaderSummary: { activeUsers: readerUsers, views: readerViews, downloads: readerDownloads, averageInteractionsPerActiveUser: readerUsers ? (readerViews + readerDownloads) / readerUsers : 0 },
       metricDefinitions: definitions,

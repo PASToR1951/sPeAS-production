@@ -40,7 +40,6 @@ interface ActivityRow {
   downloads: number;
   guestViews: number;
   registeredViews: number;
-  approvedRequestDownloads: number;
   workViews: number;
   workDownloads: number;
   publicWorks: number;
@@ -170,12 +169,12 @@ export async function getTopActivityReport(query: TopActivityQuery, now = new Da
 export async function getTopActivityExport(query: TopActivityQuery, now = new Date()): Promise<string[][]> {
   const report = await getTopActivityReport({ ...query, page: 1, pageSize: 100000 }, now);
   const header = query.kind === "works"
-    ? ["Rank", "Previous rank", "Title", "Type", "Authors", "Publication date", "Views", "Guest views", "Registered views", "Downloads", "Approved-request downloads", "Percent change"]
+    ? ["Rank", "Previous rank", "Title", "Type", "Authors", "Publication date", "Views", "Guest views", "Registered views", "Downloads", "Percent change"]
     : query.kind === "authors"
       ? ["Rank", "Previous rank", "Author", "Department", "Affiliation", "Profile views", "Guest profile views", "Registered profile views", "Public works", "Work views", "Downloads", "Top work", "Percent change"]
       : ["Rank", "Previous rank", "Topic", "Associated works", "Work views", "Guest views", "Registered views", "Share of topic attributions", "Top work", "Percent change"];
   const rows = report.rows.map((row: ActivityRow) => query.kind === "works"
-    ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.title ?? row.name, row.category ?? "", row.authors ?? "", row.publicationDate ?? "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.downloads), String(row.approvedRequestDownloads), percent(row.percentChange)]
+    ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.title ?? row.name, row.category ?? "", row.authors ?? "", row.publicationDate ?? "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.downloads), percent(row.percentChange)]
     : query.kind === "authors"
       ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.name, row.department ?? "", row.affiliation ?? "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.publicWorks), String(row.workViews), String(row.workDownloads), row.topWork ?? "", percent(row.percentChange)]
       : [String(row.rank ?? ""), String(row.previousRank ?? ""), row.name, String(row.entryCount), String(row.workViews), String(row.guestViews), String(row.registeredViews), share(row.views, report.summary.topicAttributions), row.topWork ?? "", percent(row.percentChange)]);
@@ -189,17 +188,17 @@ export function defaultTopActivitySort(kind: TopActivityKind): TopActivitySort {
 function toRows(kind: TopActivityKind, report: any): ActivityRow[] {
   if (kind === "works") return report.rankings.mostViewedEntries.map((row: any) => ({
     id: row.id, key: String(row.recordType) + ":" + String(row.id), name: row.title, title: row.title, category: row.category,
-    views: number(row.views), downloads: number(row.downloads), guestViews: 0, registeredViews: 0, approvedRequestDownloads: 0,
+    views: number(row.views), downloads: number(row.downloads), guestViews: 0, registeredViews: 0,
     workViews: number(row.views), workDownloads: number(row.downloads), publicWorks: 1, entryCount: 1, href: row.href,
   }));
   if (kind === "authors") return report.rankings.mostViewedAuthors.map((row: any) => ({
     id: String(row.id), key: "author:" + String(row.id), name: row.name, profilePicture: row.profilePicture,
-    views: number(row.views), downloads: 0, guestViews: 0, registeredViews: 0, approvedRequestDownloads: 0,
+    views: number(row.views), downloads: 0, guestViews: 0, registeredViews: 0,
     workViews: 0, workDownloads: 0, publicWorks: 0, entryCount: 0, href: row.href,
   }));
   return report.rankings.trendingTopics.map((row: any) => ({
     id: row.id, key: "topic:" + String(row.id), name: row.name, views: number(row.workViews), downloads: 0,
-    guestViews: 0, registeredViews: 0, approvedRequestDownloads: 0, workViews: number(row.workViews), workDownloads: 0,
+    guestViews: 0, registeredViews: 0, workViews: number(row.workViews), workDownloads: 0,
     publicWorks: number(row.entryCount), entryCount: number(row.entryCount), href: row.href,
   }));
 }
@@ -285,7 +284,7 @@ async function selectedSeriesFor(kind: TopActivityKind, row: ActivityRow, report
     const split = row.key.indexOf(":");
     const recordType = row.key.slice(0, split);
     const recordId = Number(row.key.slice(split + 1));
-    const result = await client.queryObject("SELECT DATE_TRUNC('" + bucket + "', ra.bucket_start AT TIME ZONE '" + REPORTING_TIMEZONE + "') AT TIME ZONE '" + REPORTING_TIMEZONE + "' AS bucket, SUM(CASE WHEN ra.audience IN ('guest','registered') THEN ra.view_count ELSE 0 END)::BIGINT views, SUM(CASE WHEN ra.audience = 'guest' THEN ra.view_count ELSE 0 END)::BIGINT guest_views, SUM(CASE WHEN ra.audience = 'registered' THEN ra.view_count ELSE 0 END)::BIGINT registered_views, SUM(CASE WHEN ra.audience IN ('registered','approved_request') THEN ra.download_count ELSE 0 END)::BIGINT downloads FROM repository_activity_rollups ra WHERE " + period + " AND ra.record_type = $" + (params.length + 1) + " AND ra.record_id = $" + (params.length + 2) + " GROUP BY bucket ORDER BY bucket", params.concat([recordType, recordId]));
+    const result = await client.queryObject("SELECT DATE_TRUNC('" + bucket + "', ra.bucket_start AT TIME ZONE '" + REPORTING_TIMEZONE + "') AT TIME ZONE '" + REPORTING_TIMEZONE + "' AS bucket, SUM(CASE WHEN ra.audience IN ('guest','registered') THEN ra.view_count ELSE 0 END)::BIGINT views, SUM(CASE WHEN ra.audience = 'guest' THEN ra.view_count ELSE 0 END)::BIGINT guest_views, SUM(CASE WHEN ra.audience = 'registered' THEN ra.view_count ELSE 0 END)::BIGINT registered_views, SUM(ra.download_count)::BIGINT downloads FROM repository_activity_rollups ra WHERE " + period + " AND ra.record_type = $" + (params.length + 1) + " AND ra.record_id = $" + (params.length + 2) + " GROUP BY bucket ORDER BY bucket", params.concat([recordType, recordId]));
     return result.rows.map((value: any) => ({ bucket: new Date(String(value.bucket)).toISOString(), views: number(value.views), downloads: number(value.downloads), guestViews: number(value.guest_views), registeredViews: number(value.registered_views) }));
   }
   const topicPeriod = window.startInclusive ? "ra.grain = $1 AND ra.bucket_start >= $2 AND ra.bucket_start < $3" : "ra.grain = $1";
@@ -344,7 +343,7 @@ async function hydrateAudienceRows(kind: TopActivityKind, rows: ActivityRow[], r
                CASE WHEN d.compiled_parent_id IS NULL THEN 'document:' || d.id::TEXT ELSE 'compiled:' || d.compiled_parent_id::TEXT END entry_key,
                CASE WHEN d.compiled_parent_id IS NULL THEN d.title ELSE CONCAT('Compilation ', d.compiled_parent_id::TEXT) END entry_title,
                SUM(CASE WHEN ra.audience IN ('guest','registered') THEN ra.view_count ELSE 0 END)::BIGINT work_views,
-               SUM(CASE WHEN ra.audience IN ('registered','approved_request') THEN ra.download_count ELSE 0 END)::BIGINT work_downloads
+               SUM(ra.download_count)::BIGINT work_downloads
         FROM documents d JOIN document_authors da ON da.document_id = d.id
         JOIN repository_activity_rollups ra ON ra.record_type = 'document' AND ra.record_id = d.id
         WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE AND ra.grain = $1${finite}
@@ -353,7 +352,7 @@ async function hydrateAudienceRows(kind: TopActivityKind, rows: ActivityRow[], r
         SELECT da.author_id, 'compiled:' || c.id::TEXT,
                CONCAT(COALESCE(c.category, 'Compilation'), CASE WHEN c.volume IS NOT NULL THEN CONCAT(' Vol. ', c.volume) ELSE '' END),
                SUM(CASE WHEN ra.audience IN ('guest','registered') THEN ra.view_count ELSE 0 END)::BIGINT,
-               SUM(CASE WHEN ra.audience IN ('registered','approved_request') THEN ra.download_count ELSE 0 END)::BIGINT
+               SUM(ra.download_count)::BIGINT
         FROM compiled_documents c JOIN compiled_document_items cdi ON cdi.compiled_document_id = c.id
         JOIN documents d ON d.id = cdi.document_id JOIN document_authors da ON da.document_id = d.id
         JOIN repository_activity_rollups ra ON ra.record_type = 'compiled' AND ra.record_id = c.id
@@ -372,8 +371,8 @@ async function hydrateAudienceRows(kind: TopActivityKind, rows: ActivityRow[], r
     }
     return output;
   }
-  const result = await client.queryObject("SELECT record_type, record_id, SUM(CASE WHEN audience = 'guest' THEN view_count ELSE 0 END)::BIGINT guest_views, SUM(CASE WHEN audience = 'registered' THEN view_count ELSE 0 END)::BIGINT registered_views, SUM(CASE WHEN audience = 'approved_request' THEN download_count ELSE 0 END)::BIGINT approved_downloads FROM repository_activity_rollups WHERE grain = $1" + finite + " GROUP BY record_type, record_id", params);
-  return new Map(result.rows.map((value: any) => [String(value.record_type) + ":" + String(value.record_id), { guestViews: number(value.guest_views), registeredViews: number(value.registered_views), approvedRequestDownloads: number(value.approved_downloads) }]));
+  const result = await client.queryObject("SELECT record_type, record_id, SUM(CASE WHEN audience = 'guest' THEN view_count ELSE 0 END)::BIGINT guest_views, SUM(CASE WHEN audience = 'registered' THEN view_count ELSE 0 END)::BIGINT registered_views FROM repository_activity_rollups WHERE grain = $1" + finite + " GROUP BY record_type, record_id", params);
+  return new Map(result.rows.map((value: any) => [String(value.record_type) + ":" + String(value.record_id), { guestViews: number(value.guest_views), registeredViews: number(value.registered_views) }]));
 }
 
 function number(value: unknown): number { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }

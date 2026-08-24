@@ -12,12 +12,10 @@ assertEquals(report.inventory.storedDocuments, 6);
 assertEquals(report.inventory.archivedCatalogEntries, 1);
 assertEquals(report.inventory.archivedDocuments, 2);
 assertEquals(report.workflow.pendingUploads, 2); // one top-level single + one compilation
-assertEquals(report.workflow.pendingAccessRequests, 1); // current status ignores the activity range
 assertEquals(report.activity.repositoryViews, 9);
 assertEquals(report.activity.guestViews, 7);
 assertEquals(report.activity.registeredViews, 2);
 assertEquals(report.activity.repositoryDownloads, 3);
-assertEquals(report.activity.approvedRequestDownloads, 2);
 assertEquals(report.activity.homeVisits.total, 7);
 assertEquals(report.activity.homeVisits.total, report.activity.homeVisits.guest + report.activity.homeVisits.registered);
 assertEquals(report.activity.sitePageViews.total, 7);
@@ -31,7 +29,6 @@ assertEquals(report.rankings.mostViewedEntries[0]?.recordType, "compiled");
 assertEquals(report.rankings.mostViewedEntries[0]?.id, 1);
 assertEquals(report.rankings.trendingTopics[0]?.name, "Approved Topic");
 assert(report.rankings.trendingTopics.every((topic) => topic.name !== "Retired Topic" && topic.name !== "Pending Topic"));
-assertEquals(report.distributions.requestStatuses.map((item) => item.status).join(","), "pending,approved,rejected");
 
 await client.queryObject("UPDATE operational_analytics_state SET traffic_v3_reads_enabled = FALSE WHERE state_id = TRUE");
 try {

@@ -154,17 +154,6 @@ export async function syncAdminActionNotifications() {
 
   await syncPendingSource({
     insertSql: `
-      SELECT 'document_access_request_pending', 'document_request', dr.id::text, 'warning',
-             'Review document access request', dr.full_name || ' requested access to a repository document.',
-             '/admin/Components/document-permissions.html?status=pending'
-      FROM document_requests dr WHERE dr.status = 'pending'
-    `,
-    notificationType: "document_access_request_pending",
-    activeSql: `SELECT 1 FROM document_requests dr WHERE dr.id::text = n.entity_id AND dr.status = 'pending'`,
-  });
-
-  await syncPendingSource({
-    insertSql: `
       SELECT 'contact_inquiry_new', 'contact_inquiry', i.id::text, 'info',
              'New contact inquiry', i.subject || ' — ' || i.first_name || ' ' || i.last_name,
              '/admin/Components/contact-inquiries.html?status=new'

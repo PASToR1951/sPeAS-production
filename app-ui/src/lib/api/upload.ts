@@ -102,7 +102,7 @@ function parseUploadResponse(text: string): unknown {
 function uploadErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
-    const message = record.message ?? record.error ?? record.details;
+    const message = record.message ?? record.details ?? record.error;
     if (typeof message === "string" && message.trim()) return message;
   }
   if (typeof payload === "string" && payload.trim()) return payload;

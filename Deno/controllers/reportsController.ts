@@ -205,7 +205,6 @@ export function reportRows(report: OperationalReport): string[][] {
   add("Inventory", "author_records", "Author records", report.inventory.authorRecords, "Current snapshot");
   add("Inventory", "published_authors", "Published authors", report.inventory.publishedAuthors, "Current snapshot");
   add("Workflow", "pending_uploads", "Pending uploads", report.workflow.pendingUploads, "Current snapshot");
-  add("Workflow", "pending_access_requests", "Pending access requests", report.workflow.pendingAccessRequests, "Current snapshot");
   add("Activity", "uploaded_entries", "Uploaded entries", report.activity.uploadedEntries);
   add("Activity", "repository_views", "Repository views", report.activity.repositoryViews);
   add("Activity", "repository_downloads", "Repository downloads", report.activity.repositoryDownloads);
@@ -221,7 +220,6 @@ export function reportRows(report: OperationalReport): string[][] {
   add("Activity", "topic_work_views", "Topic work views", report.activity.topicWorkViews);
   add("Activity", "registered_views", "Registered repository views", report.activity.registeredViews);
   add("Activity", "guest_views", "Guest repository views", report.activity.guestViews);
-  add("Activity", "approved_request_downloads", "Approved-request downloads", report.activity.approvedRequestDownloads);
   add("Registered-reader summary", "active_users", "Active registered readers", report.registeredReaderSummary.activeUsers);
   add("Registered-reader summary", "views", "Registered-reader views", report.registeredReaderSummary.views);
   add("Registered-reader summary", "downloads", "Registered-reader downloads", report.registeredReaderSummary.downloads);
@@ -240,7 +238,6 @@ export function reportRows(report: OperationalReport): string[][] {
   for (const item of report.rankings.mostViewedAuthors) add("Ranking", "most_viewed_authors", item.name, item.views);
   for (const item of report.rankings.trendingTopics) add("Ranking", "trending_topics", item.name, item.workViews);
   for (const item of report.distributions.documentTypes) add("Distribution", "document_type", item.label, item.count, "Current snapshot");
-  for (const item of report.distributions.requestStatuses) add("Distribution", "request_status", item.status, item.count);
   for (const [key, definition] of canonicalExportDefinitions(report)) add("Definition", key, key, definition, "Canonical definition");
   return rows;
 }

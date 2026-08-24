@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { ANALYTICS_SESSION_MAX_AGE_SECONDS, canonicalPublicPageKey, createAnalyticsSessionCookie, isKnownCrawler, isPrefetchRequest, isReportRange, METRIC_DEFINITIONS, normalizePageKey, readAnalyticsSessionCookie, resolveReportWindow } from "../services/operationalReportingService.ts";
 
 Deno.test("operational report ranges use explicit labels and buckets", () => {
@@ -21,6 +21,15 @@ Deno.test("report range validation rejects client-defined SQL values", () => {
 Deno.test("canonical definitions include reader and topic guardrails", () => {
   assert(METRIC_DEFINITIONS.active_registered_readers.includes("Distinct signed-in readers"));
   assert(METRIC_DEFINITIONS.trending_topics.includes("Approved topics"));
+});
+
+Deno.test("repository downloads include every retained audience without exposing request workflow metrics", async () => {
+  const source = await Deno.readTextFile(new URL("../services/operationalReportingService.ts", import.meta.url));
+  assertStringIncludes(source, "COALESCE(SUM(download_count), 0)::BIGINT AS downloads");
+  assertStringIncludes(source, "SUM(ra.download_count)::BIGINT AS downloads");
+  assert(!source.includes("pendingAccessRequests"));
+  assert(!source.includes("approvedRequestDownloads"));
+  assert(!source.includes("requestStatuses"));
 });
 
 Deno.test("home aliases normalize to one server-owned page key", () => {

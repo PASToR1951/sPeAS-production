@@ -35,7 +35,6 @@ export interface TopActivityRow {
   downloads: number;
   guestViews: number;
   registeredViews: number;
-  approvedRequestDownloads: number;
   workViews: number;
   workDownloads: number;
   publicWorks: number;
@@ -149,7 +148,7 @@ function normalizeRow(value: unknown): TopActivityRow {
     profilePicture: row.profilePicture ? String(row.profilePicture) : null,
     department: row.department ? String(row.department) : null,
     affiliation: row.affiliation ? String(row.affiliation) : null,
-    views: number(row.views), downloads: number(row.downloads), guestViews: number(row.guestViews), registeredViews: number(row.registeredViews), approvedRequestDownloads: number(row.approvedRequestDownloads),
+    views: number(row.views), downloads: number(row.downloads), guestViews: number(row.guestViews), registeredViews: number(row.registeredViews),
     workViews: number(row.workViews), workDownloads: number(row.workDownloads), publicWorks: number(row.publicWorks), entryCount: number(row.entryCount),
     topWork: row.topWork ? String(row.topWork) : null, previousViews: number(row.previousViews), previousDownloads: number(row.previousDownloads),
     previousRank: row.previousRank === null || row.previousRank === undefined ? null : number(row.previousRank), rank: number(row.rank), rankDelta: row.rankDelta === null || row.rankDelta === undefined ? null : number(row.rankDelta), percentChange: row.percentChange === null || row.percentChange === undefined ? null : number(row.percentChange), href: typeof row.href === "string" ? row.href : undefined,

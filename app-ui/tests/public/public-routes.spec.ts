@@ -79,6 +79,7 @@ test("invalid password reset links fail closed", async ({ page }) => {
 });
 
 test("FAQ page supports searchable, categorized, accessible answers", async ({ page }) => {
+  await page.route("**/api/experience/public", (route) => route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
   await page.goto("/faq.html");
 
   await expect(page).toHaveTitle("Frequently Asked Questions | PeAS");
@@ -88,27 +89,27 @@ test("FAQ page supports searchable, categorized, accessible answers", async ({ p
   await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
 
   const search = page.getByRole("searchbox", { name: "Search frequently asked questions" });
-  await search.fill("full paper");
-  await expect(page.getByText("Why can't I open or download a full paper?", { exact: true })).toBeVisible();
+  await search.fill("download a full paper");
+  await expect(page.getByText("How do I download a full paper?", { exact: true })).toBeVisible();
   await expect(page.locator(".peas-faq-result-count")).toHaveText("1 answer");
 
-  const question = page.getByRole("button", { name: "Why can't I open or download a full paper?" });
+  const question = page.getByRole("button", { name: "How do I download a full paper?" });
   await expect(question).toHaveAttribute("aria-expanded", "false");
   await question.click();
   await expect(question).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByText(/does not expose protected files through direct storage links/i)).toBeVisible();
+  await expect(page.getByText(/choose Download PDF/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear FAQ search" }).click();
   await page.getByRole("button", { name: "Accounts and access", exact: true }).click();
   await expect(page.getByRole("button", { name: "Accounts and access", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".peas-faq-group")).toHaveCount(1);
-  await expect(page.locator(".peas-faq-item")).toHaveCount(4);
+  await expect(page.locator(".peas-faq-item")).toHaveCount(3);
 
   await search.fill("not a real FAQ question");
   await expect(page.getByRole("status")).toContainText("No questions match");
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Contact the office" })).toHaveAttribute("href", "/contact.html");
+  await expect(page.getByLabel("Still have a question?").getByRole("link", { name: "Contact the office" })).toHaveAttribute("href", "/contact.html");
 
   await page.setViewportSize({ width: 375, height: 667 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -185,7 +186,6 @@ test("missing document records use the shared 404 experience", async ({ page }) 
 
 test("guest compiled records render the collection overview and child works", async ({ page }) => {
   const requestedUrls: string[] = [];
-  let accessRequestBody: Record<string, unknown> | null = null;
   await page.route("**/api/auth/get-session", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -204,6 +204,7 @@ test("guest compiled records render the collection overview and child works", as
         start_year: 2010,
         end_year: 2012,
         abstract: "A public collection overview.",
+        foreword_download_available: true,
         child_count: 1,
         classification: { researchAgendas: [], topics: [], keywords: [] },
       }),
@@ -244,31 +245,30 @@ test("guest compiled records render the collection overview and child works", as
   await expect(abstractToggle).toHaveAttribute("aria-expanded", "false");
   await abstractToggle.click();
   await expect(page.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-  await page.route("**/api/document-requests", (route) => {
-    accessRequestBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: 71 }) });
-  });
-  await page.getByRole("button", { name: "Request access", exact: true }).click();
-  const requestDialog = page.locator(".peas-request-dialog");
-  await expect(requestDialog).toBeVisible();
-  await expect(requestDialog.locator("#request-full-name")).toBeFocused();
-  await expect(requestDialog.getByRole("heading", { name: "CONFLUENCE Vol. 2 (2010-2012)" })).toBeVisible();
-  await expect(requestDialog.getByRole("button", { name: "Submit access request" })).toHaveAttribute("type", "submit");
-  await requestDialog.locator("#request-full-name").fill("Maria Santos");
-  await requestDialog.getByLabel("Email Required").fill("maria@example.com");
-  await requestDialog.getByLabel("Affiliation Required").fill("St. Paul University Dumaguete");
-  await requestDialog.getByRole("checkbox").check();
-  await requestDialog.getByRole("button", { name: "Submit access request" }).click();
-  expect(accessRequestBody).toMatchObject({ document_id: "53", record_type: "compiled", is_entire_collection: true });
-  await expect(requestDialog.getByRole("status")).toContainText("Check your inbox and spam folder.");
-  await expect(requestDialog.getByRole("status")).toContainText("Verification does not grant document access automatically.");
-  await expect(requestDialog.getByRole("status")).toContainText("If your request is approved, you will receive a separate secure access link by email.");
-  await expect(requestDialog.getByText("REQ-71", { exact: true })).toBeVisible();
-  await expect(requestDialog.getByRole("button", { name: "Done" })).toBeFocused();
-  await requestDialog.getByRole("button", { name: "Done" }).click();
-  await expect(requestDialog).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
+  await expect(page.getByText("This PDF is publicly available and can be downloaded immediately.")).toBeVisible();
+  await expect(page.getByText(/request access/i)).toHaveCount(0);
   await expect(page.locator(".peas-error-page")).toHaveCount(0);
   expect(requestedUrls).toContain("/api/guest/compiled-documents/53");
+});
+
+test("compiled records omit unavailable foreword downloads while retaining child detail links", async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "null" }));
+  await page.route("**/api/guest/compiled-documents/54", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ id: 54, title: "SYNERGY Vol. 3", category: "SYNERGY", foreword_download_available: false, child_count: 1 }),
+  }));
+  await page.route("**/api/guest/compiled-documents/54/children", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ children: [{ id: 32, title: "Available child record", document_type: "THESIS", authors: [] }] }),
+  }));
+
+  await page.goto("/pages/guest-compiled.html?id=54");
+  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
+  await expect(page.getByText("The PDF file is currently unavailable. The reviewed repository record remains accessible.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "View details for Available child record" })).toHaveAttribute("href", "/pages/guest-single.html?id=32");
 });
 
 test("public author profiles render publication analytics and filterable works", async ({ page }) => {
@@ -342,10 +342,8 @@ test("public author profiles render publication analytics and filterable works",
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
-test("guest document details render page images without exposing the PDF stream", async ({ page }) => {
-  const requestedPages: string[] = [];
-  const webpPixel = Buffer.from("UklGRhoAAABXRUJQVlA4TA4AAAAvAAAAAAcQEf0PRET/Aw==", "base64");
-
+test("guest document details expose an immediate public PDF download without a request form", async ({ page }) => {
+  const requestedDownloads: string[] = [];
   await page.route("**/api/auth/get-session", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -362,6 +360,7 @@ test("guest document details render page images without exposing the PDF stream"
         document_type: "THESIS",
         abstract: "A public research preview.",
         pages: 2,
+        download_available: true,
       },
     }),
   }));
@@ -370,27 +369,28 @@ test("guest document details render page images without exposing the PDF stream"
     contentType: "application/json",
     body: JSON.stringify({ authors: [] }),
   }));
-  await page.route("**/api/papers/132/pages/*", (route) => {
-    requestedPages.push(new URL(route.request().url()).pathname);
-    return route.fulfill({ status: 200, contentType: "image/webp", body: webpPixel });
+  await page.route("**/api/public/documents/132/download", (route) => {
+    requestedDownloads.push(new URL(route.request().url()).pathname);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/pdf",
+      headers: { "Content-Disposition": 'attachment; filename="image-only-guest-paper.pdf"' },
+      body: Buffer.from("%PDF-1.4\n%%EOF"),
+    });
   });
 
   await page.goto("/pages/guest-single.html?id=132");
 
-  const viewer = page.locator(".peas-paper-viewer--guest");
-  await expect(page.getByText("Preview the paper as images, or sign in for selectable text and full-PDF downloads.")).toBeVisible();
-  await expect(viewer.locator("img")).toHaveAttribute("src", "/api/papers/132/pages/1");
-  await expect(viewer.getByRole("button", { name: "Previous page" })).toBeDisabled();
-  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
-
-  await viewer.getByRole("button", { name: "Next page" }).click();
-  await expect(viewer.locator("img")).toHaveAttribute("src", "/api/papers/132/pages/2");
-  expect(requestedPages).toContain("/api/papers/132/pages/1");
-  expect(requestedPages).toContain("/api/papers/132/pages/2");
+  const downloadLink = page.getByRole("link", { name: "Download PDF" });
+  await expect(downloadLink).toHaveAttribute("href", "/api/public/documents/132/download");
+  await expect(page.locator(".peas-document-request-form, .peas-access-request-form")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText(/request access/i)).toHaveCount(0);
+  await Promise.all([page.waitForEvent("download"), downloadLink.click()]);
+  expect(requestedDownloads).toEqual(["/api/public/documents/132/download"]);
 });
 
 test("guest document details place the abstract after the title and expose author previews", async ({ page }) => {
-  const webpPixel = Buffer.from("UklGRhoAAABXRUJQVlA4TA4AAAAvAAAAAAcQEf0PRET/Aw==", "base64");
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "null" }));
   await page.route("**/api/guest/documents/133", (route) => route.fulfill({
     status: 200,
@@ -422,10 +422,11 @@ test("guest document details place the abstract after the title and expose autho
     contentType: "application/json",
     body: JSON.stringify({ author: { id: "author-1", fullName: "Dr. Ana Researcher", profilePicture: null, department: "College of Science", affiliation: "St. Paul University Dumaguete", biography: "A public health researcher working with university and community partners.", publicWorksCount: 7, researchCategories: [{ name: "Thesis", worksCount: 6 }, { name: "Dissertation", worksCount: 1 }], viewerActivity: null } }),
   }));
-  await page.route("**/api/papers/133/pages/*", (route) => route.fulfill({ status: 200, contentType: "image/webp", body: webpPixel }));
-
   await page.goto("/pages/guest-single.html?id=133");
   await expect(page.getByRole("heading", { name: "Abstract" })).toBeVisible();
+  await expect(page.getByText("The PDF file is currently unavailable. The reviewed repository record remains accessible.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
+  await expect(page.getByText(/approval|request access/i)).toHaveCount(0);
   const order = await page.evaluate(() => {
     const hero = document.querySelector(".peas-document-hero");
     const abstract = document.querySelector(".peas-document-abstract");

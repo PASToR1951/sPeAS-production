@@ -17,6 +17,9 @@ export interface AbstractReviewItem {
   pageEnd: number | null;
   attemptCount: number;
   errorCode: string | null;
+  sourceVerified: boolean;
+  nextAttemptAt: string | null;
+  processingStartedAt: string | null;
   updatedAt: string;
 }
 
@@ -33,6 +36,8 @@ type JobRow = {
   last_error_code: string | null;
   updated_at: Date | string;
   source_sha256: string | null;
+  available_at: Date | string;
+  locked_at: Date | string | null;
 };
 
 export async function listAbstractReviews(recordType: "document" | "compiled", recordId: number): Promise<AbstractReviewItem[]> {
@@ -219,6 +224,9 @@ async function buildReviewItem(input: {
     pageEnd: job?.page_end ?? null,
     attemptCount: Number(job?.attempt_count ?? 0),
     errorCode: job?.last_error_code ?? null,
+    sourceVerified: Boolean(job?.source_sha256),
+    nextAttemptAt: job?.status === "queued" ? String(job.available_at) : null,
+    processingStartedAt: job?.status === "processing" && job.locked_at ? String(job.locked_at) : null,
     updatedAt: String(job?.updated_at ?? input.updatedAt),
   };
 }
@@ -239,8 +247,8 @@ function parseQualityFlags(value: unknown): string[] {
 async function getCurrentJob(targetType: "document" | "compiled_foreword", targetId: number): Promise<JobRow | null> {
   const result = await client.queryObject<JobRow>(
     targetType === "document"
-      ? `SELECT id, status, method, candidate_text, confidence, quality_flags, page_start, page_end, attempt_count, last_error_code, updated_at, source_sha256 FROM abstract_extraction_jobs WHERE document_id = $1 AND is_current IS TRUE`
-      : `SELECT id, status, method, candidate_text, confidence, quality_flags, page_start, page_end, attempt_count, last_error_code, updated_at, source_sha256 FROM abstract_extraction_jobs WHERE compiled_document_id = $1 AND is_current IS TRUE`,
+      ? `SELECT id, status, method, candidate_text, confidence, quality_flags, page_start, page_end, attempt_count, last_error_code, updated_at, source_sha256, available_at, locked_at FROM abstract_extraction_jobs WHERE document_id = $1 AND is_current IS TRUE`
+      : `SELECT id, status, method, candidate_text, confidence, quality_flags, page_start, page_end, attempt_count, last_error_code, updated_at, source_sha256, available_at, locked_at FROM abstract_extraction_jobs WHERE compiled_document_id = $1 AND is_current IS TRUE`,
     [targetId],
   );
   return result.rows[0] ?? null;

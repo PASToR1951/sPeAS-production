@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, BookOpenText, CircleHelp, ClipboardList, Eye, FileStack, RefreshCw, UsersRound } from "lucide-react";
+import { ArrowRight, BookOpenText, CircleHelp, Eye, FileStack, RefreshCw, UsersRound } from "lucide-react";
 import { AdminPageHeader } from "../../components/layout/AdminPageHeader";
 import { useAdminIdentity } from "../../components/layout/AdminLayout";
 import { PeasEmptyState, PeasErrorState } from "../../components/feedback/PeasStates";
@@ -103,7 +103,7 @@ function DashboardKpi({ icon, label, value, help }: { icon: React.ReactNode; lab
 }
 
 function NeedsAttention({ snapshot, loading }: { snapshot: DashboardSnapshot | null; loading: boolean }) {
-  return <section className="peas-dashboard-attention" aria-labelledby="dashboard-attention-title"><header><div><span>Needs attention</span><h2 id="dashboard-attention-title">Review queue</h2></div></header><div className="peas-dashboard-attention__grid"><AttentionCard icon={<FileStack />} label="Pending uploads" value={snapshot?.workflow.pendingUploads} href="/admin/Components/documents_list.html?status=pending_review" loading={loading} /><AttentionCard icon={<ClipboardList />} label="Pending access requests" value={snapshot?.workflow.pendingAccessRequests} href="/admin/Components/document-permissions.html?status=pending" loading={loading} /></div></section>;
+  return <section className="peas-dashboard-attention" aria-labelledby="dashboard-attention-title"><header><div><span>Needs attention</span><h2 id="dashboard-attention-title">Review queue</h2></div></header><div className="peas-dashboard-attention__grid"><AttentionCard icon={<FileStack />} label="Pending uploads" value={snapshot?.workflow.pendingUploads} href="/admin/Components/documents_list.html?status=pending_review" loading={loading} /></div></section>;
 }
 
 function AttentionCard({ icon, label, value, href, loading }: { icon: React.ReactNode; label: string; value?: number; href: string; loading: boolean }) {

@@ -17,6 +17,7 @@ import { canViewDocument } from "../services/contentAuthorizationService.ts";
 import { getDocumentClassification } from "../services/documentClassificationService.ts";
 import { abstractTargetResolved, currentTargetStatus } from "../services/abstractWorkflowService.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
+import { applyPublicPdfHeaders, isStoredPdfAvailable, publicPdfFileName, readStoredPdf } from "../services/publicPdfService.ts";
 
 const DOCUMENT_FILE_FIELD_NAMES = new Set([
     "file_path",
@@ -222,12 +223,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
             };
             return;
         }
-        if (document.review_status !== "approved") {
-            ctx.response.status = 404;
-            ctx.response.body = { error: "Document not found" };
-            return;
-        }
-        if (document.is_public !== true) {
+        if (!await canViewDocument(undefined, numericId)) {
             ctx.response.status = 404;
             ctx.response.body = { error: "Document not found" };
             return;
@@ -285,6 +281,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
             research_agenda: string;
             date_uploaded: Date | undefined;
             editor: any;
+            download_available: boolean;
             contained_documents?: Array<{
                 doc_id: number;
                 id: number;
@@ -314,7 +311,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 date_uploaded: document.created_at,
                 editor: document.editor || null,
-                full_access_requestable: document.full_access_requestable !== false && (!document.access_embargo_until || new Date(document.access_embargo_until) <= new Date())
+                download_available: await isStoredPdfAvailable(document.file_path)
                 // Note: Not including sensitive fields like file_path
             } as DocumentResult
         };
@@ -390,6 +387,33 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
     }
 };
 
+const downloadPublicDocument = async (ctx: RouterContext<any, any, any>) => {
+    const numericId = Number(ctx.params.id);
+    if (!Number.isSafeInteger(numericId) || numericId <= 0 || !await canViewDocument(undefined, numericId)) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Document not found" };
+        return;
+    }
+
+    const result = await client.queryObject<{ title: string | null; file_path: string | null }>(`
+        SELECT title, file_path
+        FROM documents
+        WHERE id = $1 AND deleted_at IS NULL
+    `, [numericId]);
+    const document = result.rows[0];
+    const pdf = await readStoredPdf(document?.file_path);
+    if (!document || !pdf) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Document not found" };
+        return;
+    }
+
+    applyPublicPdfHeaders(ctx.response.headers, publicPdfFileName(document.title, `document-${numericId}`), pdf.size);
+    ctx.response.status = 200;
+    ctx.response.body = pdf.bytes;
+    await recordRepositoryActivity({ recordType: "document", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+};
+
 // Document authors handler - returns author information for a document
 const getDocumentAuthorsById = async (ctx: RouterContext<any, any, any>) => {
     try {
@@ -407,7 +431,8 @@ const getDocumentAuthorsById = async (ctx: RouterContext<any, any, any>) => {
         }
 
         const sessionData = await getSessionFromHeaders(ctx.request.headers);
-        if (!await canViewDocument(sessionData, numericId)) {
+        const isPublicRoute = ctx.request.url.pathname.includes("/guest/") || ctx.request.url.pathname.includes("/public/");
+        if (!await canViewDocument(isPublicRoute ? undefined : sessionData, numericId)) {
             ctx.response.status = 404;
             ctx.response.body = { error: "Document not found" };
             return;
@@ -477,12 +502,11 @@ const getPublicDocumentById = async (ctx: RouterContext<any, any, any>) => {
             return;
         }
 
-        // Check if document is public
-        if (document.review_status !== "approved" || document.is_public !== true) {
+        if (!await canViewDocument(undefined, numericId)) {
             ctx.response.status = 404;
             ctx.response.body = { 
                 success: false, 
-                message: "This document is not public" 
+                message: "Document not found"
             };
             return;
         }
@@ -543,7 +567,8 @@ const getPublicDocumentById = async (ctx: RouterContext<any, any, any>) => {
                 pages: document.pages || "",
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 date_uploaded: document.created_at,
-                editor: document.editor || null
+                editor: document.editor || null,
+                download_available: await isStoredPdfAvailable(document.file_path)
             }
         };
         if (String(viewerSession?.role ?? "").toLowerCase() === "user") {
@@ -1171,5 +1196,6 @@ export const documentRoutes: Route[] = [
     { method: "GET", path: "/guest/documents/:id/authors", handler: getDocumentAuthorsById },
     { method: "GET", path: "/public/documents/:id", handler: getPublicDocumentById },
     { method: "GET", path: "/public/documents/:id/authors", handler: getDocumentAuthorsById },
+    { method: "GET", path: "/public/documents/:id/download", handler: downloadPublicDocument },
     { method: "GET", path: "/documents/:id/verify-file", handler: verifyDocumentFile, middleware: [isAuthenticated, isAdmin] }
 ];

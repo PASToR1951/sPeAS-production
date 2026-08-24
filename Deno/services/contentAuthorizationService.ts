@@ -48,16 +48,26 @@ export async function canViewDocument(
     review_status: string;
     uploaded_by: string | null;
     is_public: boolean;
+    compiled_parent_id: number | null;
+    parent_review_status: string | null;
   }>(`
-    SELECT review_status, uploaded_by, is_public
-    FROM documents
-    WHERE id = $1 AND deleted_at IS NULL
+    SELECT d.review_status,
+           d.uploaded_by,
+           d.is_public,
+           d.compiled_parent_id,
+           parent.review_status AS parent_review_status
+    FROM documents d
+    LEFT JOIN compiled_documents parent
+      ON parent.id = d.compiled_parent_id
+     AND parent.deleted_at IS NULL
+    WHERE d.id = $1 AND d.deleted_at IS NULL
   `, [id]);
   const document = result.rows[0];
   if (!document) return false;
   const role = String(actor?.role ?? "").toLowerCase();
   // Administrative preview capability must never be mistaken for public access.
-  if (document.review_status === "approved" && document.is_public === true) return true;
+  const parentIsPublic = document.compiled_parent_id === null || document.parent_review_status === "approved";
+  if (document.review_status === "approved" && document.is_public === true && parentIsPublic) return true;
   if (role === "admin") return true;
   return false;
 }

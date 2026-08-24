@@ -110,6 +110,14 @@ interface ExtractionSession {
 
 const ABSTRACT_POLL_MS = 3_000;
 const ABSTRACT_MANUAL_FALLBACK_MS = 60_000;
+const DOCUMENT_PDF_MAX_BYTES = 100_000_000;
+const ABSTRACT_EXTRACTION_STAGES = [
+  "Queue extraction jobs",
+  "Verify stored PDFs",
+  "Read text and locate abstracts",
+  "Review and confirm abstracts",
+  "Publish repository record",
+] as const;
 
 const MONTHS = [
   ["01", "January"], ["02", "February"], ["03", "March"], ["04", "April"], ["05", "May"], ["06", "June"],
@@ -333,6 +341,18 @@ export function UploadDocumentPage() {
     } finally {
       setAbstractActionKey(null);
     }
+  }
+
+  function keepWaitingForExtraction(key: string) {
+    const currentItem = extractionItems.find((item) => abstractTargetKey(item) === key);
+    setManualEntryTargets((current) => ({ ...current, [key]: false }));
+    setAbstractDrafts((current) => {
+      const next = { ...current };
+      if (currentItem?.candidate) next[key] = currentItem.candidate;
+      else delete next[key];
+      return next;
+    });
+    setExtractionRefreshToken((value) => value + 1);
   }
 
   async function publishExtractionSession(session: ExtractionSession) {
@@ -618,7 +638,7 @@ export function UploadDocumentPage() {
                   <>
                     <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} researchAgendas={researchAgendas} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setSingleForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
+                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -632,7 +652,7 @@ export function UploadDocumentPage() {
                   <>
                     <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} researchAgendas={researchAgendas} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setCompiledForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
+                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -1204,6 +1224,7 @@ function AbstractExtractionPanel({
   publicationError,
   onDraftChange,
   onManualEntry,
+  onKeepWaiting,
   onConfirm,
   onRetryPoll,
   onRetryPublication,
@@ -1219,23 +1240,26 @@ function AbstractExtractionPanel({
   publicationError: string | null;
   onDraftChange: (key: string, value: string) => void;
   onManualEntry: (key: string) => void;
+  onKeepWaiting: (key: string) => void;
   onConfirm: (item: AbstractReviewItem) => void;
   onRetryPoll: () => void;
   onRetryPublication: () => void;
 }) {
   const itemMap = new Map(items.map((item) => [abstractTargetKey(item), item]));
   const resolved = items.filter((item) => item.status === "accepted" || item.status === "unavailable").length;
+  const extractionProgress = buildExtractionProgress(session, items, publishing, pollError);
 
   return <section className="peas-upload-extraction" aria-labelledby="upload-extraction-title">
     <header>
       <div><h2 id="upload-extraction-title">Confirm extracted abstracts</h2><p>The files and repository records are saved. Confirm each abstract before PeAS publishes {session.type === "compiled" ? "the publication" : "the document"}.</p></div>
       <Badge tone={resolved === session.targetKeys.length ? "green" : "gold"}>{resolved} of {session.targetKeys.length} confirmed</Badge>
     </header>
+    <UploadProgressDetails progress={extractionProgress} stages={ABSTRACT_EXTRACTION_STAGES} ariaLabel="Abstract extraction workflow progress" />
     {pollError ? <div className="peas-upload-extraction__notice" role="alert"><div><strong>Extraction status is temporarily unavailable.</strong><span>{pollError}</span></div><Button type="button" size="sm" variant="outline" onClick={onRetryPoll}><RefreshCw aria-hidden="true" /> Retry status</Button></div> : null}
     <div className="peas-upload-extraction__list" aria-live="polite">
       {session.targetKeys.map((key, index) => {
         const item = itemMap.get(key);
-        if (!item) return <article className="peas-upload-extraction__item" key={key}><header><div><h3>{session.targetKeys.length === 1 ? "Abstract" : `Abstract ${index + 1}`}</h3><p>Waiting for the extraction job…</p></div><Badge tone="slate">Queued</Badge></header></article>;
+        if (!item) return <article className="peas-upload-extraction__item" key={key}><header><div><h3>{session.targetKeys.length === 1 ? "Abstract" : `Abstract ${index + 1}`}</h3><p>PeAS is waiting for the saved record to appear in the extraction queue.</p></div><Badge tone="slate">Creating job</Badge></header><ExtractionFacts facts={[{ label: "Current action", value: "Registering the extraction job" }, { label: "Status refresh", value: "Every 3 seconds" }]} /></article>;
         const itemResolved = item.status === "accepted" || item.status === "unavailable";
         const noCandidate = item.status === "failed" || (item.status === "needs_review" && !item.candidate);
         const showEditor = Boolean(item.candidate) || noCandidate || manualEntryTargets[key];
@@ -1243,18 +1267,22 @@ function AbstractExtractionPanel({
         const draft = drafts[key] ?? "";
         const characterCount = [...draft].length;
         const working = actionKey === key;
+        const manualWhileExtracting = Boolean(manualEntryTargets[key]) && (item.status === "queued" || item.status === "processing");
+        const candidateAvailableDuringManual = Boolean(manualEntryTargets[key] && item.candidate);
         return <article className="peas-upload-extraction__item" key={key}>
           <header><div><h3>{item.title}</h3><p>{item.targetType === "compiled_foreword" ? "Collection foreword" : item.documentType}</p></div><Badge tone={itemResolved ? "green" : item.status === "failed" ? "rose" : "gold"}>{formatExtractionStatus(item)}</Badge></header>
           {itemResolved ? <p className="peas-upload-extraction__confirmed"><CheckCircle2 aria-hidden="true" /> Abstract confirmed.</p> : null}
-          {!itemResolved && item.status === "processing" ? <p className="peas-upload-extraction__waiting">PeAS is reading the PDF. This can take longer when OCR is required.</p> : null}
-          {!itemResolved && item.status === "queued" ? <p className="peas-upload-extraction__waiting">The extraction job is queued and will begin shortly.</p> : null}
-          {noCandidate ? <p className="peas-upload-extraction__error" role="alert">{item.status === "failed" ? "Automatic extraction failed. Enter the abstract manually to continue." : "No abstract was found in the PDF. Enter it manually to continue."}</p> : null}
+          {!itemResolved && item.status === "processing" ? <p className="peas-upload-extraction__waiting">{item.sourceVerified ? "The stored PDF is verified. PeAS is reading embedded text, locating abstract headings, and will use OCR when a reliable candidate is not found." : "PeAS is verifying the stored PDF and calculating its checksum before reading document text."}</p> : null}
+          {!itemResolved && item.status === "queued" ? <p className="peas-upload-extraction__waiting">{item.attemptCount > 0 ? "The previous attempt did not finish. PeAS has scheduled an automatic retry." : "The extraction job is queued and will begin when the worker is available."}</p> : null}
+          {noCandidate ? <p className="peas-upload-extraction__error" role="alert">{item.status === "failed" ? `${formatExtractionError(item.errorCode)} Enter the abstract manually to continue.` : "PeAS finished searching but did not find a reliable abstract. Enter it manually to continue."}</p> : null}
+          <ExtractionFacts facts={extractionFacts(item)} />
           {showEditor && !itemResolved ? <div className="peas-upload-extraction__editor">
+            {manualWhileExtracting || candidateAvailableDuringManual ? <div className="peas-upload-extraction__manual-option is-editor" role="status"><div><strong>{candidateAvailableDuringManual ? "Automatic extraction found an abstract" : "Automatic extraction is still running"}</strong><span>{candidateAvailableDuringManual ? "Your manual draft is preserved. You can review the extracted candidate instead, or submit your own text." : "Opening this editor did not stop the background job. You can close it and keep waiting, or submit your own text now. Submitting manual text will stop the current extraction job and use your entry."}</span></div><Button type="button" size="sm" variant="outline" disabled={working || publishing} onClick={() => onKeepWaiting(key)}>{candidateAvailableDuringManual ? "Review extracted candidate" : "Close editor and keep waiting"}</Button></div> : null}
             <label htmlFor={`upload-abstract-${item.targetType}-${item.targetId}`}>{item.candidate && !manualEntryTargets[key] ? "Extracted abstract" : "Manual abstract"}</label>
             <Textarea id={`upload-abstract-${item.targetType}-${item.targetId}`} value={draft} rows={7} disabled={working || publishing} aria-invalid={characterCount > 10_000 || undefined} onChange={(event) => onDraftChange(key, event.currentTarget.value)} />
-            <div className="peas-upload-extraction__editor-actions"><span className={characterCount > 10_000 ? "is-invalid" : ""}>{characterCount.toLocaleString()} / 10,000 characters</span><Button type="button" disabled={working || publishing || !draft.trim() || characterCount > 10_000} onClick={() => onConfirm(item)}>{working ? "Saving…" : "Confirm abstract"}</Button></div>
+            <div className="peas-upload-extraction__editor-actions"><span className={characterCount > 10_000 ? "is-invalid" : ""}>{characterCount.toLocaleString()} / 10,000 characters</span><Button type="button" disabled={working || publishing || !draft.trim() || characterCount > 10_000} onClick={() => onConfirm(item)}>{working ? "Saving…" : manualEntryTargets[key] ? "Use this manual abstract" : "Confirm abstract"}</Button></div>
           </div> : null}
-          {canChooseManual ? <Button type="button" variant="outline" disabled={publishing} onClick={() => onManualEntry(key)}>Enter abstract manually</Button> : null}
+          {canChooseManual ? <div className="peas-upload-extraction__manual-option" role="status"><div><strong>Extraction is taking longer than expected</strong><span>Automatic extraction is still working in the background. You can keep waiting—no manual action is required—or enter the abstract yourself as an optional fallback.</span></div><div className="peas-upload-extraction__manual-actions"><Button type="button" size="sm" variant="ghost" disabled={publishing} onClick={onRetryPoll}><RefreshCw aria-hidden="true" /> Keep waiting and check status</Button><Button type="button" size="sm" variant="outline" disabled={publishing} onClick={() => onManualEntry(key)}>Enter manually instead</Button></div></div> : null}
         </article>;
       })}
     </div>
@@ -1269,6 +1297,8 @@ function abstractTargetKey(item: Pick<AbstractReviewItem, "targetType" | "target
 
 function formatExtractionStatus(item: AbstractReviewItem): string {
   if (item.status === "needs_review" && !item.candidate) return "Manual entry required";
+  if (item.status === "processing") return item.sourceVerified ? "Searching PDF" : "Verifying PDF";
+  if (item.status === "queued" && item.attemptCount > 0) return "Retry queued";
   const labels: Record<AbstractReviewItem["status"], string> = {
     queued: "Queued",
     processing: "Extracting",
@@ -1278,6 +1308,81 @@ function formatExtractionStatus(item: AbstractReviewItem): string {
     failed: "Extraction failed",
   };
   return labels[item.status];
+}
+
+function buildExtractionProgress(
+  session: ExtractionSession,
+  items: AbstractReviewItem[],
+  publishing: boolean,
+  pollError: string | null,
+): SubmissionProgress {
+  const missing = Math.max(0, session.targetKeys.length - items.length);
+  const queued = items.filter((item) => item.status === "queued");
+  const verifying = items.filter((item) => item.status === "processing" && !item.sourceVerified);
+  const extracting = items.filter((item) => item.status === "processing" && item.sourceVerified);
+  const awaitingReview = items.filter((item) => item.status === "needs_review" || item.status === "failed");
+  const resolved = items.filter((item) => item.status === "accepted" || item.status === "unavailable");
+  const statusNote = pollError ? " The latest known status is shown while PeAS reconnects." : " Status refreshes automatically every 3 seconds.";
+
+  if (publishing || resolved.length === session.targetKeys.length) {
+    return { label: publishing ? "Publishing repository record…" : "Preparing publication…", value: 96, stage: 4, detail: `Every required abstract is resolved. PeAS is applying the final publication decision and refreshing repository links.${statusNote}` };
+  }
+  if (missing > 0 || queued.length > 0) {
+    const retryCount = queued.filter((item) => item.attemptCount > 0).length;
+    const detail = retryCount > 0
+      ? `${retryCount} extraction ${retryCount === 1 ? "job is" : "jobs are"} waiting for an automatic retry. Attempt and retry timing are shown below.`
+      : `${missing + queued.length} of ${session.targetKeys.length} extraction ${missing + queued.length === 1 ? "job is" : "jobs are"} being registered or waiting for the worker.`;
+    return { label: retryCount > 0 ? "Waiting for extraction retry…" : "Queueing abstract extraction…", value: 12, stage: 0, detail: `${detail}${statusNote}` };
+  }
+  if (verifying.length > 0) {
+    return { label: "Verifying stored PDFs…", value: 32, stage: 1, detail: `PeAS is confirming file access, calculating a checksum, and inspecting PDF structure for ${verifying.length} ${verifying.length === 1 ? "file" : "files"}.${statusNote}` };
+  }
+  if (extracting.length > 0) {
+    return { label: "Locating abstracts in PDFs…", value: 58, stage: 2, detail: `The PDFs are verified. PeAS first searches embedded text and then uses OCR when the text does not produce a reliable abstract candidate.${statusNote}` };
+  }
+  if (awaitingReview.length > 0) {
+    return { label: "Waiting for abstract confirmation…", value: 82, stage: 3, detail: `${awaitingReview.length} ${awaitingReview.length === 1 ? "abstract needs" : "abstracts need"} review or manual entry. Method, confidence, page range, attempts, and any failure reason are shown below.${statusNote}` };
+  }
+  return { label: "Checking extraction status…", value: 8, stage: 0, detail: `PeAS is requesting the latest extraction state.${statusNote}` };
+}
+
+function extractionFacts(item: AbstractReviewItem): Array<{ label: string; value: string }> {
+  const facts: Array<{ label: string; value: string }> = [
+    { label: "Attempt", value: item.attemptCount > 0 ? `${item.attemptCount} of 3` : "Waiting to start" },
+    { label: "PDF verification", value: item.sourceVerified ? "Checksum complete" : "Pending" },
+  ];
+  if (item.method !== "none") facts.push({ label: "Extraction method", value: item.method === "ocr" ? "Optical character recognition (OCR)" : item.method === "manual" ? "Manual entry" : "Embedded PDF text" });
+  if (item.pageStart && item.pageEnd) facts.push({ label: "Pages located", value: item.pageStart === item.pageEnd ? `Page ${item.pageStart}` : `Pages ${item.pageStart}–${item.pageEnd}` });
+  if (item.confidence !== null) facts.push({ label: "Candidate confidence", value: `${Math.round(item.confidence * 100)}%` });
+  if (item.status === "queued" && item.attemptCount > 0 && item.nextAttemptAt) facts.push({ label: "Next automatic retry", value: formatExtractionTimestamp(item.nextAttemptAt) });
+  if (item.errorCode) facts.push({ label: "Latest issue", value: formatExtractionError(item.errorCode) });
+  facts.push({ label: "Last status update", value: formatExtractionTimestamp(item.updatedAt) });
+  return facts;
+}
+
+function ExtractionFacts({ facts }: { facts: Array<{ label: string; value: string }> }) {
+  return <dl className="peas-upload-extraction__facts">{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>;
+}
+
+function formatExtractionTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unavailable";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatExtractionError(code: string | null): string {
+  const messages: Record<string, string> = {
+    ABSTRACT_DEPENDENCY_UNAVAILABLE: "The PDF text/OCR tools required for automatic extraction are unavailable.",
+    ABSTRACT_SOURCE_MISSING: "The stored PDF could not be found.",
+    ABSTRACT_SOURCE_OUTSIDE_STORAGE: "The stored PDF path could not be verified.",
+    PDF_INSPECTION_FAILED: "PeAS could not read the PDF structure.",
+    PDF_ENCRYPTED: "The PDF is password-protected.",
+    ABSTRACT_TIMEOUT: "Extraction exceeded the allowed processing time.",
+    ABSTRACT_NOT_FOUND: "No reliable abstract was found in the PDF.",
+    ABSTRACT_PROCESSING_FAILED: "Automatic extraction could not be completed.",
+    STALE_WORKER_LOCK: "A stopped worker released this job for another attempt.",
+  };
+  return code ? messages[code] ?? "Automatic extraction could not be completed." : "Automatic extraction could not be completed.";
 }
 
 function SubmissionError({ message }: { message: string }) {
@@ -1293,8 +1398,7 @@ function UploadActions({ step, busy, progress, label, onBack, onContinue }: { st
   </div>;
 }
 
-function UploadProgressDetails({ progress }: { progress: SubmissionProgress }) {
-  const stages = ["Transfer PDF files", "Validate and store files", "Create repository records", "Finalize metadata and links"];
+function UploadProgressDetails({ progress, stages = ["Transfer PDF files", "Validate and store files", "Create repository records", "Finalize metadata and links"], ariaLabel = "Upload workflow progress" }: { progress: SubmissionProgress; stages?: readonly string[]; ariaLabel?: string }) {
 
   return <details className="peas-upload-progress-status" open>
     <summary aria-live="polite">
@@ -1302,7 +1406,7 @@ function UploadProgressDetails({ progress }: { progress: SubmissionProgress }) {
         <strong>{progress.label}</strong>
         <span>{progress.value}%</span>
       </span>
-      <span className="peas-upload-progress-bar" role="progressbar" aria-label="Upload workflow progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.value} aria-valuetext={`${progress.value}% complete. ${progress.label}`}>
+      <span className="peas-upload-progress-bar" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.value} aria-valuetext={`${progress.value}% complete. ${progress.label}`}>
         <span style={{ width: `${progress.value}%` }} />
       </span>
     </summary>
@@ -1443,5 +1547,13 @@ function safeInt(value: string) { const numberValue = Number.parseInt(value, 10)
 function isPdf(file: File) { return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"); }
 function isSingleFormDirty(form: SingleFormState) { return Boolean(form.title.trim() || form.abstract.trim() || form.authors.length || form.pubMonth || form.pubYear || form.researchAgendaIds.length || form.primaryResearchAgendaId || form.topicIds.length || form.topicNames.length || form.keywords.length || form.file || form.category !== initialSingleForm.category); }
 function isCompiledFormDirty(form: CompiledFormState) { return Boolean(form.category !== initialCompiledForm.category || form.startYear || form.endYear || form.volume || form.issueNumber || form.department || form.forewordAbstract.trim() || form.forewordFile || form.sections.length !== 1 || form.sections.some((section) => section.title.trim() || section.authors.length || section.researchAgendaIds.length || section.primaryResearchAgendaId || section.topicIds.length || section.topicNames.length || section.keywords.length || section.abstract.trim() || section.file)); }
-async function uploadDocumentPdf(file: File | null, documentType: SingleCategory | CompiledCategory, category: string, isForeword = false, onProgress?: (progress: UploadTransferProgress) => void) { if (!file) throw new Error("Please choose a PDF file."); if (!isPdf(file)) throw new Error(`${file.name} is not a PDF file.`); return uploadFile(file, { storagePath: `storage/${documentType.toLowerCase()}${isForeword ? "/forewords" : ""}`, documentType, category, isForeword }, onProgress); }
+async function uploadDocumentPdf(file: File | null, documentType: SingleCategory | CompiledCategory, category: string, isForeword = false, onProgress?: (progress: UploadTransferProgress) => void) {
+  if (!file) throw new Error("Please choose a PDF file.");
+  if (!isPdf(file)) throw new Error(`${file.name} is not a PDF file.`);
+  if (file.size <= 0) throw new Error(`${file.name} is empty. Choose a PDF that contains the complete document.`);
+  if (file.size > DOCUMENT_PDF_MAX_BYTES) {
+    throw new Error(`${file.name} is ${formatBytes(file.size)}. PDFs must be 100 MB or smaller.`);
+  }
+  return uploadFile(file, { storagePath: `storage/${documentType.toLowerCase()}${isForeword ? "/forewords" : ""}`, documentType, category, isForeword }, onProgress);
+}
 function formatBytes(value: number) { if (!Number.isFinite(value) || value <= 0) return "0 B"; const units = ["B", "KB", "MB", "GB"]; const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1); const amount = value / 1024 ** index; return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`; }

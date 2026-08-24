@@ -8,7 +8,7 @@ if (!/_test$/u.test(databaseName)) {
 await withTransaction(async (db) => {
   // The fixture is deliberately small but adversarial: it contains a
   // document/compilation numeric-ID collision, private and review-queue
-  // records, orphan authors, topic status changes, and all audiences.
+  // records, orphan authors, topic status changes, and both current audiences.
   await db.queryArray(`
     CREATE TABLE IF NOT EXISTS authors (
       id UUID PRIMARY KEY, full_name TEXT NOT NULL, profile_picture TEXT,
@@ -29,7 +29,6 @@ await withTransaction(async (db) => {
     CREATE TABLE IF NOT EXISTS topics (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS document_topics (document_id INTEGER NOT NULL, topic_id INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS compiled_document_items (compiled_document_id INTEGER NOT NULL, document_id INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS document_requests (id INTEGER PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS user_document_history (
       id SERIAL PRIMARY KEY, user_id TEXT NOT NULL, document_id INTEGER NOT NULL,
       accessed_at TIMESTAMPTZ NOT NULL, action TEXT NOT NULL
@@ -42,7 +41,7 @@ await withTransaction(async (db) => {
 
   await db.queryArray(`
     TRUNCATE TABLE
-      user_document_history, user_compiled_document_history, document_requests,
+      user_document_history, user_compiled_document_history,
       document_topics, document_authors, compiled_document_items,
       documents, compiled_documents, topics, users, authors,
       repository_activity_rollups, page_activity_rollups, author_activity_rollups, site_session_rollups
@@ -84,10 +83,6 @@ await withTransaction(async (db) => {
       (2, 'Retired Topic', 'retired'),
       (3, 'Pending Topic', 'pending');
     INSERT INTO document_topics VALUES (1, 1), (1, 1), (1, 2), (3, 1), (4, 1), (4, 3);
-    INSERT INTO document_requests VALUES
-      (1, CURRENT_TIMESTAMP - INTERVAL '2 days', 'pending'),
-      (2, CURRENT_TIMESTAMP - INTERVAL '2 days', 'approved'),
-      (3, CURRENT_TIMESTAMP - INTERVAL '40 days', 'rejected');
     INSERT INTO user_document_history (user_id, document_id, accessed_at, action) VALUES
       ('reader-1', 1, CURRENT_TIMESTAMP - INTERVAL '2 hours', 'VIEW'),
       ('reader-1', 3, CURRENT_TIMESTAMP - INTERVAL '1 hour', 'DOWNLOAD'),
@@ -100,11 +95,11 @@ await withTransaction(async (db) => {
       ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 1, 'guest', 4, 0),
       ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 3, 'registered', 2, 1),
       ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'compiled', 1, 'guest', 3, 0),
-      ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 4, 'approved_request', 0, 2),
+      ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 4, 'guest', 0, 2),
       ('hour', DATE_TRUNC('hour', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 1, 'guest', 4, 0),
       ('hour', DATE_TRUNC('hour', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 3, 'registered', 2, 1),
       ('hour', DATE_TRUNC('hour', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'compiled', 1, 'guest', 3, 0),
-      ('hour', DATE_TRUNC('hour', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 4, 'approved_request', 0, 2);
+      ('hour', DATE_TRUNC('hour', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', 'document', 4, 'guest', 0, 2);
     INSERT INTO page_activity_rollups (grain, bucket_start, page_key, audience, view_count, visit_count) VALUES
       ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', '/', 'guest', 5, 5),
       ('day', DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila', '/', 'registered', 2, 2),

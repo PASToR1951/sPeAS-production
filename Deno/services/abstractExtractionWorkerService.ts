@@ -246,6 +246,9 @@ export async function failAbstractJob(job: JobRow, errorCode: string): Promise<v
 
 function sanitizeAbstractError(value: string): string {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9_:-]/gu, "_");
+  if (/(?:PDFINFO|PDFTOTEXT|PDFTOPPM|TESSERACT)_UNAVAILABLE/u.test(normalized)) {
+    return "ABSTRACT_DEPENDENCY_UNAVAILABLE";
+  }
   const allowed = new Set([
     "ABSTRACT_SOURCE_MISSING",
     "ABSTRACT_SOURCE_OUTSIDE_STORAGE",

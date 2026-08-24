@@ -1,4 +1,4 @@
-import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { createTopActivityQuery, defaultTopActivitySort, isTopActivityKind, isTopActivitySort } from "../services/topActivityReportingService.ts";
 
 Deno.test("top activity query defaults are bounded and kind-specific", () => {
@@ -26,4 +26,11 @@ Deno.test("top activity query preserves contextual filters", () => {
   assertEquals(query.department, "Science");
   assertEquals(query.affiliation, "SPUD");
   assertEquals(query.selected, "author:abc");
+});
+
+Deno.test("top activity downloads sum all audiences while view splits remain guest and registered", async () => {
+  const source = await Deno.readTextFile(new URL("../services/topActivityReportingService.ts", import.meta.url));
+  assertStringIncludes(source, "SUM(ra.download_count)::BIGINT downloads");
+  assertStringIncludes(source, "ra.audience IN ('guest','registered')");
+  assert(!source.includes("approvedRequestDownloads"));
 });

@@ -38,10 +38,6 @@ const routes: Record<string, AdminRoute> = {
     title: "Authors | PeAS Admin",
     Component: lazyNamed(() => import("./features/authors/AuthorsAdminPage"), "AuthorsAdminPage"),
   },
-  "/admin/Components/document-permissions.html": {
-    title: "Document Permissions | PeAS Admin",
-    Component: lazyNamed(() => import("./features/permissions/DocumentPermissionsPage"), "DocumentPermissionsPage"),
-  },
   "/admin/Components/reports.html": {
     title: "Operational Reports | PeAS Admin",
     Component: lazyNamed(() => import("./features/reports/OperationalReportsPage"), "OperationalReportsPage"),

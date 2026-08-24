@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EXPERIENCE_SCHEMA_VERSION = 4;
+export const EXPERIENCE_SCHEMA_VERSION = 5;
 
 export const EXPERIENCE_COMPONENT_TYPES = [
   "AnnouncementBanner",
@@ -355,7 +355,7 @@ export type ExperienceConfig = z.infer<typeof ExperienceConfigSchema>;
 export type UserExperiencePreferences = z.infer<typeof UserExperiencePreferencesSchema>;
 
 export function parseExperienceConfig(input: unknown): ExperienceConfig {
-  const config = ExperienceConfigSchema.parse(migrateExperienceConfigToV4(input));
+  const config = ExperienceConfigSchema.parse(migrateExperienceConfigToV5(input));
   const faqBlock = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
   if (!faqBlock) throw new Error("FAQ page must include its locked FaqBlock");
   FaqBlockPropsSchema.parse(faqBlock.props);
@@ -399,7 +399,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
               id: "peas-overview",
               eyebrow: "What is PeAS?",
               title: "A digital home for Paulinian research",
-              summary: "The Paulinian electronic Archiving System preserves the university's academic works, makes scholarship easier to discover, and provides role-appropriate access to repository materials.",
+              summary: "The Paulinian electronic Archiving System preserves the university's academic works, makes approved scholarship easier to discover, and provides immediate downloads for available public PDFs.",
               pillars: [
                 {
                   id: "preserve",
@@ -414,7 +414,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                 {
                   id: "access",
                   label: "Access",
-                  description: "Gives public visitors an abstract-first repository while administrators manage protected files and access requests.",
+                  description: "Lets visitors open public research records and download available PDFs immediately, without an account.",
                 },
               ],
               ctaLabel: "Explore the repository",
@@ -545,7 +545,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
     },
     faq: {
       title: "Frequently Asked Questions | PeAS",
-      description: "Find answers about the PeAS repository, accounts, document access, and research support.",
+      description: "Find answers about the PeAS repository, public downloads, accounts, and research support.",
       data: {
         root: { props: { title: "Frequently Asked Questions" } },
         content: [
@@ -555,7 +555,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
               id: "faq-content",
               eyebrow: "Help for readers",
               title: "Frequently asked questions",
-              description: "Learn how PeAS preserves Paulinian research, helps you find it, and keeps document access clear and controlled.",
+              description: "Learn how PeAS preserves Paulinian research, helps you find it, and provides direct access to public PDFs.",
               categories: [
                 {
                   id: "getting-started",
@@ -564,7 +564,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     {
                       id: "what-is-peas",
                       question: "What is PeAS?",
-                      answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It preserves academic works, makes scholarship easier to discover, and controls access to protected files.",
+                      answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It preserves academic works, makes approved scholarship easier to discover, and provides direct downloads for available public PDFs.",
                     },
                     {
                       id: "materials-in-peas",
@@ -574,7 +574,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     {
                       id: "browse-without-signing-in",
                       question: "Can I browse without signing in?",
-                      answer: "Yes. Guests can browse approved public records, read metadata and abstracts, and view eligible page previews. Full PDF reading and downloads are controlled by account and document access rules.",
+                      answer: "Yes. Guests can browse approved public records, read metadata and abstracts, and download available PDFs directly from document pages without signing in.",
                     },
                   ],
                 },
@@ -606,7 +606,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     {
                       id: "how-to-sign-in",
                       question: "Do I need an account?",
-                      answer: "No visitor account is needed. Browse metadata and abstracts publicly, then request a full paper from its research page.",
+                      answer: "No visitor account is needed. Browse approved public records and download available PDFs directly from their document pages.",
                     },
                     {
                       id: "forgot-password",
@@ -615,34 +615,8 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     },
                     {
                       id: "full-paper-access",
-                      question: "Why can't I open or download a full paper?",
-                      answer: "PeAS publicly provides approved metadata and the reviewed abstract. Full viewing and downloads require an administrator-approved, time-limited access link sent to the verified requester email.",
-                    },
-                    {
-                      id: "outsider-access-request",
-                      question: "How do outside researchers request access?",
-                      answer: "On an eligible document detail page, choose Request access and submit your name, email, affiliation, and reason. If an administrator approves the request, PeAS sends a time-limited secure download link that can expire or be revoked.",
-                    },
-                  ],
-                },
-                {
-                  id: "verified-request-access",
-                  label: "Approved request access",
-                  items: [
-                    {
-                      id: "verify-request-email",
-                      question: "Why must I verify my email?",
-                      answer: "Email verification prevents forged requests and ensures the approval link reaches the person who submitted the request.",
-                    },
-                    {
-                      id: "approved-link-expiry",
-                      question: "How long does an approved link work?",
-                      answer: "The default access period is seven days. Administrators can revoke a link or issue a replacement link when needed.",
-                    },
-                    {
-                      id: "approved-view-download",
-                      question: "Can I view and download an approved paper?",
-                      answer: "Yes. A valid approved link supports browser viewing for PDFs and downloading until it expires or is revoked.",
+                      question: "How do I download a full paper?",
+                      answer: "Open an approved public document page and choose Download PDF. No account, identity form, email verification, or reader approval is required. If no button appears, the stored PDF is temporarily unavailable.",
                     },
                   ],
                 },
@@ -653,7 +627,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
                     {
                       id: "who-can-upload",
                       question: "Who can upload documents or publish news?",
-                      answer: "Only authorized administrators can upload documents, manage Department News, review access requests, or change repository settings.",
+                      answer: "Only authorized administrators can upload documents, manage Department News, review uploads before publication, or change repository settings. Once a document is public, visitors can download its available PDF immediately.",
                     },
                     {
                       id: "contact-office",
@@ -690,13 +664,13 @@ const EDITABLE_STRING_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
- * Canonicalizes legacy v1/v2/v3 documents and v4 drafts into the locked v4 layout. Only approved copy and image fields survive. Component
+ * Canonicalizes legacy v1-v4 documents and v5 drafts into the locked v5 layout. Only approved copy and image fields survive. Component
  * order, component types, link destinations, form semantics, theme, and
- * personalization are not stored in the v4 content document.
+ * personalization are not stored in the v5 content document.
  */
-export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
+export function migrateExperienceConfigToV5(input: unknown): ExperienceConfig {
   const source = asRecord(input);
-  if (typeof source.schemaVersion === "number" && ![1, 2, 3, 4].includes(source.schemaVersion)) {
+  if (typeof source.schemaVersion === "number" && ![1, 2, 3, 4, 5].includes(source.schemaVersion)) {
     throw new Error(`Unsupported Experience schema version: ${source.schemaVersion}`);
   }
   const output = clone(defaultExperienceConfig);
@@ -723,6 +697,7 @@ export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
       };
     });
   }
+  if (source.schemaVersion !== 5) applyDirectDownloadContent(output);
   const faqBlock = output.pages.faq.data.content.find((block) => block.type === "FaqBlock");
   if (!faqBlock || !FaqBlockPropsSchema.safeParse(faqBlock.props).success) {
     throw new Error("The canonical FAQ configuration is invalid");
@@ -730,14 +705,104 @@ export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
   return output;
 }
 
-/** @deprecated Use migrateExperienceConfigToV4. Kept for compatibility with recovery scripts. */
+/** @deprecated Use migrateExperienceConfigToV5. Kept for compatibility with recovery scripts. */
+export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
+  return migrateExperienceConfigToV5(input);
+}
+
+/** @deprecated Use migrateExperienceConfigToV5. Kept for compatibility with recovery scripts. */
 export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV4(input);
+  return migrateExperienceConfigToV5(input);
 }
 
 /** @deprecated Kept for compatibility with recovery scripts. */
 export function migrateExperienceConfigV1ToV2(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV4(input);
+  return migrateExperienceConfigToV5(input);
+}
+
+function applyDirectDownloadContent(config: ExperienceConfig): void {
+  const defaultOverview = defaultExperienceConfig.pages.landing.data.content.find((block) => block.type === "OverviewBlock");
+  const overview = config.pages.landing.data.content.find((block) => block.type === "OverviewBlock");
+  const defaultPillars = Array.isArray(asRecord(defaultOverview?.props).pillars)
+    ? (asRecord(defaultOverview?.props).pillars as unknown[]).map(asRecord)
+    : [];
+  const pillars = Array.isArray(asRecord(overview?.props).pillars)
+    ? (asRecord(overview?.props).pillars as unknown[]).map(asRecord)
+    : [];
+  const directAccessPillar = defaultPillars.find((pillar) => pillar.id === "access");
+  if (overview && directAccessPillar) {
+    const overviewProps = asRecord(overview.props);
+    const legacyOverviewSummary = "The Paulinian electronic Archiving System preserves the university's academic works, makes scholarship easier to discover, and provides role-appropriate access to repository materials.";
+    overview.props = {
+      ...overviewProps,
+      summary: overviewProps.summary === legacyOverviewSummary
+        ? asRecord(defaultOverview?.props).summary
+        : overviewProps.summary,
+      pillars: pillars.map((pillar) => pillar.id === "access" ? clone(directAccessPillar) : pillar),
+    };
+  }
+
+  const faqBlock = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  const defaultFaqBlock = defaultExperienceConfig.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  if (!faqBlock || !defaultFaqBlock) return;
+  const faqProps = asRecord(faqBlock.props);
+  const defaultFaqProps = asRecord(defaultFaqBlock.props);
+  const defaultCategories = Array.isArray(defaultFaqProps.categories)
+    ? (defaultFaqProps.categories as unknown[]).map(asRecord)
+    : [];
+  const replacementIds = new Set([
+    "what-is-peas",
+    "browse-without-signing-in",
+    "how-to-sign-in",
+    "full-paper-access",
+    "who-can-upload",
+  ]);
+  const replacements = new Map<string, Record<string, unknown>>();
+  for (const category of defaultCategories) {
+    const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
+    for (const item of items) {
+      if (replacementIds.has(String(item.id))) replacements.set(String(item.id), item);
+    }
+  }
+
+  const categories = Array.isArray(faqProps.categories)
+    ? (faqProps.categories as unknown[]).map(asRecord)
+    : [];
+  const retiredRequestItemIds = new Set([
+    "outsider-access-request",
+    "verify-request-email",
+    "approved-link-expiry",
+    "approved-view-download",
+  ]);
+  const preservedCustomRequestCategoryItems = categories
+    .filter((category) => category.id === "verified-request-access")
+    .flatMap((category) => Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [])
+    .filter((item) => !retiredRequestItemIds.has(String(item.id)))
+    .map((item) => replacements.has(String(item.id)) ? clone(replacements.get(String(item.id))!) : item);
+  const migratedCategories = categories
+    .filter((category) => category.id !== "verified-request-access")
+    .map((category) => {
+      const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
+      const migratedItems = items
+        .filter((item) => !retiredRequestItemIds.has(String(item.id)))
+        .map((item) => replacements.has(String(item.id)) ? clone(replacements.get(String(item.id))!) : item);
+      if (category.id === "accounts-and-access") {
+        const existingIds = new Set(migratedItems.map((item) => String(item.id)));
+        for (const item of preservedCustomRequestCategoryItems) {
+          if (!existingIds.has(String(item.id))) migratedItems.push(item);
+        }
+      }
+      return {
+        ...category,
+        items: migratedItems,
+      };
+    });
+
+  faqBlock.props = FaqBlockPropsSchema.parse({
+    ...faqProps,
+    description: defaultFaqProps.description,
+    categories: migratedCategories,
+  });
 }
 
 export function getExperiencePublishErrors(config: ExperienceConfig): string[] {

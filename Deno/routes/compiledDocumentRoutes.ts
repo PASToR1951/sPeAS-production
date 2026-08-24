@@ -16,6 +16,7 @@ import { getDocumentClassification, getDocumentClassifications, type DocumentCla
 import { compilationAbstractsResolved, forceCompilationPrivateForAbstract, listUnresolvedAbstractTargets } from "../services/abstractWorkflowService.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
 import { getCompiledPreviewManifest } from "../services/compiledPreviewService.ts";
+import { applyPublicPdfHeaders, isStoredPdfAvailable, publicPdfFileName, readStoredPdf } from "../services/publicPdfService.ts";
 
 const requireDocumentUpload = requireCapability("documents:upload");
 const requireDocumentReview = requireCapability("documents:review");
@@ -171,11 +172,10 @@ const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
         ctx.response.body = { error: "Unauthorized" };
         return;
     }
-    // All public, reader, administrator, and publisher-preview access uses the
-    // same policy.  The policy permits approved compilations to readers and
-    // guests, while retaining existing admin/owning-publisher previews without
-    // turning those previews into readership activity.
-    if (!await canViewCompilation(viewerSession, numericId)) {
+    // Public aliases deliberately ignore any attached session so administrator
+    // cookies cannot widen the public DTO. The internal route retains the
+    // existing administrator preview policy.
+    if (!await canViewCompilation(isLimitedRoute ? undefined : viewerSession, numericId)) {
         ctx.response.status = 404;
         ctx.response.body = { error: "Compiled document not found" };
         return;
@@ -198,7 +198,38 @@ const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
     } else if (response.ok && isLimitedRoute && !viewerSession) {
         await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "view" }).catch(() => undefined);
     }
-    ctx.response.body = isLimitedRoute ? removeCompiledFileFields(responseBody) : responseBody;
+    const publicResponse = isLimitedRoute
+        ? { ...responseBody, foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword) }
+        : responseBody;
+    ctx.response.body = isLimitedRoute ? removeCompiledFileFields(publicResponse) : publicResponse;
+};
+
+const downloadPublicCompiledForeword = async (ctx: RouterContext<any, any, any>) => {
+    const numericId = Number(ctx.params.id);
+    if (!Number.isSafeInteger(numericId) || numericId <= 0 || !await canViewCompilation(undefined, numericId)) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled document not found" };
+        return;
+    }
+
+    const result = await client.queryObject<{ title: string | null; category: string | null; foreword: string | null }>(`
+        SELECT title, category, foreword
+        FROM compiled_documents
+        WHERE id = $1 AND deleted_at IS NULL
+    `, [numericId]);
+    const compiled = result.rows[0];
+    const pdf = await readStoredPdf(compiled?.foreword);
+    if (!compiled || !pdf) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled document not found" };
+        return;
+    }
+
+    const label = compiled.title || `${compiled.category || "compiled-publication"}-foreword`;
+    applyPublicPdfHeaders(ctx.response.headers, publicPdfFileName(label, `compiled-${numericId}-foreword`), pdf.size);
+    ctx.response.status = 200;
+    ctx.response.body = pdf.bytes;
+    await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
 };
 
 const addDocumentsToCompilation = async (ctx: RouterContext<any, any, any>) => {
@@ -490,7 +521,9 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
     
     const compiledDocId = parseInt(id, 10);
     const sessionData = await getSessionFromHeaders(ctx.request.headers);
-    if (!await canViewCompilation(sessionData, compiledDocId)) {
+    const isLimitedRoute = ctx.request.url.pathname.includes("/guest/") || ctx.request.url.pathname.includes("/public/");
+    const administratorPreview = !isLimitedRoute && String(sessionData?.role ?? "").toLowerCase() === "admin";
+    if (!await canViewCompilation(isLimitedRoute ? undefined : sessionData, compiledDocId)) {
         ctx.response.status = 404;
         ctx.response.body = { error: "Compiled document not found" };
         return;
@@ -503,8 +536,9 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
             FROM documents d
             JOIN compiled_document_items cdi ON d.id = cdi.document_id
             WHERE cdi.compiled_document_id = $1
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
             ORDER BY cdi.id ASC
-        `, [compiledDocId]);
+        `, [compiledDocId, administratorPreview]);
         
         let childRows = result.rows as Record<string, unknown>[];
         if (childRows.length === 0) {
@@ -513,8 +547,9 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
                 SELECT d.* 
                 FROM documents d
                 WHERE d.compiled_parent_id = $1
+                  AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
                 ORDER BY d.id ASC
-            `, [compiledDocId]);
+            `, [compiledDocId, administratorPreview]);
             
             childRows = altResult.rows as Record<string, unknown>[];
             if (childRows.length === 0) {
@@ -535,7 +570,7 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
                 WHERE da.document_id = ANY($1::int[])
                 ORDER BY da.document_id, da.author_order
             `, [childIds]).catch(() => ({ rows: [] as Record<string, unknown>[] })),
-            getDocumentClassifications(childIds, sessionData?.role === "admin").catch(() => new Map<number, DocumentClassification>()),
+            getDocumentClassifications(childIds, administratorPreview).catch(() => new Map<number, DocumentClassification>()),
         ]);
         const authorsByDocument = new Map<number, Record<string, unknown>[]>();
         for (const author of authorRows.rows) {
@@ -563,7 +598,7 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
             };
         });
 
-        ctx.response.body = sessionData?.role === "admin"
+        ctx.response.body = administratorPreview
             ? enrichedRows
             : removeCompiledFileFields(enrichedRows);
     } catch (error) {
@@ -590,7 +625,9 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
     
     const compiledDocId = parseInt(id, 10);
     const sessionData = await getSessionFromHeaders(ctx.request.headers);
-    if (!await canViewCompilation(sessionData, compiledDocId)) {
+    const isLimitedRoute = ctx.request.url.pathname.includes("/guest/") || ctx.request.url.pathname.includes("/public/");
+    const administratorPreview = !isLimitedRoute && String(sessionData?.role ?? "").toLowerCase() === "admin";
+    if (!await canViewCompilation(isLimitedRoute ? undefined : sessionData, compiledDocId)) {
         ctx.response.status = 404;
         ctx.response.body = { error: "Compiled document not found" };
         return;
@@ -603,8 +640,9 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
             FROM compiled_document_items cdi
             JOIN documents d ON cdi.document_id = d.id
             WHERE cdi.compiled_document_id = $1
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
             ORDER BY cdi.id ASC
-        `, [compiledDocId]);
+        `, [compiledDocId, administratorPreview]);
         
         if (result.rows.length === 0) {
             // Return empty array instead of error for UI compatibility
@@ -642,6 +680,7 @@ export const compiledDocumentRoutes: Route[] = [
     // Add guest and public access routes
     { method: "GET", path: "/guest/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/public/compiled-documents/:id", handler: getCompiledDocument },
+    { method: "GET", path: "/public/compiled-documents/:id/foreword/download", handler: downloadPublicCompiledForeword },
     { method: "GET", path: "/guest/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/public/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/guest/compiled-documents/:id/items", handler: getCompiledDocumentItems },

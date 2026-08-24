@@ -1,4 +1,3 @@
-import { apiFetch } from "./http";
 import type { LooseRecord } from "./account";
 
 const PUBLIC_DOCUMENT_ERROR_STATUSES = [400, 401, 403, 404, 408, 429, 500, 503] as const;
@@ -14,7 +13,7 @@ export function getPublicDocumentErrorStatus(error: unknown) {
   return error instanceof PublicDocumentLoadError ? error.status : 500;
 }
 
-export async function fetchPublicDocumentDetail(id: string, compiled: boolean, _authenticated: boolean) {
+export async function fetchPublicDocumentDetail(id: string, compiled: boolean) {
   const path = compiled
     ? `/api/guest/compiled-documents/${id}`
     : `/api/guest/documents/${id}`;
@@ -27,10 +26,6 @@ export async function fetchPublicDocumentDetail(id: string, compiled: boolean, _
   const children = actualCompiled ? await fetchChildren(id, record) : [];
   const authors = !actualCompiled ? await fetchAuthors(id) : [];
   return { record, children, authors, compiled: actualCompiled };
-}
-
-export function submitDocumentAccessRequest(input: Record<string, unknown>) {
-  return apiFetch<Record<string, unknown>>("/api/document-requests", { method: "POST", json: input });
 }
 
 async function fetchChildren(id: string, record: LooseRecord): Promise<LooseRecord[]> {

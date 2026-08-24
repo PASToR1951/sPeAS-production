@@ -176,6 +176,9 @@ export interface AbstractReviewItem {
   pageEnd: number | null;
   attemptCount: number;
   errorCode: string | null;
+  sourceVerified: boolean;
+  nextAttemptAt: string | null;
+  processingStartedAt: string | null;
   updatedAt: string;
 }
 

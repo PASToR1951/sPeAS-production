@@ -14,4 +14,8 @@ Deno.test("compiled guest and public routes are exposed under the API prefixes",
       }
     }
   }
+
+  if (!paths.has("/api/public/compiled-documents/:id/foreword/download")) {
+    throw new Error("Missing public compiled foreword download route");
+  }
 });

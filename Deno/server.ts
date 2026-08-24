@@ -36,10 +36,7 @@ import { canonicalPublicPageKey, createAnalyticsSessionCookie, isKnownCrawler, i
 import { documentClassificationRoutes, documentClassificationAllowedMethods } from "./routes/documentClassificationRoutes.ts";
 import { unifiedArchiveRoutes, unifiedArchiveAllowedMethods } from "./routes/unifiedArchiveRoutes.ts";
 import { authRoutes } from "./routes/authRoutes.ts"; // Transitional logout shims
-import { createDocumentRequestRoutes } from "./routes/documentRequestRoutes.ts";
-import { DocumentRequestModel } from "./models/documentRequestModel.ts";
-import { DocumentRequestController, processDocumentRequestEmailQueue } from "./controllers/documentRequestController.ts";
-import { emailRoutes } from "./routes/emailRoutes.ts"; // Import email routes
+import retiredDocumentRequestRoutes from "./routes/retiredDocumentRequestRoutes.ts";
 import { authorVisitsRoutes, authorVisitsAllowedMethods } from "./routes/authorVisitsRoutes.ts"; // Import author visits routes
 import { authorReferenceRoutes, authorReferenceAllowedMethods } from "./routes/authorReferenceRoutes.ts";
 import { pageVisitsRoutes, pageVisitsAllowedMethods } from "./routes/pageVisitsRoutes.ts"; // Import page visits routes
@@ -379,19 +376,13 @@ app.use(async (ctx, next) => {
       }
       
       // Determine which path to use based on the URL pattern
-      let correctPath;
-      const workspaceRoot = resolve(Deno.cwd().replace(/[\\/]Deno$/, ''));
       if (ctx.request.url.pathname.includes('users/profile-picture')) {
         await ctx.send({ root: STORAGE_ROOT, path: join("users", "profile-picture", filename) });
         return;
       } else {
-        correctPath = `storage/authors/profile-pictures/${filename}`;
+        await ctx.send({ root: STORAGE_ROOT, path: join("authors", "profile-pictures", filename) });
+        return;
       }
-      
-      await ctx.send({
-        root: workspaceRoot,
-        path: correctPath,
-      });
     } catch (err) {
       await next();
     }
@@ -478,14 +469,6 @@ routes.forEach(route => {
     router.put(route.path, ...chain);
   } else if (method === 'delete') {
     router.delete(route.path, ...chain);
-  }
-});
-
-// Register email routes
-emailRoutes.forEach(route => {
-  const method = route.method.toLowerCase();
-  if (method === 'post') {
-    router.post(route.path, ...([...(route.middleware ?? []), route.handler] as unknown as [any, ...any[]]));
   }
 });
 
@@ -1468,98 +1451,10 @@ router.get("/ping", (ctx) => {
     };
 });
 
-// Initialize document request system
-const documentRequestModel = new DocumentRequestModel();
-const documentRequestController = new DocumentRequestController(documentRequestModel);
-const documentRequestRoutes = createDocumentRequestRoutes(documentRequestController);
-
-// Durable request-email jobs are claimed atomically. A failed delivery is
-// rescheduled by the model without exposing or persisting a raw access token.
-if (!isRecoveryMode) {
-  setInterval(() => {
-    void processDocumentRequestEmailQueue(documentRequestModel).catch((error) =>
-      console.error("Document request email worker failed", error)
-    );
-  }, 5_000);
-  setInterval(() => {
-    void documentRequestModel.expireUnverifiedRequests().catch((error) =>
-      console.error("Unverified document request cleanup failed", error)
-    );
-  }, 15 * 60_000);
-}
-
-// Add document request routes
-app.use(documentRequestRoutes.routes());
-app.use(documentRequestRoutes.allowedMethods());
-
-// Add an endpoint to view email logs for document requests (admin only)
-router.get("/api/email-logs", isAuthenticated, isAdmin, async (ctx) => {
-  try {
-    // Get date from query parameter or use today
-    const url = new URL(ctx.request.url);
-    const dateParam = url.searchParams.get("date");
-    const date = dateParam || new Date().toISOString().split('T')[0];
-    
-    // Validate date format
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      ctx.response.status = 400;
-      ctx.response.body = { error: "Invalid date format. Please use YYYY-MM-DD format" };
-      return;
-    }
-    
-    // Construct log file path
-    const logFile = `./logs/email-activity-${date}.log`;
-    
-    try {
-      // Check if file exists
-      await Deno.stat(logFile);
-    } catch (error) {
-      ctx.response.status = 404;
-      ctx.response.body = { 
-        error: `No log file found for ${date}`,
-        date: date
-      };
-      return;
-    }
-    
-    // Read log file
-    const logContent = await Deno.readTextFile(logFile);
-    
-    // Parse logs
-    const logEntries = logContent
-      .split('\n')
-      .filter(line => line.trim())
-      .map(line => JSON.parse(line));
-    
-    // Filter for document sending activities
-    const documentActivities = logEntries.filter(entry => 
-      entry.action.startsWith('DOCUMENT_')
-    );
-    
-    // Calculate statistics
-    const successful = documentActivities.filter(e => e.action === 'DOCUMENT_SENT_SUCCESS').length;
-    const failed = documentActivities.filter(e => 
-      e.action === 'DOCUMENT_SENT_FAILURE' || e.action === 'DOCUMENT_SENT_ERROR'
-    ).length;
-    
-    // Return logs and statistics
-    ctx.response.status = 200;
-    ctx.response.body = {
-      date: date,
-      total: documentActivities.length,
-      successful: successful,
-      failed: failed,
-      logs: documentActivities
-    };
-    
-  } catch (error) {
-    ctx.response.status = 500;
-    ctx.response.body = { 
-      error: "Server error while retrieving email logs",
-      details: error instanceof Error ? error.message : String(error)
-    };
-  }
-});
+// Keep retired request URLs non-operational for one compatibility window.
+// The tombstone does not parse query tokens or read request data.
+app.use(retiredDocumentRequestRoutes.routes());
+app.use(retiredDocumentRequestRoutes.allowedMethods());
 
 // Add a route for getting detailed compiled document information with visit statistics
 router.get("/api/compiled-documents/:id/details", isAuthenticated, async (ctx) => {

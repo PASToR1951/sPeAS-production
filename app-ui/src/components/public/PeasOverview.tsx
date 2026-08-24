@@ -15,7 +15,7 @@ export type PeasOverviewProps = Record<string, unknown>;
 const DEFAULT_OVERVIEW = {
   eyebrow: "What is PeAS?",
   title: "A digital home for Paulinian research",
-  summary: "The Paulinian electronic Archiving System preserves the university's academic works, makes scholarship easier to discover, and provides role-appropriate access to repository materials.",
+  summary: "The Paulinian electronic Archiving System preserves the university's academic works, makes approved scholarship easier to discover, and provides immediate downloads for available public PDFs.",
   pillars: [
     {
       id: "preserve" as const,
@@ -30,7 +30,7 @@ const DEFAULT_OVERVIEW = {
     {
       id: "access" as const,
       label: "Access",
-      description: "Gives visitors an abstract-first repository while administrators manage protected files and access requests.",
+      description: "Lets visitors open public research records and download available PDFs immediately, without an account.",
     },
   ],
   ctaLabel: "Explore the repository",
@@ -47,7 +47,7 @@ const DEFAULT_OVERVIEW = {
 const PILLAR_META: Record<PeasOverviewPillarId, { modeLabel: string }> = {
   preserve: { modeLabel: "Archive layer" },
   discover: { modeLabel: "Discovery field" },
-  access: { modeLabel: "Protected gateway" },
+  access: { modeLabel: "Public downloads" },
 };
 
 function PeasSystemLogo({ className }: { className: string }) {

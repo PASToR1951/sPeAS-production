@@ -34,7 +34,7 @@ Deno.test("legacy authenticated roles fail capability middleware", async () => {
   }
 });
 
-Deno.test("admin-only migration contains destructive guards and verified request schema", async () => {
+Deno.test("historical admin-only migration remains immutable request-era history", async () => {
   const sql = await Deno.readTextFile(
     new URL(
       "../db/production-migrations/0005_admin_only_access.sql",
@@ -50,6 +50,35 @@ Deno.test("admin-only migration contains destructive guards and verified request
   assertStringIncludes(sql, "document_request_email_jobs");
   assertStringIncludes(sql, "uq_document_requests_active_email_target");
   assertStringIncludes(sql, "users_admin_role_check");
+
+  const bytes = await Deno.readFile(new URL(
+    "../db/production-migrations/0005_admin_only_access.sql",
+    import.meta.url,
+  ));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const checksum = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  assertEquals(checksum, "189da64735a601ba185ce4d35f0a236f907865ac679d526ea03a89fed9aee8c0");
+});
+
+Deno.test("request-removal migration is backup-gated and preserves repository records", async () => {
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../db/production-migrations/0008_remove_document_access_requests.sql",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(sql, "current_setting('peas.backup_verified', true)");
+  assertStringIncludes(sql, "PEAS_DESTRUCTIVE_MIGRATION_CONFIRMATION=RESTORABLE_BACKUP_VERIFIED");
+  assertStringIncludes(sql, "IF sensitive_data_exists");
+  assertStringIncludes(sql, "DROP TABLE IF EXISTS public.document_request_email_jobs");
+  assertStringIncludes(sql, "DROP TABLE IF EXISTS public.document_request_verification_tokens");
+  assertStringIncludes(sql, "DROP TABLE IF EXISTS public.document_access_tokens");
+  assertStringIncludes(sql, "DROP TABLE IF EXISTS public.document_requests");
+  assertStringIncludes(sql, "WHERE action = 'Approved outsider document download'");
+  assertStringIncludes(sql, "DROP COLUMN IF EXISTS full_access_requestable");
+  assertStringIncludes(sql, "DROP COLUMN IF EXISTS access_embargo_until");
+  assert(!sql.includes("DROP TABLE IF EXISTS public.documents"));
+  assert(!sql.includes("DROP TABLE IF EXISTS public.document_permissions"));
 });
 
 Deno.test("password-only migration protects administrator access and removes Microsoft accounts", async () => {
@@ -128,9 +157,12 @@ Deno.test("administrator password recovery emails a single-use link without a do
   }
 });
 
-Deno.test("public file routes require administrator middleware", async () => {
+Deno.test("administrator previews stay protected while dedicated public downloads do not require middleware", async () => {
   const documents = await Deno.readTextFile(
     new URL("../routes/documentRoutes.ts", import.meta.url),
+  );
+  const compiledDocuments = await Deno.readTextFile(
+    new URL("../routes/compiledDocumentRoutes.ts", import.meta.url),
   );
   const papers = await Deno.readTextFile(
     new URL("../routes/paperRoutes.ts", import.meta.url),
@@ -154,4 +186,35 @@ Deno.test("public file routes require administrator middleware", async () => {
     files,
     'router.get("/api/files/:id", isAuthenticated, isAdmin',
   );
+  assertStringIncludes(
+    documents,
+    '{ method: "GET", path: "/public/documents/:id/download", handler: downloadPublicDocument }',
+  );
+  assertStringIncludes(
+    compiledDocuments,
+    '{ method: "GET", path: "/public/compiled-documents/:id/foreword/download", handler: downloadPublicCompiledForeword }',
+  );
+  assertStringIncludes(documents, 'audience: "guest", action: "download"');
+  assertStringIncludes(compiledDocuments, 'audience: "guest", action: "download"');
+});
+
+Deno.test("retired request endpoints are table-free 410 tombstones", async () => {
+  const route = await Deno.readTextFile(
+    new URL("../routes/retiredDocumentRequestRoutes.ts", import.meta.url),
+  );
+  assertStringIncludes(route, 'retiredDocumentRequestRoutes.all("/api/document-requests(/.*)?"');
+  assertStringIncludes(route, "ctx.response.status = 410");
+  assertStringIncludes(route, 'repository_url: "/pages/searchResultsPage.html"');
+  assert(!route.includes("document_requests"));
+  assert(!route.includes("token"));
+});
+
+Deno.test("request-only file-log cleanup requires the same backup attestation", async () => {
+  const cleanup = await Deno.readTextFile(
+    new URL("../scripts/purge-document-access-logs.ts", import.meta.url),
+  );
+  assertStringIncludes(cleanup, 'Deno.env.get("PEAS_DESTRUCTIVE_MIGRATION_CONFIRMATION")');
+  assertStringIncludes(cleanup, 'confirmation !== "RESTORABLE_BACKUP_VERIFIED"');
+  assertStringIncludes(cleanup, "if (import.meta.main)");
+  assertStringIncludes(cleanup, "Preserve malformed or unrelated lines");
 });

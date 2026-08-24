@@ -244,7 +244,7 @@ Enter-OperationLock
 try {
     switch($Command){
         install { Install-Host }
-        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ACCESS_TOKEN_TTL_HOURS','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
+        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
         configure-email { Load-Config; Configure-Email; Load-Config; Validate-Config; Restart-AppIfRunning }
         deploy { if(-not $Image){throw '-Image is required'}; Invoke-Deploy $Image }
         rollback { Load-Config; if(-not $Image){$Image=Get-Config PEAS_IMAGE_PREVIOUS}; Invoke-Deploy $Image }

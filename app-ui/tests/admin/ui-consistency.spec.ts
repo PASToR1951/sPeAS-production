@@ -7,8 +7,8 @@ const ADMIN_LINKS = [
   "Classification",
   "Archived Documents",
   "Authors",
-  "Document Permissions",
   "Department News",
+  "Newsletter",
   "Contact Inquiries",
 ];
 
@@ -30,7 +30,6 @@ test.beforeEach(async ({ page }) => {
     },
   } }));
   await page.route("**/api/author-visits/stats", (route) => route.fulfill({ json: { success: true, topAuthors: [] } }));
-  await page.route("**/api/document-requests", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/admin/notifications", (route) => route.fulfill({ json: { notifications: [{ id: 1, type: "author_profile_incomplete", entityType: "author", entityId: "author-1", severity: "urgent", title: "Complete author profile", message: "Incomplete Author is missing directory information.", actionPath: "/admin/Components/author-list.html?author=author-1&action=complete", isRead: false, resolved: false, createdAt: "2026-08-01T00:00:00.000Z" }], summary: { total: 1, unread: 1, urgent: 1 } } }));
 });
 
@@ -294,69 +293,6 @@ test("dashboard visit total is always derived from its visible parts", async ({ 
   expect(cardHeight).toBeLessThan(120);
 });
 
-test("permission date filters have an explicit empty state", async ({ page }) => {
-  await page.goto("/admin/Components/document-permissions.html");
-  await expect(page.getByText("Any date", { exact: true })).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Clear dates" })).toHaveCount(0);
-  await expect(page.getByLabel("From date")).toHaveValue("");
-  await expect(page.getByLabel("To date")).toHaveValue("");
-});
-
-test("permission details link to the requested collection with a green action", async ({ page }) => {
-  await page.unroute("**/api/document-requests");
-  await page.route("**/api/document-requests", (route) => route.fulfill({ json: [{
-    id: 17,
-    document_id: "53",
-    record_type: "compiled",
-    full_name: "Maria Santos",
-    email: "maria@example.com",
-    affiliation: "SPUD",
-    reason: "Academic research",
-    reason_details: "Reviewing the collection",
-    status: "pending",
-    created_at: "2026-08-05T00:00:00.000Z",
-    book_title: "CONFLUENCE Vol. 2",
-  }] }));
-
-  await page.goto("/admin/Components/document-permissions.html");
-  await page.getByRole("button", { name: "View request details" }).click();
-
-  const link = page.getByRole("link", { name: "View Document" });
-  await expect(link).toHaveAttribute("href", "/pages/user-compiled.html?id=53");
-  await expect(link).toHaveClass(/peas-ui-button--default/);
-  await expect(link).not.toHaveClass(/peas-ui-button--outline/);
-});
-
-test("approving a request delegates reviewer identity and confirms magic-link delivery", async ({ page }) => {
-  await page.unroute("**/api/document-requests");
-  await page.route("**/api/document-requests", (route) => route.fulfill({ json: [{
-    id: 18,
-    document_id: "54",
-    record_type: "document",
-    full_name: "Ana Reyes",
-    email: "ana@example.com",
-    affiliation: "SPUD",
-    reason: "Academic research",
-    reason_details: "Thesis review",
-    status: "pending",
-    created_at: "2026-08-05T00:00:00.000Z",
-    book_title: "Community Study",
-  }] }));
-
-  let approvalBody: Record<string, unknown> | null = null;
-  await page.route("**/api/document-requests/18/status", async (route) => {
-    approvalBody = route.request().postDataJSON();
-    await route.fulfill({ json: { success: true, emailSent: true, recordType: "document" } });
-  });
-
-  await page.goto("/admin/Components/document-permissions.html");
-  await page.getByRole("button", { name: "Approve request" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Approve", exact: true }).click();
-
-  await expect.poll(() => approvalBody).toEqual({ status: "approved" });
-  await expect(page.getByText("Ana Reyes was emailed a secure access link.")).toBeVisible();
-});
-
 test("standard admin layouts stay aligned and overflow-free", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -507,24 +443,6 @@ test("system logs use compact event cards without mobile overflow", async ({ pag
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.viewport);
 });
 
-test("document permission filters share one control baseline", async ({ page }) => {
-  await page.goto("/admin/Components/document-permissions.html");
-  await expect(page.getByRole("heading", { name: "Document Permissions" })).toBeVisible();
-  const positions = await page.evaluate(() => {
-    const selectors = [
-      ".peas-permissions-toolbar .peas-search-input",
-      ".peas-permissions-toolbar .peas-sort-select",
-      ".peas-permissions-toolbar .peas-date-trigger__surface",
-    ];
-    return selectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)].map((element) => {
-      const box = element.getBoundingClientRect();
-      return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
-    }));
-  });
-  expect(new Set(positions.map((position) => position.top)).size).toBe(1);
-  expect(new Set(positions.map((position) => position.bottom)).size).toBe(1);
-});
-
 async function mockAdminIdentity(page: Page) {
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: {
     session: { id: "session-admin" },
@@ -547,11 +465,11 @@ function canonicalStats() {
   return {
     meta: { generatedAt: "2026-08-03T00:00:00.000Z", timezone: "Asia/Manila", range: { key: "30d", label: "Last 30 days", startInclusive: "2026-07-04T00:00:00.000Z", endExclusive: "2026-08-03T00:00:00.000Z", bucket: "day" }, activityCoverageStartedAt: "2026-07-04T00:00:00.000Z", trafficV3StartedAt: "2026-08-01T00:00:00.000Z" },
     inventory: { catalogEntries: 3, storedDocuments: 4, archivedCatalogEntries: 1, archivedDocuments: 1, authorRecords: 14, publishedAuthors: 10 },
-    workflow: { pendingUploads: 2, pendingAccessRequests: 1 },
-    activity: { sitePageViews: { total: 15, guest: 7, registered: 8 }, siteVisits: { total: 5, guest: 2, registered: 3 }, homePageViews: { total: 5, guest: 2, registered: 3 }, uploadedEntries: 8, repositoryViews: 15, repositoryDownloads: 7, guestRepositoryViews: 5, registeredRepositoryViews: 10, authorProfileViews: 4, topicWorkViews: 9, guestViews: 5, registeredViews: 10, approvedRequestDownloads: 1, activeRegisteredUsers: 4, activeRegisteredReaders: 4, homeVisits: { total: 5, guest: 2, registered: 3 } },
+    workflow: { pendingUploads: 2 },
+    activity: { sitePageViews: { total: 15, guest: 7, registered: 8 }, siteVisits: { total: 5, guest: 2, registered: 3 }, homePageViews: { total: 5, guest: 2, registered: 3 }, uploadedEntries: 8, repositoryViews: 15, repositoryDownloads: 7, guestRepositoryViews: 5, registeredRepositoryViews: 10, authorProfileViews: 4, topicWorkViews: 9, guestViews: 5, registeredViews: 10, activeRegisteredUsers: 4, activeRegisteredReaders: 4, homeVisits: { total: 5, guest: 2, registered: 3 } },
     series: { uploads: [{ bucket: "2026-07-31", count: 2 }], repositoryActivity: [{ bucket: "2026-07-31", views: 5, downloads: 2 }], homeVisits: [{ bucket: "2026-07-31", guest: 2, registered: 3, total: 5 }], siteTraffic: [{ bucket: "2026-07-31", pageViews: 15, visits: 5, guestPageViews: 7, registeredPageViews: 8, guestVisits: 2, registeredVisits: 3 }] },
     rankings: { mostViewedEntries: [], mostDownloadedEntries: [], mostVisitedAuthors: [], mostViewedAuthors: [], trendingTopics: [] },
-    distributions: { documentTypes: [{ label: "THESIS", count: 2 }, { label: "CONFLUENCE", count: 1 }], requestStatuses: [{ status: "pending", count: 1 }] },
+    distributions: { documentTypes: [{ label: "THESIS", count: 2 }, { label: "CONFLUENCE", count: 1 }] },
     registeredReaderSummary: { activeUsers: 4, views: 10, downloads: 7, averageInteractionsPerActiveUser: 4.25 },
     metricDefinitions: { catalog_entries: "Active top-level repository entries.", stored_documents: "Active document records, including compilation studies.", archived_catalog_entries: "Archived top-level repository entries.", author_records: "All author directory records.", site_page_views: "Page loads.", site_visits: "Sessions.", active_registered_readers: "Distinct signed-in readers." },
     active_documents: 4,

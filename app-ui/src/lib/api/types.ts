@@ -100,18 +100,6 @@ export interface UploadCompiledDocumentPayload {
   children?: UploadSingleDocumentPayload[];
 }
 
-export interface PermissionRequest {
-  id: number;
-  status: string;
-  document_id?: number;
-  requester_id?: number;
-}
-
-export interface AccessRequest {
-  document_id: number;
-  reason?: string;
-}
-
 export interface ArchivedDocumentRecord extends DocumentRecord {
   deletedAt: string | null;
   sourceTable: string;
@@ -120,27 +108,6 @@ export interface ArchivedDocumentRecord extends DocumentRecord {
 export interface ArchivedDocumentsPageResult extends PaginationState {
   documents: ArchivedDocumentRecord[];
   categories: CategoryCount[];
-}
-
-export interface DocumentRequestRecord {
-  id: number;
-  documentId: string;
-  recordType: "document" | "compiled";
-  fullName: string;
-  email: string;
-  affiliation: string;
-  reason: string;
-  reasonDetails: string;
-  status: "awaiting_verification" | "pending" | "approved" | "rejected" | "expired" | string;
-  createdAt: string | null;
-  updatedAt: string | null;
-  reviewedBy?: string | null;
-  reviewedAt?: string | null;
-  reviewNotes?: string | null;
-  bookTitle?: string | null;
-  authorName?: string | null;
-  volume?: string | null;
-  raw: Record<string, unknown>;
 }
 
 export interface AuthorRecord {
@@ -220,7 +187,7 @@ export interface ReportStats {
     authorRecords: number;
     publishedAuthors: number;
   };
-  workflow: { pendingUploads: number; pendingAccessRequests: number };
+  workflow: { pendingUploads: number };
   activity: {
     sitePageViews: { total: number; guest: number; registered: number };
     siteVisits: { total: number; guest: number; registered: number };
@@ -234,7 +201,6 @@ export interface ReportStats {
     topicWorkViews: number;
     guestViews: number;
     registeredViews: number;
-    approvedRequestDownloads: number;
     activeRegisteredUsers: number;
     homeVisits: { total: number; guest: number; registered: number };
     activeRegisteredReaders: number;
@@ -252,10 +218,7 @@ export interface ReportStats {
     mostViewedAuthors: Array<{ id: string; name: string; views: number; visits: number; profilePicture: string | null; href?: string }>;
     trendingTopics: Array<{ id: number; name: string; views: number; workViews: number; entryCount: number; href?: string }>;
   };
-  distributions: {
-    documentTypes: Array<{ label: string; count: number }>;
-    requestStatuses: Array<{ status: string; count: number }>;
-  };
+  distributions: { documentTypes: Array<{ label: string; count: number }> };
   registeredReaderSummary: { activeUsers: number; views: number; downloads: number; averageInteractionsPerActiveUser: number };
   metricDefinitions: Record<string, string>;
   // Compatibility aliases used by existing admin components during migration.
