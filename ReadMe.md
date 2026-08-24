@@ -117,6 +117,9 @@ restore confirmation phrase, backup retention, and staging rehearsal are in
 
 The latest codebase comparison, completed checks, and remaining go-live gates
 are recorded in [`ops/RELEASE_READINESS_AUDIT.md`](ops/RELEASE_READINESS_AUDIT.md).
+The proposed path for expanding the existing Proxmox servers, including the
+10/20-year storage model and provisional bill of materials, is documented in
+[`ops/SERVER_EXPANSION_CAPACITY_PROPOSAL.md`](ops/SERVER_EXPANSION_CAPACITY_PROPOSAL.md).
 
 ### Authentication and email credentials
 
