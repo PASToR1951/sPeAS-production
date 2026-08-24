@@ -5009,7 +5009,7 @@ body:has(#react-public-root) {
 .peas-document-access-actions .peas-document-primary-action { min-height: 40px; padding: 9px 14px; }
 .peas-document-access-popup h2 { margin: 0; }
 .peas-document-access-popup p { color: var(--muted-foreground); line-height: 1.6; margin: 0; }
-.peas-document-access-popup > a:not(.peas-document-primary-action) { color: var(--brand-green); font-weight: 700; }
+.peas-document-access-popup > a:not(.peas-document-primary-action):not(.peas-ui-button) { color: var(--brand-green); font-weight: 700; }
 .peas-document-access-popup > .peas-ui-button { justify-self: start; }
 .peas-document-access-popup.is-authenticated > .peas-document-save-error { justify-self: end; }
 .peas-author-preview-card { background: #fff; border: 1px solid #dce5e0; border-radius: 16px; box-shadow: 0 20px 50px rgba(15,35,28,.18); color: #243a32; max-width: min(360px, calc(100vw - 32px)); padding: 0; width: 340px; }

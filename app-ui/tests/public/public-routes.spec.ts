@@ -383,6 +383,11 @@ test("guest document details expose an immediate public PDF download without a r
 
   const downloadLink = page.getByRole("link", { name: "Download PDF" });
   await expect(downloadLink).toHaveAttribute("href", "/api/public/documents/132/download");
+  const downloadColors = await downloadLink.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { foreground: style.color, background: style.backgroundColor };
+  });
+  expect(downloadColors.foreground).not.toBe(downloadColors.background);
   await expect(page.locator(".peas-document-request-form, .peas-access-request-form")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText(/request access/i)).toHaveCount(0);
