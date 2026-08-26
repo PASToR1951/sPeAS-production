@@ -10,11 +10,30 @@ permissions:
 
 jobs:
   native-recovery:
-    name: Native Windows recovery contract
+    name: Windows type checks, tests, builds, and recovery contract
     runs-on: windows-2025
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.7.13
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Run Windows type checks
+        run: |
+          npm run check:ui
+          npm run check:deno
+      - name: Run the complete Windows backend suite
+        run: npm run test:deno
+      - name: Build production frontends on Windows
+        run: npm run build:ui
       - name: Parse and validate native recovery tooling
         shell: pwsh
         run: ./scripts/test-native-recovery-contract.ps1
@@ -34,6 +53,8 @@ jobs:
         run: npm ci
       - name: Reject forbidden files and content
         run: ./scripts/check-repository-clean.sh
+      - name: Parse production shell automation
+        run: bash -n ops/peas-deploy.sh scripts/test-peas-public-edge.sh scripts/check-repository-clean.sh
       - name: Audit production dependency graph
         run: npm audit --audit-level=high
 

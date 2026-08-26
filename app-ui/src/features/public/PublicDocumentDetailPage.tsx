@@ -5,11 +5,14 @@ import { PublicErrorPage, PublicPageShell } from "../../components/public/Public
 import type { LooseRecord } from "../../lib/api/account";
 import { formatDate } from "../../lib/formatters/date";
 import { fetchPublicDocumentDetail, getPublicDocumentErrorStatus } from "../../lib/api/publicDocument";
+import type { PublicAuthorReference } from "../../lib/api/types";
+
+type DisplayAuthorReference = { id?: string; full_name: string };
 
 export function PublicDocumentDetailPage() {
   const id = new URLSearchParams(window.location.search).get("id") ?? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("id") ?? "";
   const routeCompiled = window.location.pathname.includes("compiled");
-  const [detail, setDetail] = useState<{ record: LooseRecord; children: LooseRecord[]; authors: LooseRecord[]; compiled: boolean } | null>(null);
+  const [detail, setDetail] = useState<{ record: LooseRecord; children: LooseRecord[]; authors: PublicAuthorReference[]; compiled: boolean } | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   useEffect(() => {
     setErrorStatus(null);
@@ -24,9 +27,9 @@ export function PublicDocumentDetailPage() {
   return <PublicPageShell mainClassName="peas-document-detail-page">{detail ? <DocumentContent id={id} detail={detail} /> : <p>Loading document details…</p>}</PublicPageShell>;
 }
 
-function DocumentContent({ id, detail }: { id: string; detail: { record: LooseRecord; children: LooseRecord[]; authors: LooseRecord[]; compiled: boolean } }) {
+function DocumentContent({ id, detail }: { id: string; detail: { record: LooseRecord; children: LooseRecord[]; authors: PublicAuthorReference[]; compiled: boolean } }) {
   const item = detail.record;
-  const authorReferences: LooseRecord[] = detail.authors.length ? detail.authors : authorNames(item).map((name) => ({ full_name: name }));
+  const authorReferences: DisplayAuthorReference[] = detail.authors.length ? detail.authors : authorNames(item).map((name) => ({ full_name: name }));
   const classification = classificationOf(item);
   const accessPanel = <DocumentDownloadPanel id={id} compiled={detail.compiled} available={detail.compiled ? item.foreword_download_available === true : item.download_available === true} />;
   return <><header className="peas-document-hero"><h1>{titleOf(item)}</h1><div className="peas-document-hero__meta"><div className="peas-document-authors" aria-label="Authors">{authorReferences.map((author, index) => <AuthorPreviewLink key={String(author.id ?? author.full_name ?? index)} author={author} />)}</div>{item.publication_date || item.year || item.start_year ? <span className="peas-document-hero__date"><CalendarDays aria-hidden="true" /> {String(item.year || item.start_year || new Date(String(item.publication_date)).getFullYear())}</span> : null}</div></header><section className="peas-document-abstract"><h2>{detail.compiled ? "Collection overview" : "Abstract"}</h2><p>{abstractOf(item) || "No abstract or overview is available for this record."}</p></section><div className="peas-document-classification"><TermSection title={detail.compiled ? "Research agendas across this collection" : "Research agendas"} values={classification.researchAgendas} parameter="agenda" /><TermSection title={detail.compiled ? "Topics across this collection" : "Topics"} values={classification.topics} parameter="topic" /><TermSection title={detail.compiled ? "Keywords across this collection" : "Keywords"} values={classification.keywords} parameter="keyword" /></div><div className="peas-document-layout"><article>{accessPanel}{detail.compiled ? <section><h2>Documents in this collection</h2>{detail.children.length ? <div className="peas-document-children">{detail.children.map((child, index) => <CompiledChildCard key={String(child.id || child.doc_id || index)} child={child} />)}</div> : <p>No child records were returned.</p>}</section> : null}</article></div></>;

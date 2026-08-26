@@ -3,6 +3,7 @@ import { username } from "better-auth/plugins";
 import pg from "pg";
 import { dotenvConfig } from "../deps.ts";
 import { hashPassword, verifyPassword } from "../utils/hashPassword.ts";
+import { buildTrustedOrigins } from "./trustedOrigins.ts";
 
 // Load .env ourselves: config/db.ts also loads it, but top-level await means
 // sibling modules can evaluate before its load completes. Loading twice is
@@ -63,22 +64,24 @@ const authPool = new pg.Pool({
   max: 5,
 });
 
-const extraOrigins = (Deno.env.get("TRUSTED_ORIGINS") ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const production = String(Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "production";
 
 export const auth = betterAuth({
   baseURL,
   secret,
-  trustedOrigins: [
+  trustedOrigins: buildTrustedOrigins({
     baseURL,
-    "http://localhost:5173",
-    "http://localhost",
-    "http://127.0.0.1",
-    "http://0.0.0.0",
-    ...extraOrigins,
-  ],
+    extraOrigins: Deno.env.get("TRUSTED_ORIGINS"),
+    production,
+  }),
+
+  // The Oak boundary overwrites this header with the shared proxy-aware
+  // resolver before Better Auth receives the Request.
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+    },
+  },
 
   database: authPool,
 

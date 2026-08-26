@@ -9,6 +9,7 @@
  */
 
 import { Context, Next } from "https://deno.land/x/oak@v12.6.1/mod.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 interface RateLimitOptions {
   /** Window length in milliseconds */
@@ -44,7 +45,7 @@ export function rateLimit(options: RateLimitOptions) {
     "Too many requests. Please try again later.";
 
   return async function rateLimitMiddleware(ctx: Context, next: Next) {
-    const ip = ctx.request.ip || "unknown";
+    const ip = clientIpFromContext(ctx);
     const key = `${name}:${ip}`;
     const now = Date.now();
 
@@ -85,4 +86,12 @@ export const analyticsRateLimit = rateLimit({
   windowMs: 60_000, // 1 minute
   max: 60,
   name: "analytics",
+});
+
+/** Bounded public receiver for browser-generated CSP violation reports. */
+export const cspReportRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  name: "csp-report",
+  message: "Too many security reports. Please try again later.",
 });

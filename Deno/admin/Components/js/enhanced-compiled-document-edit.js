@@ -1116,11 +1116,10 @@ window.enhancedCompiledDocumentEdit = {
                 let authors = [];
                 let response;
                 
-                // Define all potential endpoints to try
+                // Use the administrator-only author directory. Public search
+                // intentionally excludes authors without published work.
                 let endpoints = [
-                    `/api/authors/search?q=${encodeURIComponent(query)}`,
-                    `/authors/search?q=${encodeURIComponent(query)}`,
-                    `/api/users/search?q=${encodeURIComponent(query)}`
+                    `/api/authors/all?q=${encodeURIComponent(query)}`
                 ];
                 
                 // Try each endpoint until one works
@@ -1156,9 +1155,7 @@ window.enhancedCompiledDocumentEdit = {
                 if (authors.length === 0) {
                                         
                     const allEndpoints = [
-                        '/api/authors',
-                        '/authors/all',
-                        '/api/users'
+                        '/api/authors/all'
                     ];
                     
                     for (const allEndpoint of allEndpoints) {

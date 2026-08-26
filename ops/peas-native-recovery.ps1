@@ -2,7 +2,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('Install','Backup','Status','Verify','Restore','Drill','Activate','Maintain','Archive')]
+    [ValidateSet('Install','Backup','Status','Verify','Restore','Drill','Activate','Maintain','Archive','CspSummary')]
     [string]$Action,
     [ValidateSet('Scheduled','Manual','PreDeploy','PreMigration','Rotation')]
     [string]$Reason = 'Manual',
@@ -61,13 +61,37 @@ function Read-Policy {
     if ([IO.Path]::GetPathRoot($policy.repoRoot) -cne [IO.Path]::GetPathRoot($policy.appRoot)) { throw 'repoRoot and appRoot must be on the same VSS-protected volume.' }
     if ($policy.databasePort -lt 1 -or $policy.databasePort -gt 65535) { throw 'databasePort is invalid.' }
     if ($policy.writePauseLimitSeconds -lt 30 -or $policy.writePauseLimitSeconds -gt 120) { throw 'writePauseLimitSeconds must be between 30 and 120.' }
-    if (-not $policy.repositories -or @($policy.repositories).Count -lt 1) { throw 'At least one repository must be configured.' }
+    if ([int]$policy.repositoryMaximumAgeHours -lt 24 -or [int]$policy.repositoryMaximumAgeHours -gt 168) { throw 'repositoryMaximumAgeHours must be between 24 and 168.' }
+    if (-not $policy.repositories -or @($policy.repositories|Where-Object enabled).Count -lt 2) { throw 'At least two independently encrypted repositories must be enabled.' }
     foreach ($repo in $policy.repositories) {
         if ($repo.id -notmatch '^[a-z0-9-]+$') { throw "Invalid repository id: $($repo.id)" }
         if ($repo.type -eq 'usb' -and $repo.volumeLabel -notmatch '^PEAS-BACKUP-[AB]$') { throw "USB repository $($repo.id) has an unapproved volume label." }
         if ([string]::IsNullOrWhiteSpace($repo.passwordFile)) { throw "Repository $($repo.id) has no password file." }
+        if ($null -ne $repo.maximumAgeHours -and ([int]$repo.maximumAgeHours -lt 24 -or [int]$repo.maximumAgeHours -gt 168)) {
+            throw "Repository $($repo.id) maximumAgeHours must be between 24 and 168."
+        }
     }
+    $enabledRepositories=@($policy.repositories|Where-Object enabled)
+    if(@($enabledRepositories.id|Sort-Object -Unique).Count -ne $enabledRepositories.Count){throw 'Enabled repository IDs must be unique.'}
+    if(@($enabledRepositories.passwordFile|ForEach-Object{[IO.Path]::GetFullPath([string]$_).ToLowerInvariant()}|Sort-Object -Unique).Count -ne $enabledRepositories.Count){throw 'Each enabled repository must use an independent Restic password file.'}
+    $passwordHashes=@($enabledRepositories.passwordFile|ForEach-Object{if(-not(Test-Path -LiteralPath $_ -PathType Leaf)){throw "Repository password file is unavailable: $_"};(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash})
+    if(@($passwordHashes|Sort-Object -Unique).Count -ne $enabledRepositories.Count){throw 'Enabled repositories must not reuse the same Restic password.'}
+    $usbRepositories=@($enabledRepositories|Where-Object type -eq 'usb')
+    if(@($usbRepositories.volumeLabel|Sort-Object -Unique).Count -ne $usbRepositories.Count){throw 'Each USB repository must use a unique volume label.'}
+    if (-not $policy.monitoring -or -not $policy.monitoring.enabled) { throw 'Native 15-minute public monitoring must be configured and enabled.' }
+    if ([string]::IsNullOrWhiteSpace($policy.monitoring.baseUrl) -or $policy.monitoring.baseUrl -notmatch '^https://') { throw 'monitoring.baseUrl must use HTTPS.' }
+    if ([int]$policy.monitoring.publicDocumentId -lt 1) { throw 'monitoring.publicDocumentId must identify a stable approved public document with a PDF.' }
+    if ($policy.monitoring.cspMode -notin @('report-only','enforce')) { throw 'monitoring.cspMode must be report-only or enforce.' }
+    if ($policy.monitoring.operationsEmail -notmatch '^[^@\s]+@[^@\s]+$') { throw 'monitoring.operationsEmail must be an email address.' }
+    if ($policy.monitoring.smtpUsername -notmatch '^[^@\s]+@[^@\s]+$') { throw 'monitoring.smtpUsername must be an email address.' }
+    if ([int]$policy.monitoring.smtpPort -ne 587) { throw 'Native monitoring alerts require authenticated STARTTLS on SMTP port 587.' }
+    if (-not (Test-Path -LiteralPath $policy.monitoring.smtpPasswordFile -PathType Leaf)) { throw 'monitoring.smtpPasswordFile is unavailable.' }
     $script:Policy = $policy
+}
+
+function Get-RepositoryMaximumAgeHours([object]$Definition) {
+    if ($null -ne $Definition.maximumAgeHours) { return [int]$Definition.maximumAgeHours }
+    return [int]$script:Policy.repositoryMaximumAgeHours
 }
 
 function Enter-OperationLock {
@@ -100,6 +124,10 @@ function Resolve-Repository([object]$Definition) {
         if ($volume.HealthStatus -ne 'Healthy') { throw "Repository $($Definition.id) volume is not healthy." }
         if ([uint64]$volume.SizeRemaining -lt [uint64]$script:Policy.minimumFreeBytes) { throw "Repository $($Definition.id) has insufficient free space." }
         $root = "$($volume.DriveLetter):\"
+        $bitLocker=Get-BitLockerVolume -MountPoint $root -ErrorAction Stop
+        if([string]$bitLocker.VolumeStatus -cne 'FullyEncrypted' -or [string]$bitLocker.ProtectionStatus -cne 'On' -or [string]$bitLocker.LockStatus -cne 'Unlocked'){
+            throw "Repository $($Definition.id) must be fully BitLocker-encrypted, protected, and unlocked."
+        }
         return [pscustomobject]@{ Definition=$Definition; Uri=(Join-Path $root $Definition.repositoryPath); Volume=$volume }
     }
     if ($Definition.type -eq 'rest') {
@@ -287,13 +315,154 @@ function Invoke-Backup {
     }
 }
 
+function Send-OperationsAlert([string]$Subject, [string]$Body) {
+    $monitoring=$script:Policy.monitoring
+    $password=(Get-Content -LiteralPath $monitoring.smtpPasswordFile -Raw -ErrorAction Stop).Trim()
+    if([string]::IsNullOrWhiteSpace($password)){throw 'The native monitoring SMTP password file is empty.'}
+    $message=$null;$smtp=$null
+    try{
+        $message=[Net.Mail.MailMessage]::new()
+        $message.From=[Net.Mail.MailAddress]::new([string]$monitoring.smtpUsername)
+        $message.To.Add([string]$monitoring.operationsEmail)
+        $message.Subject=$Subject
+        $message.Body=$Body
+        $message.IsBodyHtml=$false
+        $smtp=[Net.Mail.SmtpClient]::new([string]$monitoring.smtpHost,[int]$monitoring.smtpPort)
+        $smtp.UseDefaultCredentials=$false
+        $smtp.Credentials=[Net.NetworkCredential]::new([string]$monitoring.smtpUsername,$password)
+        $smtp.EnableSsl=$true
+        $smtp.Timeout=60000
+        $smtp.Send($message)
+    }finally{
+        if($message){$message.Dispose()}
+        if($smtp){$smtp.Dispose()}
+    }
+}
+
+function Update-MonitoringState([System.Collections.IDictionary]$Status) {
+    $monitorRoot=Join-Path $script:Policy.appRoot 'state\monitoring'
+    Protect-Directory $monitorRoot
+    $statePath=Join-Path $monitorRoot 'latest.json'
+    $previous=if(Test-Path -LiteralPath $statePath -PathType Leaf){Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json -Depth 10}else{$null}
+    $signature="healthy=$($Status.healthy);certificate=$($Status.certificateBucket);issues=$(@($Status.issues|Sort-Object)-join ',')"
+    $changed=(-not $previous -or $previous.signature -cne $signature)
+    $requiresAlert=$changed -and ((-not $Status.healthy) -or $Status.certificateBucket -or $previous)
+    if($requiresAlert){
+        $hostLabel=if($env:COMPUTERNAME){$env:COMPUTERNAME}else{'PeAS host'}
+        $subject=if(-not $Status.healthy){"[PeAS] Operations failure on $hostLabel"}elseif($previous -and -not $previous.healthy){"[PeAS] Operations recovered on $hostLabel"}elseif($Status.certificateBucket){"[PeAS] TLS certificate warning on $hostLabel ($($Status.certificateBucket -replace '_',' '))"}elseif($previous -and $previous.certificateBucket){"[PeAS] TLS certificate renewed on $hostLabel"}else{"[PeAS] Operations state changed on $hostLabel"}
+        $body=@(
+            "PeAS native monitoring detected a state transition at $([DateTimeOffset]::UtcNow.ToString('o')).",
+            '',
+            ($Status|ConvertTo-Json -Depth 10)
+        ) -join [Environment]::NewLine
+        Send-OperationsAlert -Subject $subject -Body $body
+        Write-PeasEvent warning "Operations state transition alert sent: $signature"
+    }
+    [ordered]@{schemaVersion=1;checkedAt=[DateTimeOffset]::UtcNow.ToString('o');signature=$signature;healthy=[bool]$Status.healthy;certificateBucket=[string]$Status.certificateBucket;issues=@($Status.issues)}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
+}
+
 function Invoke-Status {
     $receiptPath=Join-Path $script:Policy.appRoot 'state\backup-receipts\latest.json'
     $receipt=if(Test-Path $receiptPath){Get-Content $receiptPath -Raw|ConvertFrom-Json}else{$null}
     $age=if($receipt){([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($receipt.dataCutoffUtc)).TotalMinutes}else{[double]::PositiveInfinity}
-    $repositories=@(); foreach($definition in @($script:Policy.repositories)){try{$resolved=Resolve-Repository $definition;$latest=Invoke-Restic $resolved @('snapshots','--latest','1','--json') -Capture|ConvertFrom-Json;$repositories += [ordered]@{id=$definition.id;available=$true;latest=$latest[-1].short_id;freeBytes=if($resolved.Volume){$resolved.Volume.SizeRemaining}else{$null}}}catch{$repositories += [ordered]@{id=$definition.id;available=$false;error=$_.Exception.Message}}}
-    [ordered]@{healthy=($age -le 75);latestDataCutoffUtc=$receipt.dataCutoffUtc;ageMinutes=[math]::Round($age,1);repositories=$repositories} | ConvertTo-Json -Depth 8
-    if($age -gt 75){throw 'Latest successful backup data cutoff is older than 75 minutes.'}
+    $issues=[Collections.Generic.List[string]]::new()
+    if($age -gt 75){$issues.Add('backup_stale')}
+    $receiptRoot=Split-Path $receiptPath
+    $receiptHistory=@(Get-ChildItem -LiteralPath $receiptRoot -Filter '*.json' -File -ErrorAction SilentlyContinue|Where-Object Name -ne 'latest.json'|ForEach-Object{try{Get-Content -LiteralPath $_.FullName -Raw|ConvertFrom-Json -Depth 10}catch{$null}}|Where-Object{$_})
+    $repositories=@()
+    foreach($definition in @($script:Policy.repositories|Where-Object enabled)){
+        $repositoryReceipt=@($receiptHistory|Where-Object{@($_.repositories.repository) -contains $definition.id}|Sort-Object{[DateTimeOffset]::Parse($_.dataCutoffUtc)} -Descending|Select-Object -First 1)
+        $repositoryAgeHours=if($repositoryReceipt){([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($repositoryReceipt[0].dataCutoffUtc)).TotalHours}else{[double]::PositiveInfinity}
+        $repositoryMaximumAgeHours=Get-RepositoryMaximumAgeHours $definition
+        if($repositoryAgeHours -gt $repositoryMaximumAgeHours){$issues.Add("repository_rotation_stale:$($definition.id)")}
+        try{
+            $resolved=Resolve-Repository $definition
+            $latest=Invoke-Restic $resolved @('snapshots','--latest','1','--json') -Capture|ConvertFrom-Json
+            $repositories += [ordered]@{id=$definition.id;available=$true;latest=$latest[-1].short_id;freeBytes=if($resolved.Volume){$resolved.Volume.SizeRemaining}else{$null};lastBackupUtc=if($repositoryReceipt){$repositoryReceipt[0].dataCutoffUtc}else{$null};ageHours=if($repositoryReceipt){[math]::Round($repositoryAgeHours,1)}else{$null};maximumAgeHours=$repositoryMaximumAgeHours}
+        }catch{
+            $connected=if($definition.type -eq 'usb'){@(Get-Volume -ErrorAction SilentlyContinue|Where-Object FileSystemLabel -ceq $definition.volumeLabel).Count -gt 0}else{$true}
+            if($connected){$issues.Add("repository_unhealthy:$($definition.id)")}
+            $repositories += [ordered]@{id=$definition.id;available=$false;error=$_.Exception.Message;lastBackupUtc=if($repositoryReceipt){$repositoryReceipt[0].dataCutoffUtc}else{$null};ageHours=if($repositoryReceipt){[math]::Round($repositoryAgeHours,1)}else{$null};maximumAgeHours=$repositoryMaximumAgeHours}
+        }
+    }
+
+    $edge=$null
+    $verifier=Join-Path $script:Policy.repoRoot 'scripts\Test-PeasPublicEdge.ps1'
+    try {
+        if(-not(Test-Path -LiteralPath $verifier -PathType Leaf)){throw "Public edge verifier not found: $verifier"}
+        $edgeJson=& $verifier -BaseUrl ([uri]$script:Policy.monitoring.baseUrl) -CspMode ([string]$script:Policy.monitoring.cspMode) -PublicDocumentId ([int]$script:Policy.monitoring.publicDocumentId) -CertificateMinDays 1
+        $edge=($edgeJson -join "`n")|ConvertFrom-Json -Depth 10
+    } catch {
+        $issues.Add('public_edge_or_database_failure')
+        $edge=[ordered]@{status='failed';error=$_.Exception.GetBaseException().Message;certificateDaysRemaining=$null}
+    }
+
+    $certificateBucket=''
+    if($null -ne $edge.certificateDaysRemaining){
+        $certificateDays=[double]$edge.certificateDaysRemaining
+        if($certificateDays -le 7){$certificateBucket='7_days'}elseif($certificateDays -le 14){$certificateBucket='14_days'}elseif($certificateDays -le 30){$certificateBucket='30_days'}
+    }
+    $healthy=($issues.Count -eq 0)
+    $status=[ordered]@{healthy=$healthy;latestDataCutoffUtc=$receipt.dataCutoffUtc;ageMinutes=if($receipt){[math]::Round($age,1)}else{$null};repositories=$repositories;edge=$edge;issues=@($issues);certificateBucket=$certificateBucket}
+    Update-MonitoringState -Status $status
+    $status|ConvertTo-Json -Depth 10
+    if(-not $healthy){throw "Native health check failed: $($issues -join ', ')"}
+}
+
+function Invoke-CspSummary {
+    $script:Phase='summarizing sanitized CSP reports'
+    $logRoot=Join-Path $script:Policy.appRoot 'logs'
+    $monitorRoot=Join-Path $script:Policy.appRoot 'state\monitoring'
+    Protect-Directory $monitorRoot
+    $now=[DateTimeOffset]::UtcNow
+    $cutoff=$now.AddHours(-24)
+    $records=[Collections.Generic.List[object]]::new()
+    $parseErrors=0
+    $files=@(Get-ChildItem -LiteralPath $logRoot -Filter 'csp-violations*.ndjson' -File -ErrorAction SilentlyContinue)
+    foreach($file in $files){
+        foreach($line in @(Get-Content -LiteralPath $file.FullName -ErrorAction SilentlyContinue)){
+            if([string]::IsNullOrWhiteSpace($line)){continue}
+            try{
+                $record=$line|ConvertFrom-Json -Depth 8 -ErrorAction Stop
+                $received=[DateTimeOffset]::Parse([string]$record.receivedAt)
+                if($received -ge $cutoff -and $received -le $now.AddMinutes(5)){$records.Add($record)}
+            }catch{$parseErrors++}
+        }
+    }
+    $groups=@($records|Group-Object effectiveDirective,blockedLocation,documentLocation,disposition|ForEach-Object{
+        $sample=$_.Group|Select-Object -First 1
+        [ordered]@{
+            effectiveDirective=[string]$sample.effectiveDirective
+            blockedLocation=[string]$sample.blockedLocation
+            documentLocation=[string]$sample.documentLocation
+            disposition=[string]$sample.disposition
+            count=$_.Count
+        }
+    }|Sort-Object count -Descending)
+    $summary=[ordered]@{
+        schemaVersion=1
+        generatedAt=$now.ToString('o')
+        windowStart=$cutoff.ToString('o')
+        windowEnd=$now.ToString('o')
+        reportCount=$records.Count
+        parseErrors=$parseErrors
+        groups=$groups
+    }
+    $dateKey=$now.ToString('yyyy-MM-dd')
+    $summaryPath=Join-Path $monitorRoot "csp-summary-$dateKey.json"
+    $summary|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $summaryPath -Encoding utf8NoBOM
+    Copy-Item -LiteralPath $summaryPath -Destination (Join-Path $monitorRoot 'csp-summary-latest.json') -Force
+    if($records.Count -gt 0 -or $parseErrors -gt 0){
+        $body=@(
+            "PeAS CSP report summary for the 24 hours ending $($now.ToString('o')).",
+            "Reports: $($records.Count)",
+            "Parse errors: $parseErrors",
+            '',
+            ($groups|ConvertTo-Json -Depth 8)
+        ) -join [Environment]::NewLine
+        Send-OperationsAlert -Subject "[PeAS] Daily CSP report summary ($dateKey)" -Body $body
+    }
+    $summary|ConvertTo-Json -Depth 10
 }
 
 function Invoke-Verify {
@@ -353,12 +522,13 @@ function Install-NativeRecovery {
     $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 55)
     $hourly=New-ScheduledTaskTrigger -Once -At ((Get-Date).Date.AddMinutes(10));$hourly.Repetition.Interval='PT1H';$hourly.Repetition.Duration='P1D'
     $health=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5);$health.Repetition.Interval='PT15M';$health.Repetition.Duration='P1D'
-    $verify=New-ScheduledTaskTrigger -Daily -At '03:30';$archive=New-ScheduledTaskTrigger -Daily -At '04:30'
+    $verify=New-ScheduledTaskTrigger -Daily -At '03:30';$archive=New-ScheduledTaskTrigger -Daily -At '04:30';$cspSummary=New-ScheduledTaskTrigger -Daily -At '05:00'
     $definitions=@(
       @{Name='PeAS-Native-Backup-Hourly';Trigger=$hourly;Args="-Action Backup -Reason Scheduled -PolicyPath `"$PolicyPath`""},
       @{Name='PeAS-Native-Backup-Health';Trigger=$health;Args="-Action Status -PolicyPath `"$PolicyPath`""},
       @{Name='PeAS-Native-Backup-Verify';Trigger=$verify;Args="-Action Verify -VerifyMode Structural -PolicyPath `"$PolicyPath`""},
-      @{Name='PeAS-Native-Archive-Reconcile';Trigger=$archive;Args="-Action Archive -ArchiveMode Reconcile -PolicyPath `"$PolicyPath`""}
+      @{Name='PeAS-Native-Archive-Reconcile';Trigger=$archive;Args="-Action Archive -ArchiveMode Reconcile -PolicyPath `"$PolicyPath`""},
+      @{Name='PeAS-Native-CSP-Summary';Trigger=$cspSummary;Args="-Action CspSummary -PolicyPath `"$PolicyPath`""}
     )
     foreach($item in $definitions){$taskAction=New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -NonInteractive -File `"$installed`" $($item.Args)";Register-ScheduledTask -TaskName $item.Name -Action $taskAction -Trigger $item.Trigger -Principal $principal -Settings $settings -Force|Out-Null}
     Write-PeasEvent info 'Native recovery tooling installed. No repository was initialized and no ACL outside the recovery directories was changed.'
@@ -385,6 +555,7 @@ try {
         Activate { Invoke-Activate }
         Maintain { Invoke-Maintain }
         Archive { Invoke-Archive }
+        CspSummary { Invoke-CspSummary }
     }
 } catch {
     Write-PeasEvent error $_.Exception.Message

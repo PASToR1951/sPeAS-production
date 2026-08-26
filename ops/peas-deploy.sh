@@ -99,11 +99,19 @@ generate_secret_if_missing() {
 }
 
 validate_config() {
-  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE PEAS_RELEASE_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY)
+  local required=(PUBLIC_APP_URL BETTER_AUTH_URL ACME_EMAIL PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE PEAS_RELEASE_ID SMTP_HOST SMTP_USERNAME CONTACT_RECIPIENT_EMAIL RESTIC_REPOSITORY PEAS_CSP_MODE TRUSTED_PROXY_RANGES SECURITY_CONTACT_EMAIL SECURITY_TXT_EXPIRES PEAS_VERIFY_PUBLIC_DOCUMENT_ID)
   local key smtp_port="${SMTP_PORT:-465}" smtp_tls="${SMTP_TLS:-true}"
   for key in "${required[@]}"; do [[ -n "${!key:-}" ]] || die "missing configuration: $key"; done
   [[ "$PUBLIC_APP_URL" == https://* ]] || die "PUBLIC_APP_URL must use HTTPS"
   [[ "$BETTER_AUTH_URL" == "$PUBLIC_APP_URL" ]] || die "BETTER_AUTH_URL must equal PUBLIC_APP_URL"
+  [[ "$PEAS_CSP_MODE" == report-only || "$PEAS_CSP_MODE" == enforce ]] || die "PEAS_CSP_MODE must be report-only or enforce"
+  [[ "$SECURITY_CONTACT_EMAIL" == *@* ]] || die "SECURITY_CONTACT_EMAIL must be an email address"
+  [[ "$PEAS_VERIFY_PUBLIC_DOCUMENT_ID" =~ ^[1-9][0-9]*$ ]] || die "PEAS_VERIFY_PUBLIC_DOCUMENT_ID must be a positive integer"
+  date --date="$SECURITY_TXT_EXPIRES" +%s >/dev/null 2>&1 || die "SECURITY_TXT_EXPIRES must be an RFC 3339 timestamp"
+  local security_expiry_epoch now_epoch
+  security_expiry_epoch="$(date --date="$SECURITY_TXT_EXPIRES" +%s)"
+  now_epoch="$(date -u +%s)"
+  ((security_expiry_epoch > now_epoch && security_expiry_epoch <= now_epoch + 366 * 86400)) || die "SECURITY_TXT_EXPIRES must be in the future and no more than 366 days away"
   for key in PEAS_IMAGE PEAS_POSTGRES_IMAGE PEAS_CADDY_IMAGE PEAS_CLAMAV_IMAGE PEAS_UTILITY_IMAGE; do
     is_image_digest "${!key}" || die "$key must end in a complete @sha256 image digest"
   done
@@ -206,10 +214,9 @@ backup() {
 
 verify() {
   load_config
-  require_command curl
-  curl --fail --silent --show-error --max-time 20 "$PUBLIC_APP_URL/health/ready" >/dev/null
-  curl --fail --silent --show-error --max-time 20 "$PUBLIC_APP_URL/index.html" >/dev/null
-  info "HTTPS smoke checks passed"
+  validate_config
+  bash "$REPO_ROOT/scripts/test-peas-public-edge.sh"
+  info "HTTPS, certificate, headers, authorization, public DTO, and PDF checks passed"
 }
 
 deploy() {
@@ -541,13 +548,14 @@ install_host() {
   docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is required"
   [[ -f "$CONFIG_FILE" ]] || {
     install -m 600 /dev/null "$CONFIG_FILE"
-    printf 'PUBLIC_APP_URL=https://%s\nBETTER_AUTH_URL=https://%s\nACME_EMAIL=%s\nPEAS_IMAGE=%s\nPEAS_RELEASE_ID=initial\nPEAS_SECRETS_DIR=%s\nPEAS_REPO_ROOT=%s\n' "$DOMAIN" "$DOMAIN" "$ACME_EMAIL" "$IMAGE" "$SECRETS_DIR" "$REPO_ROOT" >"$CONFIG_FILE"
+    printf 'PUBLIC_APP_URL=https://%s\nBETTER_AUTH_URL=https://%s\nACME_EMAIL=%s\nPEAS_IMAGE=%s\nPEAS_RELEASE_ID=initial\nPEAS_SECRETS_DIR=%s\nPEAS_REPO_ROOT=%s\nPEAS_CSP_MODE=report-only\nTRUSTED_PROXY_RANGES=172.30.0.0/24\nSECURITY_CONTACT_EMAIL=%s\nSECURITY_TXT_EXPIRES=%s\n' "$DOMAIN" "$DOMAIN" "$ACME_EMAIL" "$IMAGE" "$SECRETS_DIR" "$REPO_ROOT" "$ACME_EMAIL" "$(date -u --date='+365 days' +%Y-%m-%dT%H:%M:%SZ)" >"$CONFIG_FILE"
   }
   load_config
   prompt_config_if_missing PEAS_POSTGRES_IMAGE "Pinned PostgreSQL image (for example postgres:17-alpine@sha256:...)"
   prompt_config_if_missing PEAS_CADDY_IMAGE "Pinned Caddy image (for example caddy:2-alpine@sha256:...)"
   prompt_config_if_missing PEAS_CLAMAV_IMAGE "Pinned ClamAV image (for example clamav/clamav@sha256:...)"
   prompt_config_if_missing PEAS_UTILITY_IMAGE "Pinned backup utility image (for example alpine:3.21@sha256:...)"
+  prompt_config_if_missing PEAS_VERIFY_PUBLIC_DOCUMENT_ID "Stable approved public document ID with an available PDF"
   configure_email_values
   prompt_config_if_missing RESTIC_REPOSITORY "Restic S3 repository URL"
   prompt_secret_if_missing restic_password "Restic repository password"
@@ -673,7 +681,10 @@ case "$command" in
       key="${assignment%%=*}"
       value="${assignment#*=}"
       case "$key" in
-        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|OFFICE_REPLY_TO_EMAIL|NEWSLETTER_SEND_RATE_PER_MINUTE|RESTIC_REPOSITORY|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES)
+        TRUSTED_ORIGINS)
+          set_config_value "$key" "$value"
+          ;;
+        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|OFFICE_REPLY_TO_EMAIL|NEWSLETTER_SEND_RATE_PER_MINUTE|RESTIC_REPOSITORY|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES|PEAS_CSP_MODE|TRUSTED_PROXY_RANGES|SECURITY_CONTACT_EMAIL|SECURITY_TXT_EXPIRES|PEAS_VERIFY_PUBLIC_DOCUMENT_ID)
           [[ -n "$value" ]] || die "$key cannot be empty"
           set_config_value "$key" "$value"
           ;;

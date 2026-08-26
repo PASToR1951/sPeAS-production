@@ -3,6 +3,7 @@ import { PageVisitsModel } from "../models/pageVisitsModel.ts";
 import { client } from "../db/denopost_conn.ts";
 import { isAuthenticated, isAdmin } from "../middleware/authMiddleware.ts";
 import { analyticsRateLimit } from "../middleware/rateLimit.ts";
+import { countPublicAuthors } from "../services/contentAuthorizationService.ts";
 
 // Create a router for page visit routes
 const router = new Router();
@@ -535,13 +536,16 @@ async function compatGetHomePageVisitStats(ctx: RouterContext<string>) {
       userVisits += stats.user;
     }
     
+    const totalAuthors = await countPublicAuthors();
+
     ctx.response.status = 200;
     ctx.response.body = { 
       success: true,
       stats: {
         total: totalVisits,
         guest: guestVisits,
-        user: userVisits
+        user: userVisits,
+        totalAuthors,
       }
     };
   } catch (error) {

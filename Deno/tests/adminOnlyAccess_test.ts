@@ -114,6 +114,11 @@ Deno.test("runtime authentication is password-only", async () => {
   assert(!routes.includes("/api/admin/auth/"));
   assertStringIncludes(server, 'router.all("/api/auth/sign-in/social"');
   assertStringIncludes(server, 'router.all("/api/auth/callback/(.*)"');
+  assertStringIncludes(
+    server,
+    'headers.set("x-forwarded-for", clientIpFromContext(ctx))',
+  );
+  assert(!server.includes('ctx.request.headers.set("x-forwarded-for"'));
 });
 
 Deno.test("administrator password recovery emails a single-use link without a domain allowlist", async () => {
@@ -196,6 +201,96 @@ Deno.test("administrator previews stay protected while dedicated public download
   );
   assertStringIncludes(documents, 'audience: "guest", action: "download"');
   assertStringIncludes(compiledDocuments, 'audience: "guest", action: "download"');
+});
+
+Deno.test("full author directories and compatibility relationships stay administrator-only", async () => {
+  const [serverSource, relationshipSource, authorRouteSource] = await Promise.all([
+    Deno.readTextFile(new URL("../server.ts", import.meta.url)),
+    Deno.readTextFile(new URL("../routes/documentAuthorRoutes.ts", import.meta.url)),
+    Deno.readTextFile(new URL("../routes/authorRoutes.ts", import.meta.url)),
+  ]);
+
+  assertStringIncludes(
+    serverSource,
+    'router.get("/api/authors/all", isAuthenticated, requireCapability("documents:upload")',
+  );
+  assertStringIncludes(relationshipSource, '"/api/document-authors/:documentId"');
+  assertStringIncludes(relationshipSource, '"/document-authors/:documentId"');
+  assertStringIncludes(relationshipSource, "isAuthenticated");
+  assertStringIncludes(relationshipSource, "requireDocumentUpload");
+  assertStringIncludes(
+    authorRouteSource,
+    'router.get("/authors/search", isAuthenticated, requireDocumentUpload, searchAuthors)',
+  );
+  assertStringIncludes(
+    authorRouteSource,
+    'router.get("/api/authors/test", isAuthenticated, isAdmin, testAuthorApi)',
+  );
+});
+
+Deno.test("active frontends use canonical author endpoints", async () => {
+  const [
+    documentEdit,
+    compiledEdit,
+    authorSearch,
+    publicDocumentClient,
+    publicHomeClient,
+    defaultNavbar,
+    userNavbar,
+    publicHeader,
+  ] = await Promise.all([
+    Deno.readTextFile(new URL("../admin/Components/js/document-edit.js", import.meta.url)),
+    Deno.readTextFile(new URL("../admin/Components/js/enhanced-compiled-document-edit.js", import.meta.url)),
+    Deno.readTextFile(new URL("../admin/Components/js/author-search.js", import.meta.url)),
+    Deno.readTextFile(new URL("../../app-ui/src/lib/api/publicDocument.ts", import.meta.url)),
+    Deno.readTextFile(new URL("../../app-ui/src/lib/api/public.ts", import.meta.url)),
+    Deno.readTextFile(new URL("../Public/Components/NavBar/default-NavBar.html", import.meta.url)),
+    Deno.readTextFile(new URL("../Public/Components/NavBar/user-Navbar.html", import.meta.url)),
+    Deno.readTextFile(new URL("../Public/Components/header.html", import.meta.url)),
+  ]);
+
+  for (const adminClient of [documentEdit, compiledEdit, authorSearch]) {
+    assertEquals(adminClient.includes("`/document-authors/"), false);
+    assertEquals(adminClient.includes("`/authors/search?"), false);
+  }
+  assertStringIncludes(documentEdit, "`/api/document-authors/${documentId}`");
+  assertStringIncludes(documentEdit, "`/api/authors/all?q=${encodeURIComponent(query)}`");
+  assertStringIncludes(compiledEdit, "`/api/authors/all?q=${encodeURIComponent(query)}`");
+  assertStringIncludes(authorSearch, "`/api/authors/all?q=${encodeURIComponent(query)}`");
+  for (const publicClient of [
+    publicDocumentClient,
+    publicHomeClient,
+    defaultNavbar,
+    userNavbar,
+    publicHeader,
+  ]) {
+    assertEquals(publicClient.includes("/api/authors/all"), false);
+    assertEquals(publicClient.includes("fetchData(API.authors)"), false);
+    assertEquals(publicClient.includes("fetch(API.authors)"), false);
+  }
+  assertStringIncludes(defaultNavbar, "new URL('/api/authors/search'");
+  assertStringIncludes(userNavbar, "new URL('/api/authors/search'");
+});
+
+Deno.test("public author discovery and works stay publication-scoped", async () => {
+  const [serverSource, controllerSource] = await Promise.all([
+    Deno.readTextFile(new URL("../server.ts", import.meta.url)),
+    Deno.readTextFile(new URL("../controllers/authorController.ts", import.meta.url)),
+  ]);
+  assertStringIncludes(serverSource, "toPublicAuthorSearchResult(author)");
+  assertStringIncludes(
+    serverSource,
+    "d.compiled_parent_id IS NULL OR parent.review_status = 'approved'",
+  );
+  assert(!serverSource.includes("document: doc"));
+  assertStringIncludes(
+    controllerSource,
+    "visible_d.compiled_parent_id IS NULL OR visible_parent.review_status = 'approved'",
+  );
+  assertStringIncludes(
+    controllerSource,
+    "d.compiled_parent_id IS NULL OR parent.review_status = 'approved'",
+  );
 });
 
 Deno.test("retired request endpoints are table-free 410 tombstones", async () => {

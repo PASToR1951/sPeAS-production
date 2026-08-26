@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { join } from "https://deno.land/std@0.190.0/path/mod.ts";
 import {
   normalizeSiteAssetAltText,
   normalizeSiteAssetKind,
@@ -88,7 +89,7 @@ Deno.test("saveSiteAsset persists normalized metadata without changing its respo
   );
   assert(
     writtenPath.endsWith(
-      "/storage/site-branding/organization-chart/fixed-name.png",
+      join("storage", "site-branding", "organization-chart", "fixed-name.png"),
     ),
   );
   assertEquals(asset, {
@@ -131,7 +132,11 @@ Deno.test("saveSiteAsset removes a newly written file when its database insert f
   );
 
   assertEquals(error, databaseError);
-  assert(writtenPath.endsWith("/storage/site-branding/org-chart/orphan.png"));
+  assert(
+    writtenPath.endsWith(
+      join("storage", "site-branding", "org-chart", "orphan.png"),
+    ),
+  );
   assertEquals(removedPath, writtenPath);
 });
 
@@ -167,7 +172,11 @@ Deno.test("hero uploads retain their slot identity in metadata and storage", asy
   });
 
   assertEquals(insertedKind, "hero-slot-3");
-  assert(writtenPath.endsWith("/storage/site-branding/hero/slot-3/hero-image.png"));
+  assert(
+    writtenPath.endsWith(
+      join("storage", "site-branding", "hero", "slot-3", "hero-image.png"),
+    ),
+  );
   assertEquals(asset.file_path, "/storage/site-branding/hero/slot-3/hero-image.png");
   assertEquals(asset.kind, "hero-slot-3");
 });

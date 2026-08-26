@@ -4,7 +4,8 @@ import { Router } from "../deps.ts";
 import { createDocumentAuthors, DocumentAuthorValidationError, getDocumentAuthors, type DocumentAuthorInput } from "../controllers/documentAuthorController.ts";
 import { isAuthenticated, requireCapability } from "../middleware/authMiddleware.ts";
 import { canModifyPendingUpload, canViewDocument } from "../services/contentAuthorizationService.ts";
-import { getSessionFromHeaders } from "../services/sessionService.ts";
+import { SystemLogsModel } from "../models/systemLogsModel.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 const router = new Router();
 const requireDocumentUpload = requireCapability("documents:upload");
@@ -55,8 +56,7 @@ router.post("/document-authors", isAuthenticated, requireDocumentUpload, async (
   }
 });
 
-// Route to get authors for a document
-router.get("/document-authors/:documentId", async (ctx) => {
+async function getAdminDocumentAuthors(ctx: any) {
   try {
     const documentId = ctx.params.documentId;
     
@@ -66,8 +66,7 @@ router.get("/document-authors/:documentId", async (ctx) => {
       return;
     }
 
-    const session = await getSessionFromHeaders(ctx.request.headers);
-    if (!await canViewDocument(session, documentId)) {
+    if (!await canViewDocument(ctx.state.user, documentId)) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Document not found" };
       return;
@@ -90,6 +89,48 @@ router.get("/document-authors/:documentId", async (ctx) => {
       details: error instanceof Error ? error.message : String(error)
     };
   }
-});
+}
+
+// Canonical administrator endpoint.
+router.get(
+  "/api/document-authors/:documentId",
+  isAuthenticated,
+  requireDocumentUpload,
+  getAdminDocumentAuthors,
+);
+
+// Temporary compatibility alias. Usage is deliberately visible in the
+// structured application log so the route can be retired after two quiet
+// releases.
+router.get(
+  "/document-authors/:documentId",
+  isAuthenticated,
+  requireDocumentUpload,
+  async (ctx) => {
+    ctx.response.headers.set("Deprecation", "true");
+    ctx.response.headers.set(
+      "Link",
+      `</api/document-authors/${encodeURIComponent(ctx.params.documentId)}>; rel=\"successor-version\"`,
+    );
+    console.warn("Deprecated document-author route used", {
+      path: "/document-authors/:documentId",
+      documentId: ctx.params.documentId,
+    });
+    await SystemLogsModel.createLog({
+      log_type: "deprecation",
+      user_id: String(ctx.state.user.id),
+      username: String(ctx.state.user.id),
+      action: "Deprecated document-author route used",
+      details: {
+        path: "/document-authors/:documentId",
+        document_id: ctx.params.documentId,
+      },
+      ip_address: clientIpFromContext(ctx),
+      status: "warning",
+      related_id: ctx.params.documentId,
+    }).catch((error) => console.error("Failed to record deprecated route usage:", error));
+    await getAdminDocumentAuthors(ctx);
+  },
+);
 
 export default router;

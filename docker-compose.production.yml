@@ -55,6 +55,7 @@ services:
       PGDATABASE: peas_db
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
       STORAGE_ROOT: /app/storage
@@ -70,6 +71,10 @@ services:
       OFFICE_REPLY_TO_EMAIL: ${OFFICE_REPLY_TO_EMAIL:-}
       NEWSLETTER_TOKEN_SECRET_FILE: /run/secrets/newsletter_token_secret
       ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
+      PEAS_CSP_MODE: ${PEAS_CSP_MODE:-report-only}
+      TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:?set TRUSTED_PROXY_RANGES}
+      SECURITY_CONTACT_EMAIL: ${SECURITY_CONTACT_EMAIL:?set SECURITY_CONTACT_EMAIL}
+      SECURITY_TXT_EXPIRES: ${SECURITY_TXT_EXPIRES:?set SECURITY_TXT_EXPIRES}
     expose: ["8000"]
     secrets:
       - db_app_password
@@ -211,6 +216,9 @@ services:
 
 networks:
   edge:
+    ipam:
+      config:
+        - subnet: ${PEAS_EDGE_SUBNET:-172.30.0.0/24}
   backend:
     internal: true
 

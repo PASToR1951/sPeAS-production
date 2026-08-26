@@ -84,13 +84,7 @@ export async function fetchTrendingKeywords(): Promise<string[]> {
 }
 
 export async function fetchPublicStats(): Promise<DashboardStats> {
-  const [homeStats, authors] = await Promise.all([
-    apiFetch<Record<string, unknown>>("/api/page-visits/home-stats"),
-    apiFetch<Array<Record<string, unknown>> | { authors?: Array<Record<string, unknown>>; count?: number }>("/api/authors/all").catch(() => []),
-  ]);
-
-  const authorRows = Array.isArray(authors) ? authors : authors.authors ?? [];
-  const authorCount = Array.isArray(authors) ? authorRows.length : Number(authors.count ?? authorRows.length);
+  const homeStats = await apiFetch<Record<string, unknown>>("/api/page-visits/home-stats");
   const stats = homeStats.stats && typeof homeStats.stats === "object"
     ? homeStats.stats as Record<string, unknown>
     : homeStats;
@@ -103,7 +97,7 @@ export async function fetchPublicStats(): Promise<DashboardStats> {
     totalVisits,
     guestVisits,
     userVisits,
-    totalAuthors: authorCount,
+    totalAuthors: Number(stats.totalAuthors ?? stats.total_authors ?? 0),
     raw: homeStats,
   };
 }

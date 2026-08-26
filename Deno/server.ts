@@ -26,10 +26,9 @@ import reportsRoutes from "./routes/reportsRoutes.ts"; // Import reports routes
 import { getLegacyStatistics } from "./controllers/reportsController.ts";
 import { categoryRoutes, categoryAllowedMethods } from "./routes/categoryRoutes.ts";
 import { getChildDocuments } from "./controllers/documentController.ts";
-import { handleUpdateDocument } from "./api/document.ts";
 import { getDocumentAuthors } from "./controllers/documentAuthorController.ts";
+import { handleUpdateDocument } from "./api/document.ts";
 import { AuthorModel } from "./models/authorModel.ts";
-import { DocumentModel } from "./models/documentModel.ts";
 import { SystemLogsModel } from "./models/systemLogsModel.ts";
 import { getDocumentClassification, replaceDocumentClassification, replaceDocumentKeywords } from "./services/documentClassificationService.ts";
 import { canonicalPublicPageKey, createAnalyticsSessionCookie, isKnownCrawler, isPrefetchRequest, readAnalyticsSessionCookie, recordPublicTraffic, recordRepositoryActivity, verifyOperationalReportingSchema } from "./services/operationalReportingService.ts";
@@ -63,7 +62,7 @@ import documentAnnotationRoutes from "./routes/documentAnnotationRoutes.ts";
 import { cleanupDocumentAnnotations } from "./services/documentAnnotationCleanupService.ts";
 import { cleanupNewsMedia, startNewsMediaWorker } from "./services/newsMediaService.ts";
 import contactInquiryRoutes from "./routes/contactInquiryRoutes.ts";
-import { getContactNotificationConfiguration, startContactNotificationWorker } from "./services/contactInquiryService.ts";
+import { startContactNotificationWorker } from "./services/contactInquiryService.ts";
 import adminNotificationRoutes from "./routes/adminNotificationRoutes.ts";
 import { syncAuthorProfileNotification } from "./services/authorNotificationService.ts";
 import {
@@ -78,6 +77,18 @@ import {
 import { authorNameKey } from "../shared/authorName.ts";
 import abstractReviewRoutes from "./routes/abstractReviewRoutes.ts";
 import { isMutationMethod, maintenanceRequested } from "./services/maintenanceState.ts";
+import { readCspMode, securityHeadersMiddleware } from "./middleware/securityHeaders.ts";
+import { clientIpFromContext, trustedProxyRanges } from "./utils/clientIp.ts";
+import { securityDisclosureConfig, securityTxtBody } from "./services/securityDisclosureService.ts";
+import { createReadinessProbe } from "./services/readinessService.ts";
+import {
+  type AdminAuthorRecord,
+  toPublicAuthorSearchResult,
+} from "./services/authorProjectionService.ts";
+import {
+  securityReportAllowedMethods,
+  securityReportRoutes,
+} from "./routes/securityReportRoutes.ts";
 // Import the document view controller
 // TODO: Fix DocumentViewController implementation
 // import { DocumentViewController } from "./controllers/documentViewController.ts";
@@ -133,9 +144,21 @@ export const SERVER_START_TIME = Date.now();
 let serverReady = false;
 const isProduction = (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "production";
 const isRecoveryMode = (Deno.env.get("PEAS_RECOVERY_MODE") ?? "false").toLowerCase() === "true";
+const databaseReadiness = createReadinessProbe({
+  query: () => client.queryObject("SELECT 1"),
+  onError: (error) => console.error("Database readiness check failed:", getErrorMessage(error)),
+});
 
 async function verifyProductionReadiness() {
   if (!isProduction) return;
+  if (!Deno.env.get("PEAS_CSP_MODE")) {
+    throw new Error("PEAS_CSP_MODE must be explicitly configured in production");
+  }
+  readCspMode();
+  securityDisclosureConfig();
+  if (!trustedProxyRanges().length) {
+    throw new Error("TRUSTED_PROXY_RANGES must name the production reverse proxy");
+  }
   const ledger = await client.queryObject<{ present: string | null }>(
     "SELECT to_regclass('public.schema_migrations')::text AS present",
   );
@@ -192,6 +215,16 @@ async function verifyLegacyVisitCounterTables() {
 // -----------------------------
 // SECTION: Middleware (Optional)
 // -----------------------------
+// Apply browser security headers outside every other middleware so generated
+// errors and route-specific responses receive the same policy.
+app.use(securityHeadersMiddleware);
+
+// Receive browser-generated CSP reports before static routing. The receiver is
+// public by design, but it is body-bounded, per-client limited, and persists
+// only a redacted operational projection.
+app.use(securityReportRoutes);
+app.use(securityReportAllowedMethods);
+
 // Error handling middleware
 app.use(async (ctx, next) => {
   try {
@@ -449,7 +482,17 @@ router.all("/api/auth/callback/(.*)", (ctx) => {
 
 // Better Auth owns password sign-in, sessions, sign-out, and password reset
 // under /api/auth/*. Registered after the password-only guards.
-router.all("/api/auth/(.*)", webHandler((req) => auth.handler(req)));
+router.all(
+  "/api/auth/(.*)",
+  webHandler((req) => auth.handler(req), {
+    prepareHeaders: (headers, ctx) => {
+      // Better Auth operates on a web Request and cannot see Oak's direct peer.
+      // Replace any caller-supplied chain with the shared trusted-proxy result
+      // so session audits and rate limits use the same identity.
+      headers.set("x-forwarded-for", clientIpFromContext(ctx));
+    },
+  }),
+);
 
 // Compatibility aliases must be registered before the broad
 // /api/documents/:id route so "statistics" is not parsed as a document ID.
@@ -512,31 +555,8 @@ router.get("/api/documents/:id/children", async (ctx) => {
   }
 });
 
-// Add document-authors endpoint
-router.get("/api/document-authors/:documentId", async (ctx) => {
-  try {
-    const documentId = ctx.params.documentId;
-        
-    // Get document authors from the controller
-    const authors = await getDocumentAuthors(documentId);
-    
-    ctx.response.status = 200;
-    ctx.response.body = {
-      document_id: documentId,
-      authors_count: authors.length,
-      authors: authors
-    };
-  } catch (error) {
-    ctx.response.status = 500;
-    ctx.response.body = {
-      error: "Failed to fetch document authors",
-      details: error instanceof Error ? error.message : String(error)
-    };
-  }
-});
-
 // Add endpoint to get all authors
-router.get("/api/authors/all", async (ctx) => {
+router.get("/api/authors/all", isAuthenticated, requireCapability("documents:upload"), async (ctx) => {
   try {
     const params: unknown[] = [];
     const clauses: string[] = [];
@@ -556,7 +576,10 @@ router.get("/api/authors/all", async (ctx) => {
       clauses.push(`LOWER(BTRIM(a.affiliation)) = LOWER(BTRIM($${params.length}))`);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const authorsResult = await client.queryObject<Record<string, unknown>>(`
+    const authorsResult = await client.queryObject<AdminAuthorRecord & {
+      profile_complete: boolean;
+      works_count: string | number;
+    }>(`
       SELECT a.id, a.spud_id, a.full_name, a.department, a.affiliation, a.email,
              a.biography, a.profile_picture, a.created_source,
              (
@@ -611,17 +634,23 @@ router.get("/api/authors/search", async (ctx) => {
       return;
     }
     
-    // Import AuthorModel dynamically to avoid circular dependencies
-    const { AuthorModel } = await import("./models/authorModel.ts");
-    
-    // Search authors with the query
     const searchSQL = `
-      SELECT * FROM authors 
-      WHERE full_name ILIKE $1 
-      OR department ILIKE $1 
-      OR affiliation ILIKE $1
-      OR biography ILIKE $1
-      OR email ILIKE $1
+      SELECT a.id::text, a.full_name, a.department, a.affiliation,
+             a.profile_picture, COUNT(DISTINCT d.id) AS works_count
+      FROM authors a
+      JOIN document_authors da ON da.author_id = a.id
+      JOIN documents d
+        ON d.id = da.document_id
+       AND d.deleted_at IS NULL
+       AND d.review_status = 'approved'
+       AND d.is_public IS TRUE
+      LEFT JOIN compiled_documents parent
+        ON parent.id = d.compiled_parent_id
+       AND parent.deleted_at IS NULL
+      WHERE (a.full_name ILIKE $1 OR a.department ILIKE $1 OR a.affiliation ILIKE $1)
+        AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')
+      GROUP BY a.id, a.full_name, a.department, a.affiliation, a.profile_picture
+      ORDER BY a.full_name
       LIMIT 10
     `;
     
@@ -629,15 +658,9 @@ router.get("/api/authors/search", async (ctx) => {
     const searchResult = await client.queryObject(searchSQL, [searchParam]);
     
     // Format the search results
-    const authors = searchResult.rows.map((author: any) => ({
-      id: author.id,
-      full_name: author.full_name,
-      department: author.department || '',
-      affiliation: author.affiliation || '',
-      email: author.email || '',
-      bio: author.biography || '',
-      profile_picture: author.profile_picture || '',
-    }));
+    const authors = searchResult.rows.map((author: any) =>
+      toPublicAuthorSearchResult(author)
+    );
     
     ctx.response.status = 200;
     ctx.response.body = authors;
@@ -657,22 +680,38 @@ router.get("/api/authors/:authorId/works", async (ctx) => {
       ctx.response.status = 400;
     ctx.response.body = { error: "Author ID is required" };
       return;
-    }
+  }
     
     
   try {
-    // Get document IDs authored by this author
-    const docIds = await AuthorModel.getDocuments(authorId);
+    const publicDocuments = await client.queryObject<{
+      id: number;
+      title: string;
+      document_type: string | null;
+      publication_date: Date | string | null;
+      start_year: number | null;
+      end_year: number | null;
+    }>(`
+      SELECT d.id, d.title, d.document_type::text, d.publication_date,
+             d.start_year, d.end_year
+      FROM document_authors da
+      JOIN documents d
+        ON d.id = da.document_id
+       AND d.deleted_at IS NULL
+       AND d.review_status = 'approved'
+       AND d.is_public IS TRUE
+      LEFT JOIN compiled_documents parent
+        ON parent.id = d.compiled_parent_id
+       AND parent.deleted_at IS NULL
+      WHERE da.author_id = $1::uuid
+        AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')
+      ORDER BY d.publication_date DESC NULLS LAST, d.start_year DESC NULLS LAST, d.title
+    `, [authorId]);
 
-    // Get full document details for each ID
     const works = [];
-    for (const docId of docIds) {
-      const doc = await DocumentModel.getById(docId);
-      if (doc) {
+    for (const doc of publicDocuments.rows) {
                 
-        const classification = await getDocumentClassification(docId, false);
-        (doc as any).classification = classification;
-        (doc as any).topics = classification.topics;
+        const classification = await getDocumentClassification(doc.id, false);
 
         // Get category directly from document_type field
         let categoryName = 'N/A';
@@ -708,12 +747,8 @@ router.get("/api/authors/:authorId/works", async (ctx) => {
             : 'N/A',
           researchAgendas: classification.researchAgendas,
           keywords: classification.keywords,
-          // Add URL for document viewing if needed
           url: `/document/${doc.id}`,
-          // Include original document data if needed
-          document: doc
         });
-      }
     }
 
     // Helper function to format document dates based on type
@@ -1432,23 +1467,39 @@ router.get('/api/affiliations', async (ctx) => {
 // SMTP diagnostics. Readiness is checked by the reverse proxy and Compose.
 router.get("/health/live", (ctx) => {
     ctx.response.status = 200;
+    ctx.response.headers.set("Cache-Control", "no-store");
     ctx.response.body = { status: "ok" };
 });
 
-router.get("/health/ready", (ctx) => {
-    ctx.response.status = serverReady ? 200 : 503;
-    ctx.response.body = { status: serverReady ? "ready" : "starting" };
+router.get("/health/ready", async (ctx) => {
+    const ready = serverReady && await databaseReadiness.check();
+    ctx.response.status = ready ? 200 : 503;
+    ctx.response.headers.set("Cache-Control", "no-store");
+    ctx.response.body = { status: ready ? "ready" : "not_ready" };
 });
 
 router.get("/ping", (ctx) => {
-    const contactNotifications = getContactNotificationConfiguration();
+    ctx.response.headers.set("Deprecation", "true");
+    ctx.response.headers.set("Link", "</health/live>; rel=\"successor-version\"");
+    ctx.response.headers.set("Cache-Control", "no-store");
     ctx.response.status = 200;
-    ctx.response.body = {
-        status: "ok",
-        serverStartTime: SERVER_START_TIME,
-        ready: serverReady,
-        contactNotifications: contactNotifications.status,
-    };
+    ctx.response.body = { status: "ok" };
+});
+
+router.get("/.well-known/security.txt", (ctx) => {
+    try {
+      const config = securityDisclosureConfig();
+      ctx.response.status = 200;
+      ctx.response.type = "text/plain";
+      ctx.response.headers.set("Cache-Control", "public, max-age=3600");
+      ctx.response.body = securityTxtBody(config);
+    } catch (error) {
+      ctx.response.status = 503;
+      ctx.response.type = "text/plain";
+      ctx.response.headers.set("Cache-Control", "no-store");
+      ctx.response.body = "Security contact is temporarily unavailable.\n";
+      console.error("security.txt configuration error:", getErrorMessage(error));
+    }
 });
 
 // Keep retired request URLs non-operational for one compatibility window.

@@ -101,10 +101,16 @@ function Invoke-Compose([string[]]$Arguments, [switch]$AllowFailure) {
     return Invoke-Native docker $args -AllowFailure:$AllowFailure
 }
 function Validate-Config {
-    $required = 'PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','PEAS_RELEASE_ID','SMTP_HOST','SMTP_USERNAME','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY'
+    $required = 'PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','PEAS_RELEASE_ID','SMTP_HOST','SMTP_USERNAME','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','PEAS_CSP_MODE','TRUSTED_PROXY_RANGES','SECURITY_CONTACT_EMAIL','SECURITY_TXT_EXPIRES','PEAS_VERIFY_PUBLIC_DOCUMENT_ID'
     foreach ($key in $required) { Assert-True (-not [string]::IsNullOrWhiteSpace((Get-Config $key))) "Missing configuration: $key" }
     Assert-True ((Get-Config PUBLIC_APP_URL) -match '^https://') 'PUBLIC_APP_URL must use HTTPS'
     Assert-True ((Get-Config BETTER_AUTH_URL) -ceq (Get-Config PUBLIC_APP_URL)) 'BETTER_AUTH_URL must equal PUBLIC_APP_URL'
+    Assert-True ((Get-Config PEAS_CSP_MODE) -in 'report-only','enforce') 'PEAS_CSP_MODE must be report-only or enforce'
+    Assert-True ((Get-Config SECURITY_CONTACT_EMAIL) -match '^[^@\s]+@[^@\s]+$') 'SECURITY_CONTACT_EMAIL must be an email address'
+    $securityExpiry = [DateTimeOffset]::MinValue
+    Assert-True ([DateTimeOffset]::TryParse((Get-Config SECURITY_TXT_EXPIRES), [ref]$securityExpiry) -and $securityExpiry -gt [DateTimeOffset]::UtcNow -and $securityExpiry -le [DateTimeOffset]::UtcNow.AddDays(366)) 'SECURITY_TXT_EXPIRES must be a future timestamp no more than 366 days away'
+    $verifyDocumentId = 0
+    Assert-True ([int]::TryParse((Get-Config PEAS_VERIFY_PUBLIC_DOCUMENT_ID), [ref]$verifyDocumentId) -and $verifyDocumentId -gt 0) 'PEAS_VERIFY_PUBLIC_DOCUMENT_ID must be a positive integer'
     foreach ($key in 'PEAS_IMAGE','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE') { Assert-True (Test-ImageDigest (Get-Config $key)) "$key must be a complete image digest" }
     foreach ($name in 'db_admin_password','db_app_password','better_auth_secret','newsletter_token_secret','smtp_password','restic_password') { Assert-True (Test-Path (Join-Path $secretsDir $name)) "Missing secret: $name" }
 }
@@ -127,7 +133,13 @@ function Initialize-ResticEnvironment {
     if (Test-Path $access) { $env:AWS_ACCESS_KEY_ID = [IO.File]::ReadAllText($access) }
     if (Test-Path $secret) { $env:AWS_SECRET_ACCESS_KEY = [IO.File]::ReadAllText($secret) }
 }
-function Invoke-Verify { Load-Config; Invoke-WebRequest "$(Get-Config PUBLIC_APP_URL)/health/ready" -TimeoutSec 20 -UseBasicParsing | Out-Null; Invoke-WebRequest "$(Get-Config PUBLIC_APP_URL)/index.html" -TimeoutSec 20 -UseBasicParsing | Out-Null; Write-Info 'HTTPS smoke checks passed' }
+function Invoke-Verify {
+    Load-Config; Validate-Config
+    $verifier = Join-Path $repoRoot 'scripts\Test-PeasPublicEdge.ps1'
+    Assert-True (Test-Path -LiteralPath $verifier -PathType Leaf) "Missing public edge verifier: $verifier"
+    & $verifier -BaseUrl (Get-Config PUBLIC_APP_URL) -CspMode (Get-Config PEAS_CSP_MODE) -PublicDocumentId ([int](Get-Config PEAS_VERIFY_PUBLIC_DOCUMENT_ID)) -CertificateMinDays 14
+    Write-Info 'HTTPS, certificate, headers, authorization, public DTO, and PDF checks passed'
+}
 function Invoke-Backup {
     Load-Config; Validate-Config; Require-Command restic; Initialize-ResticEnvironment
     New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
@@ -223,8 +235,8 @@ function Install-Host {
     $current=Join-Path $root 'current'; New-Item -ItemType Directory -Force $current | Out-Null
     $exclude=@('.git','node_modules','storage','test-results'); Get-ChildItem -LiteralPath $sourceRoot -Force | Where-Object {$_.Name -notin $exclude} | Copy-Item -Destination $current -Recurse -Force
     $script:repoRoot=$current
-    @("PUBLIC_APP_URL=https://$Domain","BETTER_AUTH_URL=https://$Domain","ACME_EMAIL=$AcmeEmail","PEAS_IMAGE=$Image","PEAS_RELEASE_ID=initial","PEAS_SECRETS_DIR=$secretsDir","PEAS_REPO_ROOT=$current") | Set-Content $configFile -Encoding utf8NoBOM
-    Load-Config; Prompt-Config PEAS_POSTGRES_IMAGE 'Pinned PostgreSQL image digest'; Prompt-Config PEAS_CADDY_IMAGE 'Pinned Caddy image digest'; Prompt-Config PEAS_CLAMAV_IMAGE 'Pinned ClamAV image digest'; Prompt-Config PEAS_UTILITY_IMAGE 'Pinned Alpine utility image digest'; Configure-Email; Prompt-Config RESTIC_REPOSITORY 'Restic S3 repository URL'
+    @("PUBLIC_APP_URL=https://$Domain","BETTER_AUTH_URL=https://$Domain","ACME_EMAIL=$AcmeEmail","PEAS_IMAGE=$Image","PEAS_RELEASE_ID=initial","PEAS_SECRETS_DIR=$secretsDir","PEAS_REPO_ROOT=$current","PEAS_CSP_MODE=report-only","TRUSTED_PROXY_RANGES=172.30.0.0/24","SECURITY_CONTACT_EMAIL=$AcmeEmail","SECURITY_TXT_EXPIRES=$([DateTimeOffset]::UtcNow.AddDays(365).ToString('o'))") | Set-Content $configFile -Encoding utf8NoBOM
+    Load-Config; Prompt-Config PEAS_POSTGRES_IMAGE 'Pinned PostgreSQL image digest'; Prompt-Config PEAS_CADDY_IMAGE 'Pinned Caddy image digest'; Prompt-Config PEAS_CLAMAV_IMAGE 'Pinned ClamAV image digest'; Prompt-Config PEAS_UTILITY_IMAGE 'Pinned Alpine utility image digest'; Prompt-Config PEAS_VERIFY_PUBLIC_DOCUMENT_ID 'Stable approved public document ID with an available PDF'; Configure-Email; Prompt-Config RESTIC_REPOSITORY 'Restic S3 repository URL'
     Prompt-Secret restic_password 'Restic repository password'; Prompt-Secret s3_access_key_id 'S3 access key ID'; Prompt-Secret s3_secret_access_key 'S3 secret access key'
     foreach($name in 'db_admin_password','db_app_password','better_auth_secret','newsletter_token_secret'){if(-not(Test-Path(Join-Path $secretsDir $name))){Write-Secret $name (New-RandomSecret)}}
     Set-ConfigValue RESTIC_PASSWORD_FILE (Join-Path $secretsDir 'restic_password'); Set-ConfigValue PEAS_REPO_ROOT $current; Load-Config; Validate-Config
@@ -244,7 +256,7 @@ Enter-OperationLock
 try {
     switch($Command){
         install { Install-Host }
-        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','ACME_EMAIL','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
+        configure { Load-Config; $allowed='PUBLIC_APP_URL','BETTER_AUTH_URL','TRUSTED_ORIGINS','ACME_EMAIL','PEAS_IMAGE','PEAS_RELEASE_ID','PEAS_POSTGRES_IMAGE','PEAS_CADDY_IMAGE','PEAS_CLAMAV_IMAGE','PEAS_UTILITY_IMAGE','SMTP_HOST','SMTP_PORT','SMTP_USERNAME','SMTP_TLS','CONTACT_RECIPIENT_EMAIL','RESTIC_REPOSITORY','DOCUMENT_ANNOTATIONS_ENABLED','ABSTRACT_OCR_LANGUAGES','PEAS_CSP_MODE','TRUSTED_PROXY_RANGES','SECURITY_CONTACT_EMAIL','SECURITY_TXT_EXPIRES','PEAS_VERIFY_PUBLIC_DOCUMENT_ID'; foreach($item in $Set){$pair=$item -split '=',2; Assert-True ($pair.Count -eq 2 -and $pair[0] -in $allowed) "Unsupported setting: $item"; Set-ConfigValue $pair[0] $pair[1]}; Load-Config; Validate-Config }
         configure-email { Load-Config; Configure-Email; Load-Config; Validate-Config; Restart-AppIfRunning }
         deploy { if(-not $Image){throw '-Image is required'}; Invoke-Deploy $Image }
         rollback { Load-Config; if(-not $Image){$Image=Get-Config PEAS_IMAGE_PREVIOUS}; Invoke-Deploy $Image }

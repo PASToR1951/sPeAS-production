@@ -132,8 +132,19 @@ if (-not (Test-Path -LiteralPath $envFile)) { Write-Log "ERROR: Environment file
 $env:PATH = "$pgBin;$(Split-Path -Parent $deno);$env:PATH"
 $env:PEAS_APP_ROOT = $AppRoot
 $env:PEAS_STATE_ROOT = $stateRoot
-$env:HOST = '0.0.0.0'
-if (-not $env:PORT) { $env:PORT = '80' }
+$nativeBindHost = if ($env:PEAS_BIND_HOST) { $env:PEAS_BIND_HOST.Trim() } elseif ($env:HOST) { $env:HOST.Trim() } else { '' }
+if ([string]::IsNullOrWhiteSpace($nativeBindHost) -or $nativeBindHost -eq '0.0.0.0' -or $nativeBindHost -eq '::') {
+    Write-Log 'ERROR: PEAS_BIND_HOST must be an explicit loopback or private application address; wildcard native binds are not allowed.'
+    exit 1
+}
+$parsedBindAddress = $null
+if (-not [Net.IPAddress]::TryParse($nativeBindHost, [ref]$parsedBindAddress)) {
+    Write-Log "ERROR: PEAS_BIND_HOST is not a valid IP address: $nativeBindHost"
+    exit 1
+}
+$env:HOST = $nativeBindHost
+if (-not $env:PORT) { $env:PORT = '8000' }
+$healthProbeHost = if ($parsedBindAddress.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetworkV6) { "[$nativeBindHost]" } else { $nativeBindHost }
 
 function Ensure-PeasUiAssets {
     $requiredAssets = @(
@@ -257,7 +268,7 @@ function Write-DiagnosticTail([string]$Label, [string]$Path, [int]$Count = 80) {
 }
 
 function Wait-PeasReady([System.Diagnostics.Process]$WebProcess, [int]$TimeoutSeconds = 90) {
-    $healthUri = "http://127.0.0.1:$($env:PORT)/health/ready"
+    $healthUri = "http://${healthProbeHost}:$($env:PORT)/health/ready"
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
         if ($WebProcess.HasExited) { throw "Web server exited with code $($WebProcess.ExitCode) before readiness." }
@@ -280,7 +291,7 @@ function Wait-PeasStable(
     [System.Diagnostics.Process]$AbstractProcess,
     [int]$StabilitySeconds = 120
 ) {
-    $healthUri = "http://127.0.0.1:$($env:PORT)/health/ready"
+    $healthUri = "http://${healthProbeHost}:$($env:PORT)/health/ready"
     $deadline = (Get-Date).AddSeconds($StabilitySeconds)
     Write-Log "Beginning sustained readiness check for $StabilitySeconds seconds."
     do {

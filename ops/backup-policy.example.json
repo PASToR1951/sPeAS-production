@@ -10,6 +10,18 @@
   "writePauseLimitSeconds": 120,
   "maintenanceExpiryMinutes": 10,
   "minimumFreeBytes": 10737418240,
+  "repositoryMaximumAgeHours": 48,
+  "monitoring": {
+    "enabled": true,
+    "baseUrl": "https://peas.spud.edu.ph",
+    "publicDocumentId": 2,
+    "cspMode": "report-only",
+    "operationsEmail": "operations@example.edu",
+    "smtpHost": "smtp.example.edu",
+    "smtpPort": 587,
+    "smtpUsername": "operations@example.edu",
+    "smtpPasswordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\smtp_password"
+  },
   "repositories": [
     {
       "id": "usb-a",
@@ -18,6 +30,7 @@
       "fileSystem": "NTFS",
       "repositoryPath": "PeAS-Restic",
       "passwordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\restic-usb-a-password",
+      "maximumAgeHours": 48,
       "enabled": true
     },
     {
@@ -27,6 +40,7 @@
       "fileSystem": "NTFS",
       "repositoryPath": "PeAS-Restic",
       "passwordFile": "C:\\ProgramData\\PeAS\\config\\secrets\\restic-usb-b-password",
+      "maximumAgeHours": 168,
       "enabled": true
     }
   ],

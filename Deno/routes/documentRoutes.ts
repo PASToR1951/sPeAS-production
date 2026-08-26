@@ -18,6 +18,8 @@ import { getDocumentClassification } from "../services/documentClassificationSer
 import { abstractTargetResolved, currentTargetStatus } from "../services/abstractWorkflowService.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
 import { applyPublicPdfHeaders, isStoredPdfAvailable, publicPdfFileName, readStoredPdf } from "../services/publicPdfService.ts";
+import { toPublicAuthorReference } from "../services/authorProjectionService.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 const DOCUMENT_FILE_FIELD_NAMES = new Set([
     "file_path",
@@ -439,25 +441,16 @@ const getDocumentAuthorsById = async (ctx: RouterContext<any, any, any>) => {
         }
 
         // Query to fetch authors for this document
-        const authorsResult = await client.queryObject(
-            `SELECT a.*
+        const authorsResult = await client.queryObject<{ id: string; full_name: string }>(
+            `SELECT a.id, a.full_name
              FROM authors a
              JOIN document_authors da ON a.id = da.author_id
              WHERE da.document_id = $1
              ORDER BY da.author_order`,
             [numericId]
         );
-        
-        const authors = authorsResult.rows.map((row: any) => ({
-            id: row.id,
-            full_name: row.full_name,
-            affiliation: row.affiliation,
-            department: row.department,
-            biography: row.biography,
-            profile_picture: row.profile_picture,
-            email: row.email,
-            orcid_id: row.orcid_id
-        }));
+
+        const authors = authorsResult.rows.map(toPublicAuthorReference);
         
         ctx.response.status = 200;
         ctx.response.body = { 
@@ -969,7 +962,7 @@ const downloadDocument = async (ctx: RouterContext<any, any, any>) => {
                 username: sessionData.id,
                 action: isDownload ? (success ? 'Document download' : 'Failed document download') : 'Document inline view',
                 details: { document_id: id, timestamp: new Date().toISOString(), file_path: filePath },
-                ip_address: ctx.request.ip || 'Unknown',
+                ip_address: clientIpFromContext(ctx),
                 status: success ? 'success' : 'failed',
                 related_id: id,
             });

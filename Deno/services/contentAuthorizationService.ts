@@ -5,6 +5,26 @@ export interface ContentActor {
   role: string;
 }
 
+export async function countPublicAuthors(): Promise<number> {
+  const result = await client.queryObject<{ count: string | number }>(`
+    SELECT COUNT(DISTINCT da.author_id) AS count
+    FROM document_authors da
+    JOIN documents d
+      ON d.id = da.document_id
+     AND d.deleted_at IS NULL
+    LEFT JOIN compiled_documents parent
+      ON parent.id = d.compiled_parent_id
+     AND parent.deleted_at IS NULL
+    WHERE d.review_status = 'approved'
+      AND d.is_public = TRUE
+      AND (
+        d.compiled_parent_id IS NULL
+        OR parent.review_status = 'approved'
+      )
+  `);
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 export async function canModifyPendingUpload(
   actor: ContentActor | null | undefined,
   documentId: unknown,

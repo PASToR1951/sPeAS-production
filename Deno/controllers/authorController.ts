@@ -5,6 +5,10 @@ import { authorNameKey, AuthorNameValidationError, normalizeAuthorName } from ".
 import { syncAuthorProfileNotification } from "../services/authorNotificationService.ts";
 import { getSessionFromHeaders } from "../services/sessionService.ts";
 import { recordAuthorActivity } from "../services/operationalReportingService.ts";
+import {
+  type AdminAuthorRecord,
+  toAdminAuthorRecord,
+} from "../services/authorProjectionService.ts";
 
 interface Author {
   id: string;
@@ -267,8 +271,10 @@ export const searchAuthors = async (ctx: Context) => {
     }
     
     // Directly execute the database query
-    const result = await client.queryObject(
-      `SELECT * FROM authors 
+    const result = await client.queryObject<AdminAuthorRecord>(
+      `SELECT id::text, spud_id, full_name, affiliation, department, email,
+              orcid_id, biography, profile_picture, created_source
+       FROM authors
        WHERE full_name ILIKE $1
        ORDER BY full_name ASC 
        LIMIT 10`,
@@ -278,7 +284,7 @@ export const searchAuthors = async (ctx: Context) => {
         
     ctx.response.status = 200;
     ctx.response.type = "application/json";
-    ctx.response.body = result.rows;
+    ctx.response.body = result.rows.map(toAdminAuthorRecord);
   } catch (error) {
     ctx.response.status = 500;
     ctx.response.type = "application/json";
@@ -325,9 +331,22 @@ export const getAuthorPreview = async (ctx: Context) => {
       affiliation: string | null;
       biography: string | null;
     }>(
-      `SELECT id::text, full_name, profile_picture, department, affiliation, biography
-       FROM authors
-       WHERE id = $1::uuid
+      `SELECT a.id::text, a.full_name, a.profile_picture, a.department, a.affiliation, a.biography
+       FROM authors a
+       WHERE a.id = $1::uuid
+         AND EXISTS (
+           SELECT 1
+           FROM document_authors visible_da
+           JOIN documents visible_d ON visible_d.id = visible_da.document_id
+           LEFT JOIN compiled_documents visible_parent
+             ON visible_parent.id = visible_d.compiled_parent_id
+            AND visible_parent.deleted_at IS NULL
+           WHERE visible_da.author_id = a.id
+             AND visible_d.deleted_at IS NULL
+             AND visible_d.review_status = 'approved'
+             AND visible_d.is_public IS TRUE
+             AND (visible_d.compiled_parent_id IS NULL OR visible_parent.review_status = 'approved')
+         )
        LIMIT 1`,
       [authorId],
     );
@@ -343,10 +362,14 @@ export const getAuthorPreview = async (ctx: Context) => {
       `SELECT d.document_type::text, COUNT(DISTINCT d.id) AS works_count
        FROM document_authors da
        JOIN documents d ON d.id = da.document_id
+       LEFT JOIN compiled_documents parent
+         ON parent.id = d.compiled_parent_id
+        AND parent.deleted_at IS NULL
        WHERE da.author_id = $1::uuid
          AND d.deleted_at IS NULL
          AND d.review_status = 'approved'
          AND d.is_public IS TRUE
+         AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')
        GROUP BY d.document_type
        ORDER BY COUNT(DISTINCT d.id) DESC, d.document_type ASC`,
       [authorId],
@@ -363,6 +386,9 @@ export const getAuthorPreview = async (ctx: Context) => {
            COUNT(DISTINCT h.document_id) AS viewed_works_count
          FROM document_authors da
          JOIN documents d ON d.id = da.document_id
+         LEFT JOIN compiled_documents parent
+           ON parent.id = d.compiled_parent_id
+          AND parent.deleted_at IS NULL
          LEFT JOIN user_saved_documents sd
            ON sd.document_id = d.id AND sd.user_id = $2
          LEFT JOIN user_document_history h
@@ -370,7 +396,8 @@ export const getAuthorPreview = async (ctx: Context) => {
          WHERE da.author_id = $1::uuid
            AND d.deleted_at IS NULL
            AND d.review_status = 'approved'
-           AND d.is_public IS TRUE`,
+           AND d.is_public IS TRUE
+           AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')`,
         [authorId, session.id],
       );
       const activity = activityResult.rows[0];
@@ -428,9 +455,22 @@ export const getAuthorProfile = async (ctx: Context) => {
         affiliation: string | null;
         biography: string | null;
       }>(
-        `SELECT id::text, full_name, profile_picture, department, affiliation, biography
-         FROM authors
-         WHERE id = $1::uuid
+        `SELECT a.id::text, a.full_name, a.profile_picture, a.department, a.affiliation, a.biography
+         FROM authors a
+         WHERE a.id = $1::uuid
+           AND EXISTS (
+             SELECT 1
+             FROM document_authors visible_da
+             JOIN documents visible_d ON visible_d.id = visible_da.document_id
+             LEFT JOIN compiled_documents visible_parent
+               ON visible_parent.id = visible_d.compiled_parent_id
+              AND visible_parent.deleted_at IS NULL
+             WHERE visible_da.author_id = a.id
+               AND visible_d.deleted_at IS NULL
+               AND visible_d.review_status = 'approved'
+               AND visible_d.is_public IS TRUE
+               AND (visible_d.compiled_parent_id IS NULL OR visible_parent.review_status = 'approved')
+           )
          LIMIT 1`,
         [authorId],
       ),
@@ -448,10 +488,14 @@ export const getAuthorProfile = async (ctx: Context) => {
                 d.publication_date, d.start_year, d.end_year
          FROM document_authors da
          JOIN documents d ON d.id = da.document_id
+         LEFT JOIN compiled_documents parent
+           ON parent.id = d.compiled_parent_id
+          AND parent.deleted_at IS NULL
          WHERE da.author_id = $1::uuid
            AND d.deleted_at IS NULL
            AND d.review_status = 'approved'
            AND d.is_public IS TRUE
+           AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')
          ORDER BY d.publication_date DESC NULLS LAST, d.start_year DESC NULLS LAST, d.title ASC`,
         [authorId],
       ),
@@ -459,11 +503,15 @@ export const getAuthorProfile = async (ctx: Context) => {
         `SELECT COUNT(DISTINCT co.author_id) AS co_authors_count
          FROM document_authors da
          JOIN documents d ON d.id = da.document_id
+         LEFT JOIN compiled_documents parent
+           ON parent.id = d.compiled_parent_id
+          AND parent.deleted_at IS NULL
          JOIN document_authors co ON co.document_id = d.id AND co.author_id <> $1::uuid
          WHERE da.author_id = $1::uuid
            AND d.deleted_at IS NULL
            AND d.review_status = 'approved'
-           AND d.is_public IS TRUE`,
+           AND d.is_public IS TRUE
+           AND (d.compiled_parent_id IS NULL OR parent.review_status = 'approved')`,
         [authorId],
       ),
     ]);

@@ -6,6 +6,74 @@ export interface ApiAuthor {
   name?: string;
 }
 
+/** Exact public document-attribution contract. */
+export interface PublicAuthorReference {
+  id: string;
+  full_name: string;
+}
+
+/** Safe public author-search result; never add directory-only fields here. */
+export interface PublicAuthorSearchResult extends PublicAuthorReference {
+  department: string | null;
+  affiliation: string | null;
+  profile_picture: string | null;
+  worksCount: number;
+}
+
+/** Exact administrative author-directory wire record from /api/authors/all. */
+export interface AdminAuthorRecord extends PublicAuthorReference {
+  spud_id: string;
+  department: string;
+  affiliation: string;
+  email: string;
+  bio: string;
+  profilePicUrl: string;
+  createdSource: string;
+  profileComplete: boolean;
+  worksCount: number;
+}
+
+export interface AdminDocumentAuthorRecord extends PublicAuthorReference {
+  spud_id: string | null;
+  affiliation: string | null;
+  department: string | null;
+  email: string | null;
+  orcid_id: string | null;
+  biography: string | null;
+  profile_picture: string | null;
+  created_source: string | null;
+  author_order: number;
+}
+
+export interface AdminAuthorsResponse {
+  count: number;
+  authors: AdminAuthorRecord[];
+}
+
+export interface AdminDocumentAuthorsResponse {
+  document_id: string;
+  authors_count: number;
+  authors: AdminDocumentAuthorRecord[];
+}
+
+export interface PublicAuthorWork {
+  id: number;
+  title: string;
+  year: string;
+  category: string;
+  researchAgenda: string;
+  researchAgendas: Array<Record<string, unknown>>;
+  keywords: Array<Record<string, unknown>>;
+  url: string;
+}
+
+export interface PublicAuthorWorksResponse {
+  authorId: string;
+  works_count: number;
+  worksCount: number;
+  works: PublicAuthorWork[];
+}
+
 export interface ApiTopic {
   id?: number | string;
   name?: string;

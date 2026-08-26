@@ -10,6 +10,7 @@ import {
   unsubscribeNewsletter, updateNewsletterPreferences,
 } from "../services/newsletterService.ts";
 import { NEWSLETTER_CONSENT_VERSION, validateNewsletterInput } from "../shared/newsletter.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 const router = new Router();
 const manage = requireCapability("newsletter:manage");
@@ -43,7 +44,7 @@ router.post("/api/newsletter/subscriptions", async (ctx) => {
     const body = await json(ctx);
     if (String(body.website || "").trim()) { ctx.response.status = 202; ctx.response.body = { status: "confirmation_required" }; return; }
     const parsed = validateNewsletterInput(body);
-    const ip = ctx.request.ip || "unknown";
+    const ip = clientIpFromContext(ctx);
     if (throttled(`ip:${ip}`, 10, 60 * 60_000) || throttled(`email:${parsed.email}`, 4, 86_400_000)) {
       ctx.response.status = 429; ctx.response.headers.set("Retry-After", "900"); ctx.response.body = { error: "Please try again later." }; return;
     }

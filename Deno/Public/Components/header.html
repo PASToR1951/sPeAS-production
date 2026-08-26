@@ -1123,7 +1123,6 @@
             // --- API Endpoints ---
             const API = {
                 documents: '/api/documents',
-                authors: '/api/authors/all',
                 categories: '/api/categories',
                 researchAgenda: '/api/research-agenda'
             };
@@ -1250,22 +1249,6 @@
                 }
             }
             
-            // Fetch authors
-            async function fetchAuthors() {
-                try {
-                    const response = await fetch(API.authors);
-                    if (!response.ok) throw new Error(`Failed to fetch authors: ${response.status}`);
-                    const data = await response.json();
-                    
-                    // Store authors in a global variable for search
-                    window.searchAuthors = data.authors || [];
-                    
-                    return data.authors || [];
-                } catch (error) {
-                    return [];
-                }
-            }
-            
             // Fetch research agenda items
             async function fetchResearchAgendaItems() {
                 try {
@@ -1312,11 +1295,10 @@
             // Initialize filter options
             async function initializeFilters() {
                 try {
-                    // Fetch initial data to populate filters
-                    const [categories, authors] = await Promise.all([
-                        fetchCategories(),
-                        fetchAuthors()
-                    ]);
+                    // Public author discovery is query-driven. Do not preload
+                    // a complete author filter directory.
+                    const categories = await fetchCategories();
+                    const authors = [];
                     
                     // Populate category filter
                     if (categoryFilter && categories.length > 0) {

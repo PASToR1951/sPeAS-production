@@ -1,6 +1,7 @@
 import { Context } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { SystemLogsModel, SystemLog } from "../models/systemLogsModel.ts";
 import { getErrorMessage } from "../utils/errorHandler.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 export class SystemLogsController {
   /**
@@ -128,7 +129,7 @@ export class SystemLogsController {
         username: logData.username,
         action: logData.action,
         details: logData.details,
-        ip_address: ctx.request.ip,
+        ip_address: clientIpFromContext(ctx),
         status: logData.status || "success",
         related_id: logData.related_id
       });
@@ -158,4 +159,4 @@ export class SystemLogsController {
       return false;
     }
   }
-} 
+}

@@ -7,6 +7,9 @@ import type { Context } from "../deps.ts";
  */
 export function webHandler(
   handler: (req: Request) => Promise<Response> | Response,
+  options: {
+    prepareHeaders?: (headers: Headers, ctx: Context) => void;
+  } = {},
 ) {
   return async (ctx: Context) => {
     const bodyBytes = ctx.request.hasBody
@@ -18,9 +21,13 @@ export function webHandler(
       bodyCopy.set(bodyBytes);
       body = bodyCopy.buffer;
     }
+    // Oak's incoming request headers can be immutable. Always copy them before
+    // allowing a route adapter to add trusted, server-derived values.
+    const headers = new Headers(ctx.request.headers);
+    options.prepareHeaders?.(headers, ctx);
     const request = new Request(ctx.request.url.toString(), {
       method: ctx.request.method,
-      headers: ctx.request.headers,
+      headers,
       body,
     });
     const response = await handler(request);
