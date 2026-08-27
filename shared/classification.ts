@@ -1,5 +1,5 @@
 export const CLASSIFICATION_LIMITS = {
-  agendasMin: 1,
+  agendasMin: 0,
   agendasMax: 3,
   topicsMin: 1,
   topicsMax: 5,

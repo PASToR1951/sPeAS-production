@@ -14,7 +14,7 @@ import { fetchAvailablePublicationYears, fetchCategories, fetchDocuments } from 
 import { getErrorMessage } from "../../lib/api/http";
 import type { CategoryCount, DocumentsPageResult } from "../../lib/api/types";
 import { CATEGORY_ORDER, getCategoryMeta, normalizeCategory, type DocumentCategory } from "../../lib/constants/categories";
-import { fetchPublicResearchAgendas, fetchPublicStats, fetchPublicTopic, type PublicResearchAgenda } from "../../lib/api/public";
+import { fetchPublicStats, fetchPublicTopic } from "../../lib/api/public";
 import { consumePendingSearch, markPendingSearch, recordSearchEvent } from "../../lib/api/search";
 
 const PAGE_SIZE = 8;
@@ -25,7 +25,6 @@ export function PublicSearchPage() {
   const [query, setQuery] = useState(initial.query);
   const [submittedQuery, setSubmittedQuery] = useState(initial.query);
   const [queryMode, setQueryMode] = useState<"search" | "keyword">(initial.mode);
-  const [agendaFilter, setAgendaFilter] = useState(initial.agenda);
   const [topicFilter, setTopicFilter] = useState(initial.topic);
   const [yearFilter, setYearFilter] = useState(initial.year);
   const [category, setCategory] = useState<DocumentCategory>(initial.category);
@@ -33,7 +32,6 @@ export function PublicSearchPage() {
   const [page, setPage] = useState(initial.page);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
   const [authorCount, setAuthorCount] = useState<number | null>(null);
-  const [researchAgendas, setResearchAgendas] = useState<PublicResearchAgenda[]>([]);
   const [publicationYears, setPublicationYears] = useState<string[]>([]);
   const [topicName, setTopicName] = useState("");
   const [result, setResult] = useState<DocumentsPageResult | null>(null);
@@ -43,7 +41,7 @@ export function PublicSearchPage() {
   const loadResults = useCallback(() => {
     setLoading(true);
     setError("");
-    updateSearchUrl({ query: submittedQuery, mode: queryMode, agenda: agendaFilter, topic: topicFilter, year: yearFilter, category, sort, page });
+    updateSearchUrl({ query: submittedQuery, mode: queryMode, topic: topicFilter, year: yearFilter, category, sort, page });
 
     fetchDocuments({
       page,
@@ -52,7 +50,6 @@ export function PublicSearchPage() {
       category,
       search: queryMode === "search" ? submittedQuery : undefined,
       keyword: queryMode === "keyword" ? submittedQuery : undefined,
-      agenda: agendaFilter || undefined,
       topic: topicFilter || undefined,
       year: yearFilter || undefined,
     })
@@ -62,27 +59,24 @@ export function PublicSearchPage() {
         setResult(null);
       })
       .finally(() => setLoading(false));
-  }, [agendaFilter, category, page, queryMode, sort, submittedQuery, topicFilter, yearFilter]);
+  }, [category, page, queryMode, sort, submittedQuery, topicFilter, yearFilter]);
 
   useEffect(() => {
     let mounted = true;
     Promise.all([
       fetchCategories().catch(() => []),
-      fetchPublicResearchAgendas(true).catch(() => []),
       fetchAvailablePublicationYears().catch(() => []),
       fetchPublicStats().catch(() => null),
-    ]).then(([categoryPayload, agendaPayload, yearPayload, statsPayload]) => {
+    ]).then(([categoryPayload, yearPayload, statsPayload]) => {
       if (mounted) {
         setCategories(categoryPayload);
         setAuthorCount(statsPayload?.totalAuthors ?? null);
-        setResearchAgendas(agendaPayload);
         setPublicationYears(yearPayload);
       }
     }).catch(() => {
       if (mounted) {
         setCategories([]);
         setAuthorCount(null);
-        setResearchAgendas([]);
         setPublicationYears([]);
       }
     });
@@ -139,13 +133,10 @@ export function PublicSearchPage() {
 
   const totalCount = result?.totalCount ?? 0;
   const visibleCount = result?.documents.length ?? 0;
-  const hasFilters = Boolean(submittedQuery || agendaFilter || topicFilter || yearFilter || category !== "All" || sort !== "latest");
-  const agendaName = researchAgendas.find((agenda) => String(agenda.id) === agendaFilter)?.name;
+  const hasFilters = Boolean(submittedQuery || topicFilter || yearFilter || category !== "All" || sort !== "latest");
   const resultLabel = submittedQuery
     ? queryMode === "keyword" ? `Keyword “${submittedQuery}”` : `Results for “${submittedQuery}”`
-    : agendaFilter
-      ? agendaName ? `Research agenda “${agendaName}”` : "Research agenda"
-      : topicFilter
+    : topicFilter
         ? topicName ? `Topic “${topicName}”` : "Topic"
       : yearFilter
         ? `Research from ${yearFilter}`
@@ -156,7 +147,6 @@ export function PublicSearchPage() {
     setQuery("");
     setSubmittedQuery("");
     setQueryMode("search");
-    setAgendaFilter("");
     setTopicFilter("");
     setYearFilter("");
     setCategory("All");
@@ -219,20 +209,6 @@ export function PublicSearchPage() {
                 ariaLabel="Search by title, author, keyword, or topic"
                 placeholder="Try a title, author, keyword, or topic"
               />
-            </label>
-            <label>
-              <span>Research agenda</span>
-              <select
-                aria-label="Filter by research agenda"
-                value={agendaFilter}
-                onChange={(event) => {
-                  setPage(1);
-                  setAgendaFilter(event.currentTarget.value);
-                }}
-              >
-                <option value="">All research agendas</option>
-                {researchAgendas.map((agenda) => <option value={String(agenda.id)} key={agenda.id}>{agenda.name}{agenda.historical ? " · Historical" : ""}</option>)}
-              </select>
             </label>
             <label>
               <span>Publication year</span>
@@ -383,20 +359,18 @@ function readSearchParams() {
   const keyword = params.get("keyword") ?? "";
   const query = (params.get("q") || keyword).trim();
   const mode: "search" | "keyword" = keyword && !params.get("q") ? "keyword" : "search";
-  const agenda = params.get("agenda") ?? "";
   const topic = params.get("topic") ?? "";
   const year = /^\d{4}$/u.test(params.get("year") ?? "") ? params.get("year") ?? "" : "";
   const category = normalizeCategory(params.get("category"));
   const sort: "latest" | "earliest" = params.get("sort") === "earliest" ? "earliest" : "latest";
   const page = Math.max(1, Number(params.get("page") || 1) || 1);
 
-  return { query, category, sort, page, mode, agenda, topic, year };
+  return { query, category, sort, page, mode, topic, year };
 }
 
 function updateSearchUrl({
   query,
   mode,
-  agenda,
   topic,
   year,
   category,
@@ -405,7 +379,6 @@ function updateSearchUrl({
 }: {
   query: string;
   mode: "search" | "keyword";
-  agenda: string;
   topic: string;
   year: string;
   category: DocumentCategory;
@@ -414,7 +387,6 @@ function updateSearchUrl({
 }) {
   const params = new URLSearchParams();
   if (query.trim()) params.set(mode === "keyword" ? "keyword" : "q", query.trim());
-  if (agenda.trim()) params.set("agenda", agenda.trim());
   if (topic.trim()) params.set("topic", topic.trim());
   if (/^\d{4}$/u.test(year.trim())) params.set("year", year.trim());
   if (category !== "All") params.set("category", category);

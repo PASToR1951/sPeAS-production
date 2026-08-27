@@ -190,8 +190,7 @@ router.get("/api/admin/classification/summary", isAuthenticated, isAdmin, async 
       SELECT
         (SELECT COUNT(*) FROM documents d
          WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE
-           AND (NOT EXISTS (SELECT 1 FROM document_research_agenda dra JOIN research_agenda ra ON ra.id = dra.research_agenda_id WHERE dra.document_id = d.id AND ra.is_official = TRUE)
-             OR NOT EXISTS (SELECT 1 FROM document_topics dt JOIN topics t ON t.id = dt.topic_id WHERE dt.document_id = d.id AND t.status = 'approved'))) AS missing_documents,
+           AND NOT EXISTS (SELECT 1 FROM document_topics dt JOIN topics t ON t.id = dt.topic_id WHERE dt.document_id = d.id AND t.status = 'approved')) AS missing_documents,
         (SELECT COUNT(*) FROM classification_migration_review WHERE status = 'pending') AS pending_migration
     `);
     const row = result.rows[0];

@@ -1401,6 +1401,20 @@ body.peas-editor-open { overflow: hidden; }
 .peas-upload-page .peas-file-dropzone:focus-within { border-color: var(--brand-green); box-shadow: 0 0 0 3px rgba(0, 119, 82, .14); }
 .peas-upload-page .peas-file-dropzone button { background: transparent; }
 .peas-upload-inline-hint { color: #718078; font-size: .78rem; line-height: 1.45; margin: 0; }
+.peas-abstract-method { border: 0; display: grid; gap: 8px; margin: 0; min-width: 0; padding: 0; }
+.peas-abstract-method > legend { color: var(--foreground); font-size: .82rem; font-weight: 800; padding: 0; }
+.peas-abstract-method > p { color: #718078; font-size: .75rem; line-height: 1.45; margin: 0; }
+.peas-abstract-method__options { background: #f1f5f2; border-radius: 11px; display: grid; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; }
+.peas-abstract-method__options label { align-items: flex-start; border: 1px solid transparent; border-radius: 8px; color: #53645b; cursor: pointer; display: flex; gap: 10px; min-width: 0; padding: 11px 12px; }
+.peas-abstract-method__options label:hover { background: rgba(255, 255, 255, .65); }
+.peas-abstract-method__options label.is-selected { background: #fff; border-color: #b9d8c9; box-shadow: 0 2px 7px rgba(15, 70, 48, .07); color: var(--brand-green); }
+.peas-abstract-method__options input { accent-color: var(--brand-green); flex: 0 0 auto; height: 17px; margin: 1px 0 0; width: 17px; }
+.peas-abstract-method__options label > span { display: grid; gap: 3px; min-width: 0; }
+.peas-abstract-method__options strong { color: inherit; font-size: .8rem; }
+.peas-abstract-method__options small { color: #718078; font-size: .7rem; font-weight: 600; line-height: 1.35; }
+.peas-abstract-runtime-note { background: #f2f7f4; border: 1px solid #d9e5df; border-radius: 10px; display: grid; gap: 4px; padding: 12px 13px; }
+.peas-abstract-runtime-note strong { color: #245b45; font-size: .8rem; }
+.peas-abstract-runtime-note span { color: #62736a; font-size: .75rem; line-height: 1.45; }
 .peas-study-card__heading { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
 .peas-study-card__heading h3 { color: var(--foreground); font-size: .95rem; margin: 0 0 4px; }
 .peas-study-card__heading p { color: #718078; font-size: .78rem; line-height: 1.35; margin: 0; overflow-wrap: anywhere; }
@@ -1498,6 +1512,7 @@ body.peas-editor-open { overflow: hidden; }
 
 @media (max-width: 720px) {
   .peas-upload-page .peas-upload-mode-tabs { grid-template-columns: 1fr; }
+  .peas-abstract-method__options { grid-template-columns: 1fr; }
   .peas-upload-progress { overflow-x: auto; }
   .peas-upload-progress ol { min-width: 620px; }
   .peas-upload-progress strong { font-size: .7rem; }

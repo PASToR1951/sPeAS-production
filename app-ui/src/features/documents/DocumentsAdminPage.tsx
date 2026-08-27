@@ -7,7 +7,7 @@ import { DocumentAuthorPicker } from "../../components/forms/DocumentAuthorPicke
 import { DocumentClassificationEditor, type DocumentClassificationEditorValue } from "../../components/forms/DocumentClassificationEditor";
 import { archiveDocument, fetchAbstractReviews, fetchCategories, fetchChildDocuments, fetchDocuments, retryAbstractReview, reviewDocument, updateAbstractReview, updateDocumentMetadata, type AbstractReviewItem } from "../../lib/api/documents";
 import { fetchAuthors } from "../../lib/api/authors";
-import { fetchDocumentClassification, fetchResearchAgendas, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
+import { fetchDocumentClassification, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
 import { updateCompiledDocument as updateCompiledDocumentRecord } from "../../lib/api/compiled-documents";
 import { CompiledWorkPreviewDialog } from "./CompiledWorkPreviewDialog";
 import { getErrorMessage } from "../../lib/api/http";
@@ -236,8 +236,6 @@ export function DocumentsAdminPage() {
         await linkDocumentAuthors(editTarget.id, authors);
         if (classification) {
           await updateDocumentClassification(editTarget.id, {
-            researchAgendaIds: classification.researchAgendaIds,
-            primaryResearchAgendaId: classification.primaryResearchAgendaId,
             topicIds: classification.topicIds,
             keywords: classification.keywords,
           });
@@ -592,8 +590,7 @@ function EditDocumentDialog({
   const [volume, setVolume] = useState("");
   const [issue, setIssue] = useState("");
   const [authors, setAuthors] = useState<DocumentAuthorSelection[]>([]);
-  const [classification, setClassification] = useState<DocumentClassificationEditorValue>({ researchAgendaIds: [], primaryResearchAgendaId: null, topicIds: [], topicNames: [], keywords: [] });
-  const [researchAgendas, setResearchAgendas] = useState<Array<{ id: number; name: string }>>([]);
+  const [classification, setClassification] = useState<DocumentClassificationEditorValue>({ topicIds: [], topicNames: [], keywords: [] });
   const [classificationLoading, setClassificationLoading] = useState(false);
   const [authorDirectory, setAuthorDirectory] = useState<AuthorRecord[]>([]);
   const [authorDirectoryLoading, setAuthorDirectoryLoading] = useState(false);
@@ -610,8 +607,6 @@ function EditDocumentDialog({
 
     const documentClassification = document.classification;
     const nextClassification: DocumentClassificationEditorValue = {
-      researchAgendaIds: documentClassification?.researchAgendas.map((item) => item.id).filter((id) => id > 0) ?? [],
-      primaryResearchAgendaId: documentClassification?.researchAgendas.find((item) => item.primary)?.id ?? documentClassification?.researchAgendas[0]?.id ?? null,
       topicIds: documentClassification?.topics.map((item) => item.id).filter((id) => id > 0) ?? [],
       topicNames: documentClassification?.topics.map((item) => item.name).filter(Boolean) ?? [],
       keywords: documentClassification?.keywords.map((item) => item.name).filter(Boolean) ?? [],
@@ -651,20 +646,16 @@ function EditDocumentDialog({
     let active = true;
     if (!document.isCompiled) {
       setClassificationLoading(true);
-      void Promise.all([fetchDocumentClassification(document.id), fetchResearchAgendas()])
-        .then(([detail, agendas]) => {
+      void fetchDocumentClassification(document.id)
+        .then((detail) => {
           if (!active) return;
           const raw = detail.classification;
           const loadedClassification: DocumentClassificationEditorValue = {
-            researchAgendaIds: raw.researchAgendas.map((item) => item.id),
-            primaryResearchAgendaId: raw.researchAgendas.find((item) => item.primary)?.id ?? raw.researchAgendas[0]?.id ?? null,
             topicIds: raw.topics.map((item) => item.id),
             topicNames: raw.topics.map((item) => item.name),
             keywords: raw.keywords.map((item) => item.name),
           };
           setClassification(loadedClassification);
-          const historicalAgendas = raw.researchAgendas.filter((item) => item.is_active === false).map((item) => ({ id: item.id, name: item.name, is_active: false }));
-          setResearchAgendas([...agendas, ...historicalAgendas.filter((item) => !agendas.some((agenda) => agenda.id === item.id))]);
           initialValuesRef.current = JSON.stringify({ ...nextValues, classification: loadedClassification });
         })
         .catch(() => undefined)
@@ -838,7 +829,7 @@ function EditDocumentDialog({
                 {authorDirectoryError ? <small className="peas-document-author-picker__status is-error">The author directory could not be loaded. Existing author names can still be saved.</small> : null}
                 {!authors.length ? <small className="peas-document-author-picker__status is-error">Select at least one author.</small> : null}
               </div>
-              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : <DocumentClassificationEditor value={classification} agendas={researchAgendas} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} />}
+              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : <DocumentClassificationEditor value={classification} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} />}
               <label className="peas-field">
                 <span>Description</span>
                 <Textarea value={description} onChange={(event) => setDescription(event.currentTarget.value)} rows={4} />

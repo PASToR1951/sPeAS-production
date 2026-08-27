@@ -361,7 +361,7 @@ export async function createDocument(req: Request): Promise<Response> {
       if (body.classification === undefined) {
         return new Response(JSON.stringify({
           error: "classification is required for new document records",
-          fields: { classification: "Provide researchAgendaIds, topicIds, and keywords" },
+          fields: { classification: "Provide topicIds and keywords" },
         }), {
           status: 422,
           headers: { "Content-Type": "application/json" },

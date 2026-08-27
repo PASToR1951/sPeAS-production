@@ -10,7 +10,7 @@ import { exportSearchAnalytics, fetchSearchAnalytics, type SearchAnalyticsReport
 import type { ReportRange } from "../../lib/api/reports";
 
 const RANGES: Record<ReportRange, string> = { "24h": "Last 24 hours", "7d": "Last 7 days", "30d": "Last 30 days", "90d": "Last 90 days", "1y": "Last 12 months", all: "All time" };
-const TYPES = ["", "work", "news", "author", "topic", "keyword", "agenda", "free_text"];
+const TYPES = ["", "work", "news", "author", "topic", "keyword", "free_text"];
 
 export function SearchAnalyticsPage() {
   const [params, setParams] = useState(readParams);

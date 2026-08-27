@@ -673,7 +673,6 @@ const reviewDocument = async (ctx: RouterContext<any, any, any>) => {
                 error: "Document classification is incomplete",
                 classification,
                 fields: {
-                    researchAgendaIds: "At least one active official research agenda is required",
                     topicIds: "At least one approved topic is required",
                 },
             };

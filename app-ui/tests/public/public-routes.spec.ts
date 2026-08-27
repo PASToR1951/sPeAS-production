@@ -1292,15 +1292,20 @@ test("repository topic filters display the topic name instead of its ID", async 
   await expect(page.getByRole("heading", { name: "Topic 2" })).toHaveCount(0);
 });
 
-test("repository agenda filters display the agenda name instead of its ID", async ({ page }) => {
+test("legacy agenda query parameters are ignored by repository search", async ({ page }) => {
+  let agendaForwarded = false;
   await page.route("**/api/categories*", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [{ id: 4, name: "Environmental Discipline and Stewardship" }] }));
-  await page.route("**/api/documents?*", (route) => route.fulfill({ json: { documents: [], totalCount: 0, totalPages: 0, currentPage: 1 } }));
+  await page.route("**/api/documents?*", (route) => {
+    agendaForwarded = new URL(route.request().url()).searchParams.has("agenda");
+    return route.fulfill({ json: { documents: [], totalCount: 0, totalPages: 0, currentPage: 1 } });
+  });
 
   await page.goto("/pages/searchResultsPage.html?agenda=4");
 
-  await expect(page.getByRole("heading", { name: "Research agenda “Environmental Discipline and Stewardship”" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Research agenda 4" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "All repository entries" })).toBeVisible();
+  await expect(page.getByLabel("Filter by research agenda")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/agenda=/u);
+  expect(agendaForwarded).toBe(false);
 });
 
 test("repository keyword filters display the keyword name", async ({ page }) => {

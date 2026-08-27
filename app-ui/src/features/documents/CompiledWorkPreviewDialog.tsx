@@ -147,7 +147,6 @@ function CollectionOverview({ manifest }: { manifest: CompiledPreviewManifest })
 
 function ClassificationSummary({ collection }: { collection: CompiledPreviewManifest["collection"] }) {
   const groups = [
-    ["Research agendas", collection.classification.researchAgendas.map((term) => term.name)],
     ["Topics", collection.classification.topics.map((term) => term.name)],
     ["Keywords", collection.classification.keywords.map((term) => term.name)],
   ] as Array<[string, string[]]>;

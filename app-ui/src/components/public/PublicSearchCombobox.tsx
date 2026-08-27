@@ -9,11 +9,10 @@ const GROUPS: Array<{ type: SearchSuggestionType; label: string }> = [
   { type: "author", label: "Authors" },
   { type: "topic", label: "Topics" },
   { type: "keyword", label: "Keywords" },
-  { type: "agenda", label: "Research agendas" },
 ];
 
 function emptySuggestions(): Record<SearchSuggestionType, SearchSuggestion[]> {
-  return { work: [], news: [], author: [], topic: [], keyword: [], agenda: [] };
+  return { work: [], news: [], author: [], topic: [], keyword: [] };
 }
 
 function normalizeSuggestions(value: Partial<Record<SearchSuggestionType, SearchSuggestion[]>> | undefined) {

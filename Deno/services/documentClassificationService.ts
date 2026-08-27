@@ -619,12 +619,9 @@ export async function getDocumentClassifications(
     const researchAgendas = agendaById.get(id) ?? [];
     const topics = topicById.get(id) ?? [];
     const keywords = keywordById.get(id) ?? [];
-    const hasOfficialAgenda = researchAgendas.length > 0;
     const complete = source === "aggregated_children"
-      ? Boolean(scopePairs.some(([requestedId]) => requestedId === id)) && hasOfficialAgenda && topics.length > 0 && topics.every((term) => term.status === "approved")
-      : researchAgendas.length >= CLASSIFICATION_LIMITS.agendasMin && researchAgendas.length <= CLASSIFICATION_LIMITS.agendasMax
-        && hasOfficialAgenda
-        && topics.length >= CLASSIFICATION_LIMITS.topicsMin && topics.length <= CLASSIFICATION_LIMITS.topicsMax
+      ? Boolean(scopePairs.some(([requestedId]) => requestedId === id)) && topics.length > 0 && topics.every((term) => term.status === "approved")
+      : topics.length >= CLASSIFICATION_LIMITS.topicsMin && topics.length <= CLASSIFICATION_LIMITS.topicsMax
         && topics.every((term) => term.status === "approved");
     result.set(id, { researchAgendas, topics, keywords, complete, source });
   }
@@ -673,12 +670,9 @@ export async function getDocumentClassification(
   const agendaTerms = (agendas.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const topicTerms = (topics.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const keywordTerms = (keywords.rows as Record<string, unknown>[]).map((row) => toTerm(row, "term"));
-  const hasOfficialAgenda = agendaTerms.length > 0;
   const complete = scope.source === "aggregated_children"
-    ? ids.length > 0 && hasOfficialAgenda && topicTerms.length > 0 && topicTerms.every((term) => term.status === "approved")
-    : agendaTerms.length >= CLASSIFICATION_LIMITS.agendasMin && agendaTerms.length <= CLASSIFICATION_LIMITS.agendasMax
-      && hasOfficialAgenda
-      && topicTerms.length >= CLASSIFICATION_LIMITS.topicsMin && topicTerms.length <= CLASSIFICATION_LIMITS.topicsMax
+    ? ids.length > 0 && topicTerms.length > 0 && topicTerms.every((term) => term.status === "approved")
+    : topicTerms.length >= CLASSIFICATION_LIMITS.topicsMin && topicTerms.length <= CLASSIFICATION_LIMITS.topicsMax
       && topicTerms.every((term) => term.status === "approved");
 
   return {
@@ -696,27 +690,30 @@ export async function replaceDocumentClassification(
   actor: ClassificationActor,
   options: { allowPendingTopics?: boolean; allowIncomplete?: boolean } = {},
 ): Promise<DocumentClassification> {
-  const agendaIds = uniquePositiveIds(input.researchAgendaIds, "researchAgendaIds");
-  const primaryAgendaId = input.primaryResearchAgendaId === undefined || input.primaryResearchAgendaId === null
-    ? agendaIds[0]
-    : Number(input.primaryResearchAgendaId);
+  const managesAgendas = Object.prototype.hasOwnProperty.call(input, "researchAgendaIds")
+    || Object.prototype.hasOwnProperty.call(input, "primaryResearchAgendaId");
+  const agendaIds = managesAgendas ? uniquePositiveIds(input.researchAgendaIds, "researchAgendaIds") : [];
+  const primaryAgendaId = managesAgendas
+    ? input.primaryResearchAgendaId === undefined || input.primaryResearchAgendaId === null
+      ? agendaIds[0]
+      : Number(input.primaryResearchAgendaId)
+    : undefined;
   const topicIds = uniquePositiveIds(input.topicIds, "topicIds");
   const keywordTerms = normalizedKeywords(input.keywords);
   const allowPendingTopics = options.allowPendingTopics === true;
   const allowIncomplete = options.allowIncomplete === true;
 
-  if (agendaIds.length > CLASSIFICATION_LIMITS.agendasMax) {
+  if (managesAgendas && agendaIds.length > CLASSIFICATION_LIMITS.agendasMax) {
     throw new ClassificationValidationError("A document can have at most three research agendas", { researchAgendaIds: "Select no more than three agendas" });
   }
   if (topicIds.length > CLASSIFICATION_LIMITS.topicsMax) {
     throw new ClassificationValidationError("A document can have at most five topics", { topicIds: "Select no more than five topics" });
   }
-  if (agendaIds.length && !agendaIds.includes(primaryAgendaId)) {
+  if (managesAgendas && agendaIds.length && !agendaIds.includes(Number(primaryAgendaId))) {
     throw new ClassificationValidationError("The primary agenda must be selected", { primaryResearchAgendaId: "Choose one of the selected agendas" });
   }
-  if (!allowIncomplete && (agendaIds.length < CLASSIFICATION_LIMITS.agendasMin || topicIds.length < CLASSIFICATION_LIMITS.topicsMin)) {
-    throw new ClassificationValidationError("An approved document requires at least one research agenda and one topic", {
-      researchAgendaIds: "Select at least one research agenda",
+  if (!allowIncomplete && topicIds.length < CLASSIFICATION_LIMITS.topicsMin) {
+    throw new ClassificationValidationError("An approved document requires at least one topic", {
       topicIds: "Select at least one topic",
     });
   }
@@ -768,15 +765,19 @@ export async function replaceDocumentClassification(
     const document = await connection.queryObject(`SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL`, [documentId]);
     if (!document.rows.length) throw new ClassificationValidationError("Document not found");
 
-    await connection.queryArray(`DELETE FROM document_research_agenda WHERE document_id = $1`, [documentId]);
+    if (managesAgendas) {
+      await connection.queryArray(`DELETE FROM document_research_agenda WHERE document_id = $1`, [documentId]);
+    }
     await connection.queryArray(`DELETE FROM document_topics WHERE document_id = $1`, [documentId]);
     await connection.queryArray(`DELETE FROM document_keywords WHERE document_id = $1`, [documentId]);
 
-    for (const id of agendaIds) {
-      await connection.queryArray(`
-        INSERT INTO document_research_agenda (document_id, research_agenda_id, is_primary, assigned_by)
-        VALUES ($1, $2, $3, $4)
-      `, [documentId, id, id === primaryAgendaId, actor.id]);
+    if (managesAgendas) {
+      for (const id of agendaIds) {
+        await connection.queryArray(`
+          INSERT INTO document_research_agenda (document_id, research_agenda_id, is_primary, assigned_by)
+          VALUES ($1, $2, $3, $4)
+        `, [documentId, id, id === primaryAgendaId, actor.id]);
+      }
     }
     for (const [index, id] of topicIds.entries()) {
       await connection.queryArray(`

@@ -2,43 +2,30 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { searchTopics, proposeTopic } from "../../lib/api/upload";
 import { normalizeClassificationTerm } from "../../../../shared/classification";
 
 export interface DocumentClassificationEditorValue {
-  researchAgendaIds: number[];
-  primaryResearchAgendaId: number | null;
   topicIds: number[];
   topicNames: string[];
   keywords: string[];
 }
 
-interface AgendaOption {
-  id: number;
-  name: string;
-  is_active?: boolean;
-}
-
 export function DocumentClassificationEditor({
   value,
-  agendas,
   disabled = false,
   idPrefix = "classification",
   onChange,
 }: {
   value: DocumentClassificationEditorValue;
-  agendas: AgendaOption[];
   disabled?: boolean;
   idPrefix?: string;
   onChange: (value: DocumentClassificationEditorValue) => void;
 }) {
-  const [agendaQuery, setAgendaQuery] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
   const [topicMatches, setTopicMatches] = useState<Array<{ id: number; name: string; status?: string }>>([]);
   const [topicBusy, setTopicBusy] = useState(false);
   const [keywordDraft, setKeywordDraft] = useState("");
-  const visibleAgendas = agendas.filter((agenda) => agenda.name.toLocaleLowerCase().includes(agendaQuery.trim().toLocaleLowerCase()));
 
   useEffect(() => {
     const query = topicQuery.trim();
@@ -94,35 +81,6 @@ export function DocumentClassificationEditor({
   }
 
   return <div className="peas-classification-editor" aria-label="Document classification editor">
-    <fieldset className="peas-classification-editor__group">
-      <legend>Research agendas</legend>
-      <p>Select 1–3 of {agendas.length} official priorities and choose one primary agenda.</p>
-      <div className="peas-agenda-selection-summary" aria-live="polite"><strong>{value.researchAgendaIds.length} selected</strong><span>Maximum 3 per document</span></div>
-      {agendas.length > 6 ? <Input id={`${idPrefix}-agenda-search`} className="peas-agenda-search" aria-label="Search research agendas" value={agendaQuery} disabled={disabled} placeholder="Search research agendas…" onChange={(event) => setAgendaQuery(event.currentTarget.value)} /> : null}
-      <div className="peas-agenda-options" role="group" aria-label="Research agendas">
-        {visibleAgendas.length ? visibleAgendas.map((agenda) => {
-          const selected = value.researchAgendaIds.includes(agenda.id);
-          return <label className={`peas-agenda-option${selected ? " is-selected" : ""}`} key={agenda.id}>
-            <input
-              type="checkbox"
-              checked={selected}
-              disabled={disabled || (!selected && value.researchAgendaIds.length >= 3) || (agenda.is_active === false && !selected)}
-              onChange={() => {
-                const next = selected ? value.researchAgendaIds.filter((id) => id !== agenda.id) : [...value.researchAgendaIds, agenda.id];
-                onChange({ ...value, researchAgendaIds: next, primaryResearchAgendaId: next.includes(value.primaryResearchAgendaId ?? 0) ? value.primaryResearchAgendaId : next[0] ?? null });
-              }}
-            />
-            <span>{agenda.name}{agenda.is_active === false ? " · Retired (historical)" : ""}</span>
-          </label>;
-        }) : <span className="peas-agenda-empty">No research agendas match your search.</span>}
-      </div>
-      <label htmlFor={`${idPrefix}-primary-agenda`}>Primary research agenda</label>
-      <Select value={value.primaryResearchAgendaId ? String(value.primaryResearchAgendaId) : ""} disabled={disabled || !value.researchAgendaIds.length} onValueChange={(selected) => onChange({ ...value, primaryResearchAgendaId: selected ? Number(selected) : null })}>
-        <SelectTrigger id={`${idPrefix}-primary-agenda`} aria-label="Primary agenda"><SelectValue placeholder="Choose primary agenda" /></SelectTrigger>
-        <SelectContent>{value.researchAgendaIds.map((id) => { const agenda = agendas.find((item) => item.id === id); return agenda ? <SelectItem key={id} value={String(id)}>{agenda.name}{agenda.is_active === false ? " · Retired (historical)" : ""}</SelectItem> : null; })}</SelectContent>
-      </Select>
-    </fieldset>
-
     <fieldset className="peas-classification-editor__group">
       <legend>Topics</legend>
       <p>Curated subject headings. Select 1–5 approved topics; pending proposals can be replaced during review.</p>

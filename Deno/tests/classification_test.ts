@@ -13,6 +13,6 @@ Deno.test("classification normalization preserves display values while comparing
 });
 
 Deno.test("classification limits match the implementation contract", () => {
-  if (CLASSIFICATION_LIMITS.agendasMin !== 1 || CLASSIFICATION_LIMITS.agendasMax !== 3) throw new Error("Agenda limits changed");
+  if (CLASSIFICATION_LIMITS.agendasMin !== 0 || CLASSIFICATION_LIMITS.agendasMax !== 3) throw new Error("Historical agenda limits changed");
   if (CLASSIFICATION_LIMITS.topicsMin !== 1 || CLASSIFICATION_LIMITS.topicsMax !== 5) throw new Error("Topic limits changed");
 });

@@ -102,12 +102,11 @@ export async function fetchPublicStats(): Promise<DashboardStats> {
   };
 }
 
-export function searchResultsUrl(query: string, category?: string, filters: { agenda?: string; topic?: string; year?: string; sort?: "latest" | "earliest" } = {}) {
+export function searchResultsUrl(query: string, category?: string, filters: { topic?: string; year?: string; sort?: "latest" | "earliest" } = {}) {
   const url = new URL("/pages/searchResultsPage.html", window.location.origin);
   const trimmed = query.trim();
   if (trimmed) url.searchParams.set("q", trimmed);
   if (category && category !== "All") url.searchParams.set("category", category);
-  if (filters.agenda?.trim()) url.searchParams.set("agenda", filters.agenda.trim());
   if (filters.topic?.trim()) url.searchParams.set("topic", filters.topic.trim());
   if (/^\d{4}$/u.test(filters.year?.trim() ?? "")) url.searchParams.set("year", filters.year!.trim());
   if (filters.sort === "earliest") url.searchParams.set("sort", "earliest");
