@@ -1,5 +1,6 @@
 import { client } from "../db/denopost_conn.ts";
 import { join } from "https://deno.land/std@0.190.0/path/mod.ts";
+import { resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
 
 /**
  * Document types as defined in the database enum
@@ -546,6 +547,14 @@ export class DocumentModel {
             
       if (!filePath) {
         return null;
+      }
+
+      // Current records persist a logical /storage/... path. Resolve those
+      // through the configured storage root first so native deployments do
+      // not accidentally look in the release checkout's empty storage tree.
+      const configuredPath = resolveStoredPdfPath(filePath);
+      if (configuredPath) {
+        return configuredPath;
       }
       
       // IMPROVED PATH RESOLUTION: First check if the path is already absolute and exists

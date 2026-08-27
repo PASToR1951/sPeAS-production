@@ -1085,6 +1085,38 @@ test("repository search presents focused filters and scannable results", async (
   expect(critical).toEqual([]);
 });
 
+test("repository search reports represented public authors", async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "null",
+  }));
+  await page.route("**/api/categories*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([
+      { name: "THESIS", count: 1 },
+      { name: "DISSERTATION", count: 0 },
+      { name: "CONFLUENCE", count: 0 },
+      { name: "SYNERGY", count: 0 },
+    ]),
+  }));
+  await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/documents/years", (route) => route.fulfill({ json: { years: [] } }));
+  await page.route("**/api/page-visits/home-stats", (route) => route.fulfill({ json: { totalAuthors: 3 } }));
+  await page.route("**/api/documents?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ documents: [], totalCount: 1, totalPages: 1, currentPage: 1 }),
+  }));
+
+  await page.goto("/pages/searchResultsPage.html");
+
+  const representedAuthors = page.locator(".peas-public-search-hero__summary > div").filter({ hasText: "authors represented" });
+  await expect(representedAuthors.locator("strong")).toHaveText("3");
+  await expect(representedAuthors.locator("small")).toHaveText("authors represented");
+});
+
 test("repository search refreshes catalog data when the visitor returns to the page", async ({ page }) => {
   let requestCount = 0;
   await page.route("**/api/categories*", (route) => route.fulfill({ json: [

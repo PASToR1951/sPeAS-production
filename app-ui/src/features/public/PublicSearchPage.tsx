@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, FileSearch, Layers3, LibraryBig, X } from "lucide-react";
+import { ArrowRight, FileSearch, LibraryBig, UsersRound, X } from "lucide-react";
 import { motion } from "motion/react";
 import { PeasPagination } from "../../components/data-display/PeasPagination";
 import { PeasErrorState } from "../../components/feedback/PeasStates";
@@ -14,7 +14,7 @@ import { fetchAvailablePublicationYears, fetchCategories, fetchDocuments } from 
 import { getErrorMessage } from "../../lib/api/http";
 import type { CategoryCount, DocumentsPageResult } from "../../lib/api/types";
 import { CATEGORY_ORDER, getCategoryMeta, normalizeCategory, type DocumentCategory } from "../../lib/constants/categories";
-import { fetchPublicResearchAgendas, fetchPublicTopic, type PublicResearchAgenda } from "../../lib/api/public";
+import { fetchPublicResearchAgendas, fetchPublicStats, fetchPublicTopic, type PublicResearchAgenda } from "../../lib/api/public";
 import { consumePendingSearch, markPendingSearch, recordSearchEvent } from "../../lib/api/search";
 
 const PAGE_SIZE = 8;
@@ -32,6 +32,7 @@ export function PublicSearchPage() {
   const [sort, setSort] = useState<"latest" | "earliest">(initial.sort);
   const [page, setPage] = useState(initial.page);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
+  const [authorCount, setAuthorCount] = useState<number | null>(null);
   const [researchAgendas, setResearchAgendas] = useState<PublicResearchAgenda[]>([]);
   const [publicationYears, setPublicationYears] = useState<string[]>([]);
   const [topicName, setTopicName] = useState("");
@@ -69,15 +70,18 @@ export function PublicSearchPage() {
       fetchCategories().catch(() => []),
       fetchPublicResearchAgendas(true).catch(() => []),
       fetchAvailablePublicationYears().catch(() => []),
-    ]).then(([categoryPayload, agendaPayload, yearPayload]) => {
+      fetchPublicStats().catch(() => null),
+    ]).then(([categoryPayload, agendaPayload, yearPayload, statsPayload]) => {
       if (mounted) {
         setCategories(categoryPayload);
+        setAuthorCount(statsPayload?.totalAuthors ?? null);
         setResearchAgendas(agendaPayload);
         setPublicationYears(yearPayload);
       }
     }).catch(() => {
       if (mounted) {
         setCategories([]);
+        setAuthorCount(null);
         setResearchAgendas([]);
         setPublicationYears([]);
       }
@@ -98,6 +102,7 @@ export function PublicSearchPage() {
       void loadResults();
       void fetchCategories().then(setCategories).catch(() => undefined);
       void fetchAvailablePublicationYears().then(setPublicationYears).catch(() => undefined);
+      void fetchPublicStats().then((stats) => setAuthorCount(stats.totalAuthors)).catch(() => undefined);
     };
 
     window.addEventListener("focus", refreshVisibleCatalog);
@@ -180,8 +185,11 @@ export function PublicSearchPage() {
               </span>
             </div>
             <div>
-              <Layers3 aria-hidden="true" />
-              <span><strong>4</strong><small>research collections</small></span>
+              <UsersRound aria-hidden="true" />
+              <span>
+                <strong>{authorCount ?? "—"}</strong>
+                <small>{authorCount === 1 ? "author represented" : "authors represented"}</small>
+              </span>
             </div>
           </div>
         </section>

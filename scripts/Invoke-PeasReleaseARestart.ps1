@@ -10,7 +10,10 @@ param(
     [int]$ExpectedWebId,
 
     [string]$AppRoot = 'C:\ProgramData\PeAS',
-    [string]$RepoRoot = 'C:\Users\peas\Desktop\sPeAS-production'
+    [string]$RepoRoot = 'C:\Users\peas\Desktop\sPeAS-production',
+    [string]$ExpectedBindHost = '192.168.2.104',
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedPort = 80
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,13 +38,9 @@ function Assert-ProductionEnvironment {
 
     $expected = [ordered]@{
         DENO_ENV = 'production'
-        HOST = '192.168.2.104'
-        PEAS_BIND_HOST = '192.168.2.104'
-        PORT = '80'
-        TRUSTED_ORIGINS = 'https://peas.spud.edu.ph'
-        TRUSTED_PROXY_RANGES = '192.168.2.3'
-        PEAS_CSP_MODE = 'report-only'
-        PEAS_VERIFY_PUBLIC_DOCUMENT_ID = '2'
+        HOST = $ExpectedBindHost
+        PEAS_BIND_HOST = $ExpectedBindHost
+        PORT = [string]$ExpectedPort
     }
     foreach ($entry in $expected.GetEnumerator()) {
         if ($settings[$entry.Key] -ne $entry.Value) {
@@ -52,6 +51,20 @@ function Assert-ProductionEnvironment {
         if ([string]::IsNullOrWhiteSpace($settings[$required])) {
             throw "Required production setting $required is missing."
         }
+    }
+    if ([string]::IsNullOrWhiteSpace($settings.TRUSTED_ORIGINS) -or
+        @($settings.TRUSTED_ORIGINS.Split(',') | Where-Object { $_.Trim() -notmatch '^https://[^/\s]+(?:/)?$' }).Count -gt 0) {
+        throw 'TRUSTED_ORIGINS must contain only exact HTTPS origins.'
+    }
+    if ([string]::IsNullOrWhiteSpace($settings.TRUSTED_PROXY_RANGES)) {
+        throw 'TRUSTED_PROXY_RANGES must be configured.'
+    }
+    if ($settings.PEAS_CSP_MODE -notin @('report-only', 'enforce')) {
+        throw 'PEAS_CSP_MODE must be report-only or enforce.'
+    }
+    $publicDocumentId = 0
+    if (-not [int]::TryParse([string]$settings.PEAS_VERIFY_PUBLIC_DOCUMENT_ID, [ref]$publicDocumentId) -or $publicDocumentId -le 0) {
+        throw 'PEAS_VERIFY_PUBLIC_DOCUMENT_ID must be a positive integer.'
     }
 }
 
@@ -87,9 +100,10 @@ try {
         throw "Expected at least three PeAS Deno children; found $($denoChildren.Count)."
     }
 
-    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 80 -ErrorAction Stop)
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $ExpectedPort -ErrorAction Stop |
+        Where-Object { $_.LocalAddress -eq $ExpectedBindHost })
     if ($listeners.Count -ne 1 -or $listeners[0].OwningProcess -ne $ExpectedWebId) {
-        throw 'TCP 80 is no longer owned solely by the expected PeAS web process.'
+        throw "${ExpectedBindHost}:$ExpectedPort is no longer owned solely by the expected PeAS web process."
     }
     $webProcess = $children | Where-Object { $_.ProcessId -eq $ExpectedWebId -and $_.Name -eq 'deno.exe' }
     if (-not $webProcess) {
@@ -106,11 +120,12 @@ try {
 
     $releaseDeadline = (Get-Date).AddSeconds(20)
     do {
-        $remainingListener = Get-NetTCPConnection -State Listen -LocalPort 80 -ErrorAction SilentlyContinue
+        $remainingListener = Get-NetTCPConnection -State Listen -LocalPort $ExpectedPort -ErrorAction SilentlyContinue |
+            Where-Object { $_.LocalAddress -eq $ExpectedBindHost }
         if (-not $remainingListener) { break }
         Start-Sleep -Milliseconds 250
     } while ((Get-Date) -lt $releaseDeadline)
-    if ($remainingListener) { throw 'TCP 80 did not release after the validated PeAS processes stopped.' }
+    if ($remainingListener) { throw "${ExpectedBindHost}:$ExpectedPort did not release after the validated PeAS processes stopped." }
 
     Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
     Write-RestartLog "$taskName started. Waiting for database-backed readiness."
@@ -119,7 +134,7 @@ try {
     $readyDeadline = (Get-Date).AddSeconds(180)
     do {
         try {
-            $response = Invoke-WebRequest -Uri 'http://192.168.2.104:80/health/ready' -UseBasicParsing -TimeoutSec 5
+            $response = Invoke-WebRequest -Uri "http://${ExpectedBindHost}:$ExpectedPort/health/ready" -UseBasicParsing -TimeoutSec 5
             if ($response.StatusCode -eq 200 -and $response.Content -match '"status"\s*:\s*"ready"') {
                 $ready = $true
                 break
@@ -132,18 +147,19 @@ try {
     if (-not $ready) { throw 'PeAS did not return database-backed readiness within 180 seconds.' }
 
     Start-Sleep -Seconds 5
-    $stable = Invoke-WebRequest -Uri 'http://192.168.2.104:80/health/ready' -UseBasicParsing -TimeoutSec 5
+    $stable = Invoke-WebRequest -Uri "http://${ExpectedBindHost}:$ExpectedPort/health/ready" -UseBasicParsing -TimeoutSec 5
     if ($stable.StatusCode -ne 200) { throw 'PeAS readiness did not remain stable.' }
 
-    $newListeners = @(Get-NetTCPConnection -State Listen -LocalPort 80 -ErrorAction Stop)
-    if ($newListeners.Count -ne 1 -or $newListeners[0].LocalAddress -ne '192.168.2.104') {
-        throw "PeAS listener is not restricted to 192.168.2.104:80."
+    $newListeners = @(Get-NetTCPConnection -State Listen -LocalPort $ExpectedPort -ErrorAction Stop |
+        Where-Object { $_.LocalAddress -eq $ExpectedBindHost })
+    if ($newListeners.Count -ne 1) {
+        throw "PeAS listener is not restricted to ${ExpectedBindHost}:$ExpectedPort."
     }
     if ($newListeners[0].OwningProcess -eq $ExpectedWebId) {
         throw 'The web process PID did not change during the restart.'
     }
 
-    Write-RestartLog "SUCCESS: PeAS is ready on 192.168.2.104:80 with web PID $($newListeners[0].OwningProcess)."
+    Write-RestartLog "SUCCESS: PeAS is ready on ${ExpectedBindHost}:$ExpectedPort with web PID $($newListeners[0].OwningProcess)."
     exit 0
 } catch {
     Write-RestartLog "FAILED: $($_.Exception.Message)"

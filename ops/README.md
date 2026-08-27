@@ -42,6 +42,22 @@ evidence that the live host has already migrated.
    author-picker, upload, media, review, and PDF workflows. Record CSP reports
    for seven days and investigate every violation.
 
+## Native application restart
+
+Use the fail-closed restart wrapper when code or configuration changes need to
+be loaded without rebooting Windows. It validates the current PeAS supervisor,
+web listener, and Deno worker tree before requesting Administrator elevation.
+
+```powershell
+.\scripts\Restart-Peas.ps1 -WhatIf
+.\scripts\Restart-Peas.ps1
+```
+
+The restart registers the SYSTEM boot supervisor before stopping the validated
+application processes, then waits for database-backed readiness. Afterward,
+run `Test-PeasPublicEdge.ps1` as described above and investigate any failed edge
+control separately from the application restart.
+
 Sanitized reports are accepted at `POST /api/security/csp-report`, written as
 bounded NDJSON below `C:\ProgramData\PeAS\logs`, rotated daily, and retained for
 14 days. The native recovery task creates a grouped daily summary without
