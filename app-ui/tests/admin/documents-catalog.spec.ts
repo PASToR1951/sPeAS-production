@@ -22,6 +22,28 @@ function createSinglePagePdf() {
   return Buffer.from(source, "ascii");
 }
 
+function createEmptyPdf(pageCount: number) {
+  const pageIds = Array.from({ length: pageCount }, (_, index) => index + 3);
+  const contentIds = Array.from({ length: pageCount }, (_, index) => pageCount + index + 3);
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+    ...pageIds.map((_, index) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${contentIds[index]} 0 R >>`),
+    ...contentIds.map(() => "<< /Length 3 >>\nstream\nq Q\nendstream"),
+  ];
+  let source = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(source, "ascii"));
+    source += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(source, "ascii");
+  source += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  source += offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  source += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(source, "ascii");
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: {
     session: { id: "session-admin" },
@@ -247,6 +269,10 @@ test("compiled view opens a collection manifest without treating the parent as a
       overview: "A collection overview.",
       childCount: 2,
       hasForeword: true,
+      hasCover: true,
+      coverPageCount: 3,
+      frontCoverPage: 2,
+      backCoverPage: 3,
       classification: { researchAgendas: [], topics: [], keywords: [], complete: false, source: "aggregated_children" },
     },
     studies: [
@@ -260,6 +286,7 @@ test("compiled view opens a collection manifest without treating the parent as a
     parentPdfRequested = true;
     return route.fulfill({ status: 404, json: { error: "Parent is not a study PDF" } });
   });
+  await page.route("**/api/compiled-documents/3/cover?*", (route) => route.fulfill({ status: 200, contentType: "application/pdf", body: createEmptyPdf(3) }));
   await page.route("**/api/documents/31/download*", (route) => route.fulfill({ status: 200, contentType: "application/pdf", body: createSinglePagePdf() }));
 
   await page.goto("/admin/Components/documents_list.html");
@@ -271,6 +298,12 @@ test("compiled view opens a collection manifest without treating the parent as a
   await expect(dialog.getByText("A collection overview.", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("link", { name: /Open .* PDF in new tab/ })).toHaveCount(0);
   expect(parentPdfRequested).toBe(false);
+
+  await dialog.getByRole("tab", { name: /Front cover/ }).click();
+  await expect(dialog.getByRole("heading", { name: "Front cover" })).toBeVisible();
+  await expect(dialog.getByRole("spinbutton", { name: "Page number" })).toHaveValue("2");
+  await dialog.getByRole("tab", { name: /Back cover/ }).click();
+  await expect(dialog.getByRole("spinbutton", { name: "Page number" })).toHaveValue("3");
 
   await dialog.getByRole("tab", { name: /1\. Study One/ }).click();
   await expect(dialog.getByRole("heading", { name: "Study One" })).toBeVisible();

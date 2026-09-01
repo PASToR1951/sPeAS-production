@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, CalendarDays, Download, FileText } from "lucide-react";
+import { BookCopy, BookOpen, CalendarDays, Download, FileText } from "lucide-react";
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import type { LooseRecord } from "../../lib/api/account";
 import { formatDate } from "../../lib/formatters/date";
@@ -33,6 +33,12 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
     </div>
     <div className="peas-document-layout">
       <article>
+        <CollectionCoverPanel
+          id={id}
+          available={record.cover_download_available === true}
+          frontPage={positivePage(record.front_cover_page)}
+          backPage={positivePage(record.back_cover_page)}
+        />
         <CollectionForewordPanel id={id} available={record.foreword_download_available === true} />
         <section aria-labelledby="compiled-publication-contents-title">
           <div className="peas-document-collection-heading">
@@ -101,6 +107,16 @@ function CollectionForewordPanel({ id, available }: { id: string; available: boo
   </section>;
 }
 
+function CollectionCoverPanel({ id, available, frontPage, backPage }: { id: string; available: boolean; frontPage: number | null; backPage: number | null }) {
+  if (!available) return null;
+  const mapping = frontPage && backPage ? `Page ${frontPage} is the front cover and page ${backPage} is the back cover.` : "The publication cover PDF is available.";
+  return <section className="peas-document-access-popup" aria-labelledby="collection-cover-title">
+    <header><div><BookCopy aria-hidden="true" /><h2 id="collection-cover-title">Publication covers</h2></div></header>
+    <p>{mapping}</p>
+    <a className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" href={`/api/public/compiled-documents/${encodeURIComponent(id)}/cover/download`}><Download aria-hidden="true" /> Download cover PDF</a>
+  </section>;
+}
+
 function titleOf(item: LooseRecord) { return String(item.title || item.document_title || `${item.category || "Document"}${item.volume ? ` Volume ${item.volume}` : ""}`); }
 function abstractOf(item: LooseRecord) { return String(item.abstract || item.abstract_foreword || item.foreword || item.description || "").trim(); }
 function collectionPeriodOf(item: LooseRecord) {
@@ -116,6 +132,7 @@ function publicationDateOf(item: LooseRecord) {
   if (item.start_year || item.end_year) return `${item.start_year || ""}${item.end_year ? `–${item.end_year}` : ""}`;
   return "Unknown date";
 }
+function positivePage(value: unknown): number | null { const page = Number(value); return Number.isSafeInteger(page) && page > 0 ? page : null; }
 function authorReferencesOf(item: LooseRecord): DisplayAuthorReference[] {
   const nested = item.authors ?? item.enhancedAuthors ?? item.document_authors;
   if (Array.isArray(nested)) {

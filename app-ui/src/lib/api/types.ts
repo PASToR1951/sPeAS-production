@@ -165,6 +165,10 @@ export interface UploadCompiledDocumentPayload {
   issue?: string;
   start_year: number;
   end_year: number;
+  cover_file_path?: string;
+  cover_page_count?: number;
+  front_cover_page?: number;
+  back_cover_page?: number;
   children?: UploadSingleDocumentPayload[];
 }
 

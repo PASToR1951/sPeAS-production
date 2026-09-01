@@ -26,6 +26,10 @@ export interface CompiledPreviewManifest {
     overview: string | null;
     childCount: number;
     hasForeword: boolean;
+    hasCover: boolean;
+    coverPageCount: number | null;
+    frontCoverPage: number | null;
+    backCoverPage: number | null;
     classification: DocumentClassification;
   };
   studies: CompiledPreviewStudy[];
@@ -60,7 +64,8 @@ export function buildCompiledPreviewTitle(category: unknown, volume: unknown, st
 export async function getCompiledPreviewManifest(compiledDocumentId: number): Promise<CompiledPreviewManifest | null> {
   const parentResult = await client.queryObject<Record<string, unknown>>(`
     SELECT id, category, volume, issue_number, department, start_year, end_year,
-           abstract_foreword, foreword
+           abstract_foreword, foreword, cover_file_path, cover_page_count,
+           front_cover_page, back_cover_page
     FROM compiled_documents
     WHERE id = $1 AND deleted_at IS NULL
   `, [compiledDocumentId]);
@@ -148,6 +153,10 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       overview: stringOrNull(parent.abstract_foreword),
       childCount: studies.length,
       hasForeword: Boolean(stringOrNull(parent.foreword)),
+      hasCover: Boolean(stringOrNull(parent.cover_file_path)),
+      coverPageCount: numberOrNull(parent.cover_page_count),
+      frontCoverPage: numberOrNull(parent.front_cover_page),
+      backCoverPage: numberOrNull(parent.back_cover_page),
       classification,
     },
     studies,

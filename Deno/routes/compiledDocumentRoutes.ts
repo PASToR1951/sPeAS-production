@@ -63,6 +63,9 @@ function removeCompiledFileFields(value: any): any {
     delete sanitized.foreword_path;
     delete sanitized.foreword_file_path;
     delete sanitized.foreword_attachment;
+    delete sanitized.cover_file_path;
+    delete sanitized.cover_path;
+    delete sanitized.cover_attachment;
     delete sanitized.attachment;
     delete sanitized.file_path;
     delete sanitized.file_url;
@@ -199,7 +202,11 @@ const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
         await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "view" }).catch(() => undefined);
     }
     const publicResponse = isLimitedRoute
-        ? { ...responseBody, foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword) }
+        ? {
+            ...responseBody,
+            foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword),
+            cover_download_available: await isStoredPdfAvailable(responseBody?.cover_file_path),
+        }
         : responseBody;
     ctx.response.body = isLimitedRoute ? removeCompiledFileFields(publicResponse) : publicResponse;
 };
@@ -212,8 +219,8 @@ const downloadPublicCompiledForeword = async (ctx: RouterContext<any, any, any>)
         return;
     }
 
-    const result = await client.queryObject<{ title: string | null; category: string | null; foreword: string | null }>(`
-        SELECT title, category, foreword
+    const result = await client.queryObject<{ category: string | null; foreword: string | null }>(`
+        SELECT category, foreword
         FROM compiled_documents
         WHERE id = $1 AND deleted_at IS NULL
     `, [numericId]);
@@ -225,11 +232,61 @@ const downloadPublicCompiledForeword = async (ctx: RouterContext<any, any, any>)
         return;
     }
 
-    const label = compiled.title || `${compiled.category || "compiled-publication"}-foreword`;
+    const label = `${compiled.category || "compiled-publication"}-foreword`;
     applyPublicPdfHeaders(ctx.response.headers, publicPdfFileName(label, `compiled-${numericId}-foreword`), pdf.size);
     ctx.response.status = 200;
     ctx.response.body = pdf.bytes;
     await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+};
+
+const deliverCompiledCover = async (ctx: RouterContext<any, any, any>, publicDownload: boolean) => {
+    const numericId = Number(ctx.params.id);
+    const actor = publicDownload ? undefined : ctx.state.user;
+    if (!Number.isSafeInteger(numericId) || numericId <= 0 || !await canViewCompilation(actor, numericId)) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled document not found" };
+        return;
+    }
+
+    const result = await client.queryObject<{
+        category: string | null;
+        cover_file_path: string | null;
+    }>(`
+        SELECT category, cover_file_path
+        FROM compiled_documents
+        WHERE id = $1 AND deleted_at IS NULL
+    `, [numericId]);
+    const compiled = result.rows[0];
+    const pdf = await readStoredPdf(compiled?.cover_file_path);
+    if (!compiled || !pdf) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled publication cover not found" };
+        return;
+    }
+
+    const fileName = publicPdfFileName(
+        `${compiled.category || "compiled-publication"}-cover`,
+        `compiled-${numericId}-cover`,
+    );
+    applyPublicPdfHeaders(ctx.response.headers, fileName, pdf.size);
+    const disposition = publicDownload
+        ? "attachment"
+        : ctx.request.url.searchParams.get("disposition") === "attachment" ? "attachment" : "inline";
+    ctx.response.headers.set("Content-Disposition", `${disposition}; filename="${fileName}"`);
+    ctx.response.headers.set("Cache-Control", publicDownload ? "no-store" : "private, no-store");
+    ctx.response.status = 200;
+    ctx.response.body = pdf.bytes;
+    if (publicDownload) {
+        await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+    }
+};
+
+const getCompiledCover = async (ctx: RouterContext<any, any, any>) => {
+    await deliverCompiledCover(ctx, false);
+};
+
+const downloadPublicCompiledCover = async (ctx: RouterContext<any, any, any>) => {
+    await deliverCompiledCover(ctx, true);
 };
 
 const addDocumentsToCompilation = async (ctx: RouterContext<any, any, any>) => {
@@ -669,6 +726,7 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
 export const compiledDocumentRoutes: Route[] = [
     { method: "POST", path: "/compiled-documents", handler: createCompiledDocument, middleware: [isAuthenticated, requireDocumentUpload] },
     { method: "GET", path: "/compiled-documents/:id/preview-manifest", handler: getCompiledPreviewManifestRoute, middleware: [isAuthenticated, isAdmin] },
+    { method: "GET", path: "/compiled-documents/:id/cover", handler: getCompiledCover, middleware: [isAuthenticated, isAdmin] },
     { method: "GET", path: "/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/compiled-documents/:id/items", handler: getCompiledDocumentItems },
@@ -682,6 +740,7 @@ export const compiledDocumentRoutes: Route[] = [
     { method: "GET", path: "/guest/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/public/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/public/compiled-documents/:id/foreword/download", handler: downloadPublicCompiledForeword },
+    { method: "GET", path: "/public/compiled-documents/:id/cover/download", handler: downloadPublicCompiledCover },
     { method: "GET", path: "/guest/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/public/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/guest/compiled-documents/:id/items", handler: getCompiledDocumentItems },

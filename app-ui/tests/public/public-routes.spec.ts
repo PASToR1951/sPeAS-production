@@ -205,6 +205,9 @@ test("guest compiled records render the collection overview and child works", as
         end_year: 2012,
         abstract: "A public collection overview.",
         foreword_download_available: true,
+        cover_download_available: true,
+        front_cover_page: 1,
+        back_cover_page: 4,
         child_count: 1,
         classification: { researchAgendas: [], topics: [], keywords: [] },
       }),
@@ -251,6 +254,8 @@ test("guest compiled records render the collection overview and child works", as
   await expect(page.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("link", { name: "Download foreword" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
   await expect(page.getByText("The foreword PDF is publicly available and can be downloaded immediately.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download cover PDF" })).toHaveAttribute("href", "/api/public/compiled-documents/53/cover/download");
+  await expect(page.getByText("Page 1 is the front cover and page 4 is the back cover.", { exact: true })).toBeVisible();
   await expect(page.getByText(/request access/i)).toHaveCount(0);
   await expect(page.locator(".peas-error-page")).toHaveCount(0);
   expect(requestedUrls).toContain("/api/guest/compiled-documents/53");
@@ -271,6 +276,7 @@ test("compiled records omit unavailable foreword downloads while retaining child
 
   await page.goto("/pages/guest-compiled.html?id=54");
   await expect(page.getByRole("link", { name: "Download foreword" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download cover PDF" })).toHaveCount(0);
   await expect(page.getByText("The foreword PDF is currently unavailable. The reviewed collection and its studies remain accessible.")).toBeVisible();
   await expect(page.getByRole("link", { name: "View details for Available child record" })).toHaveAttribute("href", "/pages/guest-single.html?id=32");
   await expect(page.getByRole("link", { name: "Download PDF for Available child record" })).toHaveCount(0);

@@ -1,6 +1,28 @@
 import { expect, test, type Page } from "@playwright/test";
 import { source as axeSource } from "axe-core";
 
+function createPdf(pageCount = 2) {
+  const pageIds = Array.from({ length: pageCount }, (_, index) => index + 3);
+  const contentIds = Array.from({ length: pageCount }, (_, index) => pageCount + index + 3);
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+    ...pageIds.map((_, index) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${contentIds[index]} 0 R >>`),
+    ...contentIds.map(() => "<< /Length 3 >>\nstream\nq Q\nendstream"),
+  ];
+  let source = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(source, "ascii"));
+    source += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(source, "ascii");
+  source += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  source += offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  source += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(source, "ascii");
+}
+
 test.describe("guided upload workflow", () => {
   test.beforeEach(async ({ page }) => {
     await mockWorkspace(page, "admin");
@@ -178,7 +200,15 @@ test.describe("guided upload workflow", () => {
     await page.route("**/api/compiled-documents/77/review", (route) => route.fulfill({ json: { compiled: { id: 77, review_status: "approved" } } }));
 
     await prepareCompiledPublication(page);
+    const compiledRequest = page.waitForRequest((request) => request.url().endsWith("/api/compiled-documents") && request.method() === "POST");
     await page.getByRole("button", { name: "Publish publication" }).click();
+    const compiledPayload = (await compiledRequest).postDataJSON();
+    expect(compiledPayload.compiledDoc).toMatchObject({
+      cover_file_path: "/storage/test.pdf",
+      cover_page_count: 4,
+      front_cover_page: 1,
+      back_cover_page: 2,
+    });
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
     await expect(page.getByText("0 of 2 confirmed", { exact: true })).toBeVisible();
     const confirmButtons = page.getByRole("button", { name: "Confirm abstract" });
@@ -308,10 +338,22 @@ test.describe("guided upload workflow", () => {
     await page.getByLabel("Search approved topics").press("Enter");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Upload PDFs" })).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Attach the front and back cover PDF.", { exact: true })).toBeVisible();
+    await page.getByLabel("Front and back cover PDF").setInputFiles({ name: "synergy-cover.pdf", mimeType: "application/pdf", buffer: createPdf(3) });
+    await expect(page.getByRole("combobox", { name: "Front cover page" })).toHaveText("Page 1");
+    await expect(page.getByRole("combobox", { name: "Back cover page" })).toHaveText("Page 3");
+    await page.getByRole("combobox", { name: "Back cover page" }).click();
+    await page.getByRole("option", { name: "Page 1", exact: true }).click();
+    await expect(page.getByText("Front and back covers must use different PDF pages.", { exact: true })).toHaveCount(2);
+    await page.getByRole("combobox", { name: "Back cover page" }).click();
+    await page.getByRole("option", { name: "Page 2", exact: true }).click();
+    await expect(page.getByText("Front and back covers must use different PDF pages.", { exact: true })).toHaveCount(0);
     await page.getByLabel("Study 1 PDF").setInputFiles({ name: "study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Review your publication" })).toBeVisible();
     await expect(page.getByRole("definition").filter({ hasText: "1 study prepared" })).toBeVisible();
+    await expect(page.locator(".peas-upload-review__row").filter({ hasText: "Cover page mapping" })).toContainText("Front: page 1 · Back: page 2");
   });
 
   test("mobile upload page has no critical accessibility issues or overflow", async ({ page }) => {
@@ -372,6 +414,8 @@ async function prepareCompiledPublication(page: Page) {
   await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
   await page.getByLabel("Search approved topics").press("Enter");
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Front and back cover PDF").setInputFiles({ name: "cover.pdf", mimeType: "application/pdf", buffer: createPdf(2) });
+  await expect(page.getByRole("combobox", { name: "Back cover page" })).toHaveText("Page 2");
   await page.getByLabel("Foreword PDF").setInputFiles({ name: "foreword.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await page.getByLabel("Study 1 PDF").setInputFiles({ name: "study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await page.getByRole("button", { name: "Continue" }).click();

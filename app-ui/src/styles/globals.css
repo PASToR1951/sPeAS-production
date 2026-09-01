@@ -1401,6 +1401,7 @@ body.peas-editor-open { overflow: hidden; }
 .peas-upload-page .peas-file-dropzone:focus-within { border-color: var(--brand-green); box-shadow: 0 0 0 3px rgba(0, 119, 82, .14); }
 .peas-upload-page .peas-file-dropzone button { background: transparent; }
 .peas-upload-inline-hint { color: #718078; font-size: .78rem; line-height: 1.45; margin: 0; }
+.peas-cover-page-mapping { background: var(--dashboard-surface-subtle, #f4f8f6); border: 1px solid var(--dashboard-border, #d9e5df); border-radius: 12px; display: grid; gap: 12px; padding: 14px; }
 .peas-abstract-method { border: 0; display: grid; gap: 8px; margin: 0; min-width: 0; padding: 0; }
 .peas-abstract-method > legend { color: var(--foreground); font-size: .82rem; font-weight: 800; padding: 0; }
 .peas-abstract-method > p { color: #718078; font-size: .75rem; line-height: 1.45; margin: 0; }

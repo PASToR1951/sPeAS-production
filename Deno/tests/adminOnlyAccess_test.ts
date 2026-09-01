@@ -199,6 +199,14 @@ Deno.test("administrator previews stay protected while dedicated public download
     compiledDocuments,
     '{ method: "GET", path: "/public/compiled-documents/:id/foreword/download", handler: downloadPublicCompiledForeword }',
   );
+  assertStringIncludes(
+    compiledDocuments,
+    '{ method: "GET", path: "/compiled-documents/:id/cover", handler: getCompiledCover, middleware: [isAuthenticated, isAdmin] }',
+  );
+  assertStringIncludes(
+    compiledDocuments,
+    '{ method: "GET", path: "/public/compiled-documents/:id/cover/download", handler: downloadPublicCompiledCover }',
+  );
   assertStringIncludes(documents, 'audience: "guest", action: "download"');
   assertStringIncludes(compiledDocuments, 'audience: "guest", action: "download"');
 });

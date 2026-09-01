@@ -82,6 +82,10 @@ export interface CompiledDocument {
   department?: string;
   category?: string;
   foreword?: string;
+  cover_file_path?: string;
+  cover_page_count?: number;
+  front_cover_page?: number;
+  back_cover_page?: number;
   abstract_foreword?: string;
   abstract_foreword_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy' | null;
   created_at: string;
@@ -896,6 +900,10 @@ export async function createCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     abstract_foreword_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy';
     uploaded_by?: string;
@@ -924,6 +932,10 @@ export async function createCompiledDocument(
           department, 
           category,
           foreword,
+          cover_file_path,
+          cover_page_count,
+          front_cover_page,
+          back_cover_page,
           abstract_foreword,
           abstract_foreword_source,
           uploaded_by,
@@ -932,7 +944,7 @@ export async function createCompiledDocument(
           reviewed_at,
           created_at
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP)
         RETURNING id
       `;
       
@@ -944,6 +956,10 @@ export async function createCompiledDocument(
         compiledDoc.department || null,
         compiledDoc.category || 'CONFLUENCE',
         compiledDoc.foreword || null,
+        compiledDoc.cover_file_path || null,
+        compiledDoc.cover_page_count || null,
+        compiledDoc.front_cover_page || null,
+        compiledDoc.back_cover_page || null,
         compiledDoc.abstract_foreword || null,
         compiledDoc.abstract_foreword_source || (compiledDoc.abstract_foreword ? 'legacy' : 'none'),
         compiledDoc.uploaded_by || null,
@@ -1112,6 +1128,10 @@ export async function getCompiledDocument(compiledDocId: number): Promise<Compil
       department: row.department as string | undefined,
       category: row.category as string | undefined,
       foreword: row.foreword as string | undefined,
+      cover_file_path: row.cover_file_path as string | undefined,
+      cover_page_count: row.cover_page_count as number | undefined,
+      front_cover_page: row.front_cover_page as number | undefined,
+      back_cover_page: row.back_cover_page as number | undefined,
       abstract_foreword: row.abstract_foreword as string | undefined,
       created_at: row.created_at as string,
       updated_at: row.updated_at as string | undefined,
@@ -1307,6 +1327,10 @@ export async function updateCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     title?: string;
     authors?: any[];
@@ -1364,6 +1388,30 @@ export async function updateCompiledDocument(
     if (compiledDoc.foreword !== undefined) {
       updateQuery += `, foreword = $${paramIndex}`;
       params.push(compiledDoc.foreword);
+      paramIndex++;
+    }
+
+    if (compiledDoc.cover_file_path !== undefined) {
+      updateQuery += `, cover_file_path = $${paramIndex}`;
+      params.push(compiledDoc.cover_file_path);
+      paramIndex++;
+    }
+
+    if (compiledDoc.cover_page_count !== undefined) {
+      updateQuery += `, cover_page_count = $${paramIndex}`;
+      params.push(compiledDoc.cover_page_count);
+      paramIndex++;
+    }
+
+    if (compiledDoc.front_cover_page !== undefined) {
+      updateQuery += `, front_cover_page = $${paramIndex}`;
+      params.push(compiledDoc.front_cover_page);
+      paramIndex++;
+    }
+
+    if (compiledDoc.back_cover_page !== undefined) {
+      updateQuery += `, back_cover_page = $${paramIndex}`;
+      params.push(compiledDoc.back_cover_page);
       paramIndex++;
     }
     

@@ -1,6 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   isSupportedIsoDate,
+  validateCompiledCoverSelection,
   validateCompiledVolume,
   validateCompiledYearRange,
   validateSinglePublicationDate,
@@ -39,4 +40,31 @@ Deno.test("compiled publication volume requires a positive integer", () => {
   assertEquals(validateCompiledVolume("1.5"), "Enter a positive volume number.");
   assertEquals(validateCompiledVolume(3), undefined);
   assertEquals(validateCompiledVolume("12"), undefined);
+});
+
+Deno.test("compiled cover selections require two distinct in-range pages", () => {
+  assertEquals(validateCompiledCoverSelection("/storage/synergy/covers/cover.pdf", 2, 1, 2), {});
+  assertEquals(validateCompiledCoverSelection("", null, null, null), {
+    "compiledDoc.cover_file_path": "Attach the front and back cover PDF.",
+    "compiledDoc.cover_page_count": "The cover PDF must contain at least two pages.",
+    "compiledDoc.front_cover_page": "Choose the front cover page.",
+    "compiledDoc.back_cover_page": "Choose the back cover page.",
+  });
+  assertEquals(validateCompiledCoverSelection("/storage/confluence/covers/cover.pdf", 4, 4, 4), {
+    "compiledDoc.back_cover_page": "Front and back covers must use different PDF pages.",
+  });
+  assertEquals(validateCompiledCoverSelection("/storage/confluence/covers/cover.pdf", 2, 3, 2), {
+    "compiledDoc.front_cover_page": "The front cover page is outside the PDF page range.",
+  });
+});
+
+Deno.test("compiled cover migration persists a complete page mapping while preserving legacy rows", async () => {
+  const sql = await Deno.readTextFile(new URL("../db/production-migrations/0009_compiled_cover_pages.sql", import.meta.url));
+  for (const column of ["cover_file_path", "cover_page_count", "front_cover_page", "back_cover_page"]) {
+    assertStringIncludes(sql, `ADD COLUMN IF NOT EXISTS ${column}`);
+  }
+  assertStringIncludes(sql, "cover_file_path IS NULL");
+  assertStringIncludes(sql, "front_cover_page <> back_cover_page");
+  assertStringIncludes(sql, "front_cover_page BETWEEN 1 AND cover_page_count");
+  assertStringIncludes(sql, "back_cover_page BETWEEN 1 AND cover_page_count");
 });

@@ -4,7 +4,7 @@ import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 
 export type PdfReaderError = "not-found" | "invalid" | "auth-expired" | "unknown";
 
-export function SimplePdfReader({ url, title, onLoaded, onError }: { url: string; title: string; onLoaded: () => void; onError: (kind: PdfReaderError) => void }) {
+export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError }: { url: string; title: string; initialPage?: number; onLoaded: () => void; onError: (kind: PdfReaderError) => void }) {
   const readerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -22,10 +22,10 @@ export function SimplePdfReader({ url, title, onLoaded, onError }: { url: string
   useEffect(() => {
     let active = true;
     setPdf(null);
-    setPage(1);
+    setPage(Math.max(1, Math.floor(initialPage)));
     setZoom(1);
     getDocument({ url, withCredentials: true }).promise
-      .then((loaded) => { if (active) { setPdf(loaded); onLoadedRef.current(); } })
+      .then((loaded) => { if (active) { setPage(Math.min(loaded.numPages, Math.max(1, Math.floor(initialPage)))); setPdf(loaded); onLoadedRef.current(); } })
       .catch((error: unknown) => {
         if (!active) return;
         const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : NaN;
@@ -36,7 +36,7 @@ export function SimplePdfReader({ url, title, onLoaded, onError }: { url: string
         else onErrorRef.current("unknown");
       });
     return () => { active = false; };
-  }, [url]);
+  }, [initialPage, url]);
 
   useEffect(() => {
     const stage = stageRef.current;
