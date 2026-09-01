@@ -2,7 +2,14 @@ import { expect, test } from "@playwright/test";
 
 test("desktop global search provides a persistent grouped workspace and closes cleanly", async ({ page, isMobile }) => {
   test.skip(Boolean(isMobile), "The expanded search workspace is desktop-only.");
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: null }));
+  await page.route("**/api/experience/public", (route) => route.fulfill({ json: {} }));
+  await page.route("**/api/categories?*", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/documents/years", (route) => route.fulfill({ json: { years: [] } }));
+  await page.route("**/api/documents?*", (route) => route.fulfill({ json: { documents: [], totalCount: 0, totalPages: 0, currentPage: 1 } }));
+  await page.route("**/api/page-visits/home-stats", (route) => route.fulfill({ json: {} }));
+  await page.route("**/api/news?*", (route) => route.fulfill({ json: { posts: [], totalCount: 0, totalPages: 0, currentPage: 1 } }));
   await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/trending-keywords*", (route) => route.fulfill({ json: [{ keyword: "sustainability" }] }));
   await page.route("**/api/search/suggestions?*", (route) => route.fulfill({ json: {
@@ -17,10 +24,10 @@ test("desktop global search provides a persistent grouped workspace and closes c
   } }));
 
   await page.goto("/index.html");
-  await page.getByPlaceholder("Search the repository").focus();
+  await page.getByRole("searchbox", { name: "Search the repository from navigation" }).click();
   const dialog = page.getByRole("dialog", { name: "Search & Filter Archive" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("aside", { name: "Search filter categories" })).toBeVisible();
+  await expect(dialog.getByRole("complementary", { name: "Search filter categories" })).toBeVisible();
   await expect(dialog.getByLabel("Filter by topic")).toBeVisible();
 
   await dialog.getByRole("combobox", { name: "Search the archive" }).fill("research");
@@ -31,6 +38,12 @@ test("desktop global search provides a persistent grouped workspace and closes c
   await dialog.getByRole("button", { name: /News articles/ }).click();
   await expect(dialog.getByRole("link", { name: /Research Week News/ })).toBeVisible();
   await expect(dialog.getByRole("link", { name: /Community Research/ })).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Authors" }).click();
+  await expect(dialog.getByRole("link", { name: /Author One/ })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Topics & Keywords" }).click();
+  await expect(dialog.getByText("No matches in this category.")).toBeVisible();
 
   await dialog.getByRole("button", { name: "Close search" }).click();
   await expect(dialog).toHaveCount(0);

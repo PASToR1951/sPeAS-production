@@ -6777,6 +6777,14 @@ body:has(#react-public-root) {
   padding: 18px 14px;
 }
 
+.peas-public-search-overlay__sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(68, 87, 79, .35) transparent;
+  scrollbar-width: thin;
+}
+
 .peas-public-search-overlay__scope > span,
 .peas-public-search-overlay__sidebar-title {
   color: var(--muted-foreground);
@@ -6812,6 +6820,11 @@ body:has(#react-public-root) {
   flex: 0 0 auto;
   height: 17px;
   width: 17px;
+}
+
+.peas-public-search-overlay__sidebar-tab {
+  min-height: 38px;
+  padding-block: 7px;
 }
 
 .peas-public-search-overlay__scope button:hover,
@@ -7133,6 +7146,7 @@ body:has(#react-public-root) {
     border-right: 0;
     flex-direction: row;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: thin;
   }
   .peas-public-search-overlay__sidebar-title { align-self: center; flex: 0 0 auto; margin: 0 4px; }
