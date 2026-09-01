@@ -104,7 +104,7 @@ export async function saveDocument(documentData: any): Promise<any> {
       }
       
       if (classification) {
-        await replaceDocumentClassification(document.id, classification, { id: "legacy-document-edit", role: "admin" }, { allowIncomplete: true, allowPendingTopics: true });
+        await replaceDocumentClassification(document.id, classification, { id: "legacy-document-edit", role: "admin" }, { allowIncomplete: true });
       } else if (topicIds !== undefined) {
         throw new Error("The legacy topicIds field is retired; provide an explicit classification object");
       }

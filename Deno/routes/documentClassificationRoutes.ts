@@ -33,6 +33,17 @@ function actorFromContext(ctx: any) {
   return { id: String(ctx.state.user.id), role: String(ctx.state.user.role) };
 }
 
+async function createImmediateTopic(ctx: any) {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const topic = await createTopic(String(body?.name ?? ""), actorFromContext(ctx), "approved");
+    ctx.response.status = 201;
+    ctx.response.body = topic;
+  } catch (error) {
+    validationResponse(ctx, error);
+  }
+}
+
 function validationResponse(ctx: any, error: unknown) {
   if (error instanceof ClassificationValidationError) {
     ctx.response.status = 422;
@@ -130,6 +141,8 @@ router.get("/api/topics", async (ctx) => {
     validationResponse(ctx, error);
   }
 });
+
+router.post("/api/topics", isAuthenticated, requireUpload, createImmediateTopic);
 
 router.get("/api/topics/:id", async (ctx) => {
   try {
@@ -271,14 +284,9 @@ router.get("/api/keywords", async (ctx, next) => {
 });
 
 router.post("/api/topics/proposals", isAuthenticated, requireUpload, async (ctx) => {
-  try {
-    const body = await ctx.request.body({ type: "json" }).value;
-    const topic = await createTopic(String(body?.name ?? ""), actorFromContext(ctx), "pending");
-    ctx.response.status = 201;
-    ctx.response.body = topic;
-  } catch (error) {
-    validationResponse(ctx, error);
-  }
+  ctx.response.headers.set("Deprecation", "true");
+  ctx.response.headers.set("Sunset", "2026-12-31");
+  await createImmediateTopic(ctx);
 });
 
 router.post("/api/admin/topics", isAuthenticated, isAdmin, async (ctx) => {
@@ -348,10 +356,7 @@ router.put("/api/documents/:id/classification", isAuthenticated, requireUpload, 
       [id],
     );
     const pendingDocument = statusResult.rows[0]?.review_status === "pending_review";
-    const classification = await replaceDocumentClassification(id, input, actorFromContext(ctx), {
-      allowPendingTopics: pendingDocument,
-      allowIncomplete: pendingDocument,
-    });
+    const classification = await replaceDocumentClassification(id, input, actorFromContext(ctx), { allowIncomplete: pendingDocument });
     ctx.response.body = { classification };
   } catch (error) {
     validationResponse(ctx, error);

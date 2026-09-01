@@ -205,8 +205,8 @@ export function searchTopics(query: string) {
   return apiFetch<Array<{ id: number; name: string; status?: string }>>(`/api/topics?q=${encodeURIComponent(trimmed)}`);
 }
 
-export function proposeTopic(name: string) {
-  return apiFetch<{ id: number; name: string; status?: string }>("/api/topics/proposals", {
+export function createTopic(name: string) {
+  return apiFetch<{ id: number; name: string; status?: string }>("/api/topics", {
     method: "POST",
     json: { name },
   });

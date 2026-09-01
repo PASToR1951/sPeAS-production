@@ -282,7 +282,6 @@ function notificationActionLabel(type: string) {
   if (type === "contact_inquiry_new") return "Open inquiry";
   if (type === "contact_delivery_failed") return "Review delivery";
   if (type === "document_review_pending" || type === "compilation_review_pending") return "Review upload";
-  if (type === "topic_proposal_pending") return "Review topic";
   if (type === "classification_migration_pending") return "Review classification";
   return "Open";
 }

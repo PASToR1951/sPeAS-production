@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Pencil, Plus, RefreshCw, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../components/ui/alert-dialog";
 import { AdminPageHeader } from "../../components/layout/AdminPageHeader";
@@ -20,7 +20,7 @@ export function ClassificationManagementPage() {
   const [keywords, setKeywords] = useState<AdminKeyword[]>([]);
   const [status, setStatus] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("topicStatus");
-    return requested === "pending" || requested === "approved" || requested === "retired" ? requested : "all";
+    return requested === "approved" || requested === "retired" ? requested : "all";
   });
   const [agendaStatus, setAgendaStatus] = useState<"active" | "retired" | "all">("active");
   const [summary, setSummary] = useState({ missingDocuments: 0, pendingMigration: 0 });
@@ -128,7 +128,7 @@ export function ClassificationManagementPage() {
     try {
       await createAdminTopic(topicDraft);
       setTopicDraft("");
-      toast.success("Approved topic added.");
+      toast.success("Topic added.");
       await load();
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -138,7 +138,7 @@ export function ClassificationManagementPage() {
   async function reviewTopic(id: number, decision: "approve" | "reject") {
     try {
       await reviewAdminTopic(id, decision);
-      toast.success(decision === "approve" ? "Topic approved." : "Topic retired.");
+      toast.success(decision === "approve" ? "Topic reactivated." : "Topic retired.");
       await load();
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -182,7 +182,7 @@ export function ClassificationManagementPage() {
 
   return <main className="peas-admin-island peas-classification-management">
     <PeasToaster />
-    <AdminPageHeader eyebrow="Metadata governance" title="Classification Management" description="Manage the landing-page agenda list, approved document topics, and normalized keywords." actions={<Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw aria-hidden="true" /> Refresh</Button>} />
+    <AdminPageHeader eyebrow="Metadata governance" title="Classification Management" description="Manage the landing-page agenda list, reusable document topics, and normalized keywords." actions={<Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw aria-hidden="true" /> Refresh</Button>} />
     <div className="peas-classification-summary" aria-label="Classification integrity summary">
       <div><strong>{agendas.filter((agenda) => agenda.isActive).length}</strong><span>agenda items on the landing page</span></div>
       <div><strong>{summary.missingDocuments}</strong><span>public documents missing required classification</span></div>
@@ -194,9 +194,9 @@ export function ClassificationManagementPage() {
       <div className="peas-classification-list">{visibleAgendas.length ? visibleAgendas.map((agenda) => { const index = agendas.findIndex((item) => item.id === agenda.id); return <div className="peas-classification-row peas-classification-agenda-row" key={agenda.id}><span className="peas-classification-row__order">{String(index + 1).padStart(2, "0")}</span><div className="peas-classification-agenda-row__details"><strong>{agenda.name}</strong></div><span className="peas-classification-agenda-row__usage">Landing page</span><Badge tone={agenda.isActive ? "green" : "slate"}>{agenda.isActive ? "Active" : "Retired"}</Badge><div className="peas-classification-row__actions"><Button size="sm" variant="outline" aria-label={`Edit ${agenda.name}`} onClick={() => openAgendaEdit(agenda)}><Pencil aria-hidden="true" /> Edit</Button><Button size="sm" variant="outline" aria-label={`Move ${agenda.name} up`} disabled={busy || index === 0} onClick={() => void moveAgenda(agenda, -1)}><ArrowUp aria-hidden="true" /></Button><Button size="sm" variant="outline" aria-label={`Move ${agenda.name} down`} disabled={busy || index === agendas.length - 1} onClick={() => void moveAgenda(agenda, 1)}><ArrowDown aria-hidden="true" /></Button><Button size="sm" variant="outline" onClick={() => agenda.isActive ? setAgendaRetireTarget(agenda) : void toggleAgenda(agenda)}>{agenda.isActive ? "Retire" : "Reactivate"}</Button></div></div>; }) : <p>No agendas match this filter.</p>}</div>
     </section>
     <section className="peas-classification-management__section peas-topics-section">
-      <header><div><h2>Topics</h2><p>Review publisher proposals and maintain the approved subject headings used across the repository.</p></div><div className="peas-classification-tabs" role="group" aria-label="Topic status filter">{["all", "pending", "approved", "retired"].map((item) => <Button key={item} size="sm" variant={status === item ? "default" : "outline"} aria-pressed={status === item} onClick={() => setStatus(item)}>{item}</Button>)}</div></header>
-      <div className="peas-classification-create-row peas-topic-create-row"><div><Input aria-label="New approved topic" placeholder="Enter an approved topic name" value={topicDraft} onChange={(event) => setTopicDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void addTopic(); }} /><span>Topics created here are approved immediately.</span></div><Button onClick={() => void addTopic()} disabled={busy || !topicDraft.trim()}><Plus aria-hidden="true" /> Add topic</Button></div>
-      <div className="peas-classification-list peas-topic-list">{topics.length ? topics.map((topic) => <article className="peas-classification-row peas-topic-row" key={topic.id}><div className="peas-topic-row__details"><strong>{topic.name}</strong></div><Badge tone={topic.status === "approved" ? "green" : topic.status === "pending" ? "gold" : "slate"}>{topic.status ?? "unknown"}</Badge>{topic.status === "pending" ? <div className="peas-topic-row__actions"><Button size="sm" onClick={() => void reviewTopic(topic.id, "approve")}><CheckCircle2 aria-hidden="true" /> Approve</Button><Button size="sm" variant="outline" onClick={() => void reviewTopic(topic.id, "reject")}><XCircle aria-hidden="true" /> Retire</Button></div> : <span className="peas-topic-row__state">No review needed</span>}</article>) : <div className="peas-topic-empty"><strong>No {status === "all" ? "topics" : `${status} topics`}</strong><span>{status === "pending" ? "Publisher proposals awaiting review will appear here." : "Try another status filter or add a new approved topic."}</span></div>}</div>
+      <header><div><h2>Topics</h2><p>Topics added during upload are available immediately. Retire a topic only when it should no longer be selected.</p></div><div className="peas-classification-tabs" role="group" aria-label="Topic status filter">{["all", "approved", "retired"].map((item) => <Button key={item} size="sm" variant={status === item ? "default" : "outline"} aria-pressed={status === item} onClick={() => setStatus(item)}>{item}</Button>)}</div></header>
+      <div className="peas-classification-create-row peas-topic-create-row"><div><Input aria-label="New topic" placeholder="Enter a topic name" value={topicDraft} onChange={(event) => setTopicDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void addTopic(); }} /><span>New topics can be selected as soon as they are added.</span></div><Button onClick={() => void addTopic()} disabled={busy || !topicDraft.trim()}><Plus aria-hidden="true" /> Add topic</Button></div>
+      <div className="peas-classification-list peas-topic-list">{topics.length ? topics.map((topic) => <article className="peas-classification-row peas-topic-row" key={topic.id}><div className="peas-topic-row__details"><strong>{topic.name}</strong></div><Badge tone={topic.status === "approved" ? "green" : "slate"}>{topic.status === "approved" ? "Active" : "Retired"}</Badge><div className="peas-topic-row__actions"><Button size="sm" variant="outline" onClick={() => void reviewTopic(topic.id, topic.status === "retired" ? "approve" : "reject")}>{topic.status === "retired" ? "Reactivate" : "Retire"}</Button></div></article>) : <div className="peas-topic-empty"><strong>No {status === "all" ? "topics" : `${status} topics`}</strong><span>Try another status filter or add a new topic.</span></div>}</div>
     </section>
     <section className="peas-classification-management__section">
       <header><div><h2>Keywords</h2><p>Keywords are created from document metadata. Renaming one updates it everywhere it is used.</p></div></header>

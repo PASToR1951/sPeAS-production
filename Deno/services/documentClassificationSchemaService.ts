@@ -9,11 +9,12 @@ let schemaReady = false;
 export async function ensureDocumentClassificationSchema(): Promise<void> {
   if (schemaReady) return;
 
-  const migration = await Deno.readTextFile(
-    new URL("../db/migrations/2026-08_document_classification.sql", import.meta.url),
-  );
+  const migrations = await Promise.all([
+    Deno.readTextFile(new URL("../db/migrations/2026-08_document_classification.sql", import.meta.url)),
+    Deno.readTextFile(new URL("../db/migrations/2026-09_direct_topics.sql", import.meta.url)),
+  ]);
   await withTransaction(async (connection) => {
-    await connection.queryArray(migration);
+    for (const migration of migrations) await connection.queryArray(migration);
   });
   schemaReady = true;
 }

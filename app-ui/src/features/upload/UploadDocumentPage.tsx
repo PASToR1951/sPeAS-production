@@ -11,7 +11,7 @@ import {
   createDocumentRecord,
   linkDocumentsToCompilation,
   searchTopics,
-  proposeTopic,
+  createTopic,
   uploadFile,
   type UploadTransferProgress,
   type UploadedFileResult,
@@ -648,7 +648,7 @@ export function UploadDocumentPage() {
                   <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
                 ) : (
                   <>
-                    <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setSingleForm} onError={markError} />
+                    <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setSingleForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
                     {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
@@ -662,7 +662,7 @@ export function UploadDocumentPage() {
                   <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
                 ) : (
                   <>
-                    <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} allowPendingTopics={isPublisher} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setCompiledForm} onError={markError} />
+                    <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setCompiledForm} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
                     {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
@@ -704,7 +704,7 @@ function UploadProgress({ mode, step, steps, busy, onStepChange }: { mode: Uploa
   );
 }
 
-function SingleDocumentForm({ form, step, errors, busy, authors, allowPendingTopics, onAuthorCreated, onChange, onError }: { form: SingleFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; allowPendingTopics: boolean; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: SingleFormState) => void; onError: (key: string, error?: string) => void }) {
+function SingleDocumentForm({ form, step, errors, busy, authors, onAuthorCreated, onChange, onError }: { form: SingleFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: SingleFormState) => void; onError: (key: string, error?: string) => void }) {
   const field = (key: string) => fieldA11y(key, errors[key]);
   return (
     <div className="peas-upload-section">
@@ -744,7 +744,7 @@ function SingleDocumentForm({ form, step, errors, busy, authors, allowPendingTop
       ) : null}
 
       {step === 3 ? (
-        <WorkflowPanel title="Classification" description="Add approved subject headings and specific search terms for this document.">
+        <WorkflowPanel title="Classification" description="Add reusable topics and specific search terms for this document.">
           <ClassificationControls
             prefix="single"
             topicIds={form.topicIds}
@@ -752,7 +752,6 @@ function SingleDocumentForm({ form, step, errors, busy, authors, allowPendingTop
             keywords={form.keywords}
             errors={errors}
             disabled={busy}
-            allowPendingTopics={allowPendingTopics}
             onChange={(updates) => onChange({ ...form, ...updates })}
             onError={onError}
           />
@@ -794,9 +793,10 @@ function SingleDocumentForm({ form, step, errors, busy, authors, allowPendingTop
   );
 }
 
-function CompiledDocumentForm({ form, step, errors, busy, authors, allowPendingTopics, onAuthorCreated, onChange, onError }: { form: CompiledFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; allowPendingTopics: boolean; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: CompiledFormState) => void; onError: (key: string, error?: string) => void }) {
+function CompiledDocumentForm({ form, step, errors, busy, authors, onAuthorCreated, onChange, onError }: { form: CompiledFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: CompiledFormState) => void; onError: (key: string, error?: string) => void }) {
   const synergy = form.category === "SYNERGY";
   const [openStudyId, setOpenStudyId] = useState<string | null>(() => form.sections[0]?.id ?? null);
+  const pendingStudyTitleFocusId = useRef<string | null>(null);
   const coverInspectionId = useRef(0);
   const formRef = useRef(form);
   formRef.current = form;
@@ -807,8 +807,39 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, allowPendingT
     setOpenStudyId(form.sections[0]?.id ?? null);
   }, [form.sections, openStudyId]);
 
+  useEffect(() => {
+    const sectionId = pendingStudyTitleFocusId.current;
+    if (!sectionId || openStudyId !== sectionId || !form.sections.some((section) => section.id === sectionId)) return;
+    pendingStudyTitleFocusId.current = null;
+    document.getElementById(`study-title-${sectionId}`)?.focus();
+  }, [form.sections, openStudyId]);
+
   function updateSection(id: string, updates: Partial<ResearchSection>) {
     onChange({ ...form, sections: form.sections.map((section) => section.id === id ? { ...section, ...updates } : section) });
+  }
+
+  function updateYear(fieldName: "startYear" | "endYear", rawValue: string) {
+    const value = rawValue.replace(/\D/gu, "").slice(0, 4);
+    const nextForm = { ...form, [fieldName]: value };
+    onChange(nextForm);
+
+    const nextErrors = validateCompiledYears(nextForm.startYear, nextForm.endYear);
+    const errorKey = `compiled.${fieldName}`;
+    if (errors[errorKey] || value.length === 4) onError(errorKey, nextErrors[errorKey]);
+    if (/^\d{4}$/.test(nextForm.startYear) && /^\d{4}$/.test(nextForm.endYear)) {
+      const otherKey = fieldName === "startYear" ? "compiled.endYear" : "compiled.startYear";
+      onError(otherKey, nextErrors[otherKey]);
+    }
+  }
+
+  function validateYearOnBlur(fieldName: "startYear" | "endYear") {
+    const yearErrors = validateCompiledYears(form.startYear, form.endYear);
+    const errorKey = `compiled.${fieldName}`;
+    onError(errorKey, yearErrors[errorKey]);
+    if (/^\d{4}$/.test(form.startYear) && /^\d{4}$/.test(form.endYear)) {
+      const otherKey = fieldName === "startYear" ? "compiled.endYear" : "compiled.startYear";
+      onError(otherKey, yearErrors[otherKey]);
+    }
   }
 
   function updateCoverFile(file: File | null) {
@@ -849,8 +880,8 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, allowPendingT
             <PeasField label="Category" fieldKey="compiled.category" required>
               <Select value={form.category} disabled={busy} onValueChange={(value) => onChange({ ...form, category: value as CompiledCategory })}><SelectTrigger aria-label="Compiled document category"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="CONFLUENCE">Confluence</SelectItem><SelectItem value="SYNERGY">Synergy</SelectItem></SelectContent></Select>
             </PeasField>
-          <PeasField label="Start year" htmlFor="compiled-start-year" fieldKey="compiled.startYear" required error={errors["compiled.startYear"]}><Input id="compiled-start-year" {...field("compiled.startYear")} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" value={form.startYear} disabled={busy} placeholder="YYYY" onBlur={() => onError("compiled.startYear", validateYear(form.startYear, "Enter a four-digit year."))} onChange={(event) => onChange({ ...form, startYear: event.currentTarget.value.replace(/\D/gu, "").slice(0, 4) })} /></PeasField>
-          <PeasField label="End year" htmlFor="compiled-end-year" fieldKey="compiled.endYear" required error={errors["compiled.endYear"]}><Input id="compiled-end-year" {...field("compiled.endYear")} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" value={form.endYear} disabled={busy} placeholder="YYYY" onBlur={() => onError("compiled.endYear", validateYear(form.endYear, "Enter a four-digit year."))} onChange={(event) => onChange({ ...form, endYear: event.currentTarget.value.replace(/\D/gu, "").slice(0, 4) })} /></PeasField>
+          <PeasField label="Start year" htmlFor="compiled-start-year" fieldKey="compiled.startYear" required error={errors["compiled.startYear"]}><Input id="compiled-start-year" {...field("compiled.startYear")} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" value={form.startYear} disabled={busy} placeholder="YYYY" onBlur={() => validateYearOnBlur("startYear")} onChange={(event) => updateYear("startYear", event.currentTarget.value)} /></PeasField>
+          <PeasField label="End year" htmlFor="compiled-end-year" fieldKey="compiled.endYear" required error={errors["compiled.endYear"]}><Input id="compiled-end-year" {...field("compiled.endYear")} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" value={form.endYear} disabled={busy} placeholder="YYYY" onBlur={() => validateYearOnBlur("endYear")} onChange={(event) => updateYear("endYear", event.currentTarget.value)} /></PeasField>
           </div>
           <PeasField label="Collection overview" htmlFor="compiled-foreword-abstract" fieldKey="compiled.forewordAbstract" optional description="Optional overview for the compiled publication. If a foreword PDF is attached and this is blank, local extraction will be queued for administrator review.">
             <Textarea id="compiled-foreword-abstract" value={form.forewordAbstract} disabled={busy} rows={4} placeholder="Optional collection overview" onChange={(event) => onChange({ ...form, forewordAbstract: event.currentTarget.value })} />
@@ -872,14 +903,14 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, allowPendingT
             })}
           </div>
           {errors["compiled.sections"] ? <p className="peas-upload-inline-error" role="alert">{errors["compiled.sections"]}</p> : null}
-          <Button type="button" variant="outline" disabled={busy} onClick={() => { const newSection = createResearchSection(); onChange({ ...form, sections: [...form.sections, newSection] }); setOpenStudyId(newSection.id); }}><Plus aria-hidden="true" /> Add study</Button>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => { const newSection = createResearchSection(); pendingStudyTitleFocusId.current = newSection.id; onChange({ ...form, sections: [...form.sections, newSection] }); setOpenStudyId(newSection.id); }}><Plus aria-hidden="true" /> Add study</Button>
         </WorkflowPanel>
       ) : null}
 
       {step === 3 ? (
         <WorkflowPanel title="Study classification" description="Classify each study independently using approved topics and optional keywords.">
           <div className="peas-study-list">
-            {form.sections.map((section, index) => <StudyClassificationCard key={section.id} section={section} index={index} errors={errors} busy={busy} allowPendingTopics={allowPendingTopics} onChange={(updates) => updateSection(section.id, updates)} onError={onError} />)}
+            {form.sections.map((section, index) => <StudyClassificationCard key={section.id} section={section} index={index} errors={errors} busy={busy} onChange={(updates) => updateSection(section.id, updates)} onError={onError} />)}
           </div>
           {errors["compiled.sections"] ? <p className="peas-upload-inline-error" role="alert">{errors["compiled.sections"]}</p> : null}
         </WorkflowPanel>
@@ -929,13 +960,13 @@ function StudyDetailsCard({ section, index, complete, open, onToggle, errors, se
         <PeasField label="Study title" htmlFor={`study-title-${section.id}`} fieldKey={titleKey} required error={errors[titleKey]}><Input id={`study-title-${section.id}`} {...fieldA11y(titleKey, errors[titleKey])} value={section.title} disabled={busy} placeholder="Enter study title" onBlur={() => onError(titleKey, section.title.trim() ? undefined : "Enter a study title.")} onChange={(event) => onChange({ title: event.currentTarget.value })} /></PeasField>
         <PeasField label="Authors" htmlFor={`study-authors-${section.id}`} fieldKey={`compiled.section.${section.id}.authors`} required error={errors[`compiled.section.${section.id}.authors`]} description="Search the directory or add a new author. Authors are saved in the order selected."><DocumentAuthorPicker id={`study-authors-${section.id}`} authors={authors} value={section.authors} disabled={busy} onAuthorCreated={onAuthorCreated} onChange={(nextAuthors) => { onChange({ authors: nextAuthors }); onError(`compiled.section.${section.id}.authors`, nextAuthors.length ? undefined : "Enter at least one author."); }} /></PeasField>
         <PeasField label="Abstract" htmlFor={`study-abstract-${section.id}`} fieldKey={`compiled.section.${section.id}.abstract`} optional><Textarea id={`study-abstract-${section.id}`} value={section.abstract} disabled={busy} rows={4} placeholder="Optional. If blank, PeAS will use extracted PDF metadata when available." onChange={(event) => onChange({ abstract: event.currentTarget.value })} /></PeasField>
-        <Button type="button" variant="ghost" className="peas-study-card__remove" disabled={busy} onClick={onRemove}><Trash2 aria-hidden="true" /> Remove study</Button>
+        <Button type="button" variant="ghost" className="peas-study-card__remove" disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={onRemove}><Trash2 aria-hidden="true" /> Remove study</Button>
       </CardContent> : null}
     </Card>
   );
 }
 
-function StudyClassificationCard({ section, index, errors, busy, allowPendingTopics, onChange, onError }: { section: ResearchSection; index: number; errors: FieldErrors; busy: boolean; allowPendingTopics: boolean; onChange: (updates: Partial<ResearchSection>) => void; onError: (key: string, error?: string) => void }) {
+function StudyClassificationCard({ section, index, errors, busy, onChange, onError }: { section: ResearchSection; index: number; errors: FieldErrors; busy: boolean; onChange: (updates: Partial<ResearchSection>) => void; onError: (key: string, error?: string) => void }) {
   return <Card className="peas-study-card peas-study-card--classification">
     <CardContent className="peas-study-card__content">
       <header className="peas-study-card__heading"><div><h3>Study {index + 1}</h3><p>{section.title || "Complete study details first"}</p></div><Badge tone={section.topicIds.length ? "green" : "slate"}>{section.topicIds.length ? "Classified" : "Needs classification"}</Badge></header>
@@ -946,7 +977,6 @@ function StudyClassificationCard({ section, index, errors, busy, allowPendingTop
         keywords={section.keywords}
         errors={errors}
         disabled={busy}
-        allowPendingTopics={allowPendingTopics}
         onChange={onChange}
         onError={onError}
       />
@@ -1039,7 +1069,6 @@ function ClassificationControls({
   keywords,
   errors,
   disabled,
-  allowPendingTopics,
   onChange,
   onError,
 }: {
@@ -1049,7 +1078,6 @@ function ClassificationControls({
   keywords: string[];
   errors: FieldErrors;
   disabled: boolean;
-  allowPendingTopics: boolean;
   onChange: (updates: Partial<ClassificationUpdates>) => void;
   onError: (key: string, error?: string) => void;
 }) {
@@ -1086,16 +1114,8 @@ function ClassificationControls({
     };
   }, [disabled, topicQuery]);
 
-  function canSelectTopic(topic: { status?: string }) {
-    return topic.status === "approved" || (allowPendingTopics && topic.status === "pending");
-  }
-
-  function addTopic(id: number, name: string, status = "approved") {
+  function addTopic(id: number, name: string) {
     if (topicIds.includes(id) || topicIds.length >= 5) return;
-    if (!canSelectTopic({ status })) {
-      onError(topicKey, "Choose an approved topic. Proposed topics must be approved before publication.");
-      return;
-    }
     const normalizedName = normalizeClassificationTerm(name);
     if (keywords.some((keyword) => normalizeClassificationTerm(keyword) === normalizedName)) {
       onError(topicKey, `“${name}” is already used as a keyword. Remove the keyword before selecting this topic.`);
@@ -1107,19 +1127,19 @@ function ClassificationControls({
     setTopicMatches([]);
   }
 
-  async function proposeCurrentTopic() {
+  async function createCurrentTopic() {
     const name = topicQuery.trim();
     if (name.length < 2 || topicIds.length >= 5) return;
     try {
       setTopicBusy(true);
-      const proposal = await proposeTopic(name);
-      if (allowPendingTopics) {
-        addTopic(Number(proposal.id), proposal.name, proposal.status ?? "pending");
-      } else {
-        setTopicQuery("");
-        setTopicMatches([]);
-        toast.success("Topic proposed for administrator review. It will be available after approval.");
+      const topic = await createTopic(name);
+      if (topic.status && topic.status !== "approved") {
+        onError(topicKey, `“${topic.name}” is retired and cannot be selected.`);
+        return;
       }
+      addTopic(Number(topic.id), topic.name);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     } finally {
       setTopicBusy(false);
     }
@@ -1128,27 +1148,23 @@ function ClassificationControls({
   return <div className="peas-classification-controls" aria-label="Document classification">
     <div className="peas-classification-controls__intro">
       <strong>Classify this document</strong>
-      <span>Topics are approved subject headings; keywords are specific search terms.</span>
+      <span>Topics are reusable subject headings; keywords are document-specific search terms.</span>
     </div>
-    <PeasField label="Topics" fieldKey={topicKey} required error={errors[topicKey]} description={allowPendingTopics ? "Choose 1–5 approved topics. You may also submit a new topic for administrator review." : "Choose 1–5 approved topics. Proposed topics must be approved before publication."}>
+    <PeasField label="Topics" fieldKey={topicKey} required error={errors[topicKey]} description="Choose an existing topic or add a new one immediately. Use 1–5 topics.">
       {topicNames.length ? <div className="peas-keyword-input__badges" role="list" aria-label="Selected topics">{topicNames.map((name, index) => <Badge key={`${name}-${index}`} tone="blue" className="peas-keyword-input__badge">{name}<button type="button" aria-label={`Remove topic ${name}`} disabled={disabled} onClick={() => onChange({ topicIds: topicIds.filter((_, itemIndex) => itemIndex !== index), topicNames: topicNames.filter((_, itemIndex) => itemIndex !== index) })}><X aria-hidden="true" /></button></Badge>)}</div> : null}
       <div className="peas-document-tag-editor__input">
         <Input
           id={`${prefix}-topic-search`}
-          aria-label="Search approved topics"
+          aria-label="Search or add topics"
           value={topicQuery}
           disabled={disabled || topicIds.length >= 5}
-          placeholder="Search approved topics…"
+          placeholder="Search or add topics…"
           onChange={(event) => setTopicQuery(event.currentTarget.value)}
-          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); const first = topicMatches.find(canSelectTopic); if (first) addTopic(first.id, first.name, first.status); else if (topicMatches.length) onError(topicKey, "Those topics are awaiting approval. Choose an approved topic before publication."); else void proposeCurrentTopic(); } }}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); const first = topicMatches[0]; if (first) addTopic(first.id, first.name); else void createCurrentTopic(); } }}
         />
-        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Approved topic suggestions">
-          {topicBusy ? <span>Searching topics…</span> : topicMatches.map((topic) => {
-            const selectable = canSelectTopic(topic);
-            const statusLabel = topic.status === "pending" ? " · awaiting approval" : topic.status === "retired" ? " · retired" : "";
-            return <button type="button" role="option" key={topic.id} disabled={!selectable} aria-disabled={!selectable} onMouseDown={(event) => { event.preventDefault(); if (selectable) addTopic(topic.id, topic.name, topic.status); }}>{topic.name}{statusLabel}</button>;
-          })}
-          {!topicBusy && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void proposeCurrentTopic(); }}>Propose “{topicQuery.trim()}”</button> : null}
+        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Topic suggestions">
+          {topicBusy ? <span>Searching topics…</span> : topicMatches.map((topic) => <button type="button" role="option" key={topic.id} onMouseDown={(event) => { event.preventDefault(); addTopic(topic.id, topic.name); }}>{topic.name}</button>)}
+          {!topicBusy && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void createCurrentTopic(); }}>Add “{topicQuery.trim()}”</button> : null}
         </div> : null}
       </div>
     </PeasField>
@@ -1488,14 +1504,7 @@ function validateSingleAll(form: SingleFormState, requireClassification: boolean
 function validateCompiledStep(form: CompiledFormState, step: UploadStep, requireClassification: boolean): FieldErrors {
   const errors: FieldErrors = {};
   if (step === 1) {
-    const startError = validateYear(form.startYear, "Enter a four-digit year.");
-    const endError = validateYear(form.endYear, "Enter a four-digit year.");
-    if (startError) errors["compiled.startYear"] = startError;
-    if (endError) errors["compiled.endYear"] = endError;
-    if (!startError && !endError && Number(form.startYear) > Number(form.endYear)) {
-      errors["compiled.startYear"] = "Start year must be before the end year.";
-      errors["compiled.endYear"] = "End year must be after the start year.";
-    }
+    Object.assign(errors, validateCompiledYears(form.startYear, form.endYear));
     const volumeError = validatePositiveInteger(form.volume, "Enter a positive volume number.");
     if (volumeError) errors["compiled.volume"] = volumeError;
   }
@@ -1584,6 +1593,18 @@ function mapApiFieldsToUploadErrors(fields: Record<string, string>, mode: Upload
 function fieldA11y(key: string, error?: string) { return { "aria-invalid": error ? true : undefined, "aria-describedby": `${key}-description${error ? ` ${key}-error` : ""}` }; }
 function validateManualAbstract(value: string) { if (!value.trim()) return "Enter the document abstract or choose automatic extraction."; return [...value.trim()].length > 10_000 ? "Abstract must be 10,000 Unicode characters or fewer." : undefined; }
 function validateYear(value: string, message: string) { return !/^\d{4}$/.test(value.trim()) ? message : undefined; }
+function validateCompiledYears(startYear: string, endYear: string): FieldErrors {
+  const errors: FieldErrors = {};
+  const startError = validateYear(startYear, "Enter a four-digit year.");
+  const endError = validateYear(endYear, "Enter a four-digit year.");
+  if (startError) errors["compiled.startYear"] = startError;
+  if (endError) errors["compiled.endYear"] = endError;
+  if (!startError && !endError && Number(startYear) > Number(endYear)) {
+    errors["compiled.startYear"] = "Start year must not be later than the end year.";
+    errors["compiled.endYear"] = "End year must not be earlier than the start year.";
+  }
+  return errors;
+}
 function validatePositiveInteger(value: string, message = "Enter a positive volume number.") { return !/^[1-9]\d*$/.test(value.trim()) ? message : undefined; }
 function createResearchSection(): ResearchSection { return { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, title: "", authors: [], topicIds: [], topicNames: [], keywords: [], abstract: "", file: null }; }
 function buildCompiledTitle(form: CompiledFormState) { const category = form.category === "CONFLUENCE" ? "Confluence" : "Synergy"; const volume = form.volume ? ` Vol. ${form.volume}` : ""; const range = form.startYear || form.endYear ? ` (${form.startYear || "?"}-${form.endYear || form.startYear || "?"})` : ""; return `${category}${volume}${range}`; }

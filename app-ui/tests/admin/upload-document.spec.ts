@@ -298,6 +298,31 @@ test.describe("guided upload workflow", () => {
     await expect(selected).not.toContainText("Simon Riley");
   });
 
+  test("new topics are added immediately without an approval step", async ({ page }) => {
+    await page.goto("/admin/Components/upload_document.html");
+    await waitForWorkspace(page);
+
+    await page.locator("#single-title").fill("Community resilience study");
+    await page.getByRole("combobox", { name: "Add author" }).click();
+    await page.getByRole("option", { name: "Juan Dela Cruz" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("combobox", { name: "Publication month" }).click();
+    await page.getByRole("option", { name: "August" }).click();
+    await page.locator("#single-year").fill("2026");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    const topicInput = page.getByRole("textbox", { name: "Search or add topics" });
+    await topicInput.fill("Community resilience planning");
+    const addTopicRequest = page.waitForRequest((request) => request.url().endsWith("/api/topics") && request.method() === "POST");
+    await page.getByRole("button", { name: "Add “Community resilience planning”" }).click();
+    expect((await addTopicRequest).postDataJSON()).toEqual({ name: "Community resilience planning" });
+    await expect(page.getByRole("list", { name: "Selected topics" })).toContainText("Community resilience planning");
+    await expect(page.getByText(/approval|awaiting approval/i)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByRole("heading", { name: "Upload PDF" })).toBeVisible();
+  });
+
   test("compiled publications expose conditional fields and study status", async ({ page }) => {
     await page.goto("/admin/Components/upload_document.html");
     await waitForWorkspace(page);
@@ -307,7 +332,12 @@ test.describe("guided upload workflow", () => {
     await expect(page.getByRole("combobox", { name: "Synergy department" })).toBeVisible();
     await expect(page.getByLabel("Issue number")).toHaveCount(0);
     await page.locator("#compiled-start-year").fill("2024");
+    await page.locator("#compiled-end-year").fill("2023");
+    await expect(page.getByText("Start year must not be later than the end year.", { exact: true })).toBeVisible();
+    await expect(page.getByText("End year must not be earlier than the start year.", { exact: true })).toBeVisible();
     await page.locator("#compiled-end-year").fill("2025");
+    await expect(page.getByText("Start year must not be later than the end year.", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("End year must not be earlier than the start year.", { exact: true })).toHaveCount(0);
     await page.locator("#compiled-volume").fill("1");
 
     await page.getByRole("button", { name: "Continue" }).click();
@@ -322,20 +352,30 @@ test.describe("guided upload workflow", () => {
     expect(studyAuthorsBox).not.toBeNull();
     expect(studyAuthorsBox!.x).toBeCloseTo(studyTitleBox!.x, 0);
     expect(studyAuthorsBox!.width).toBeCloseTo(studyTitleBox!.width, 0);
-    await page.getByRole("combobox", { name: "Add author" }).click();
+    const studyAuthorPicker = page.getByRole("combobox", { name: "Add author" });
+    await studyAuthorPicker.click();
+    const authorMenuBox = await page.getByRole("listbox").boundingBox();
+    const studyAuthorPickerBox = await studyAuthorPicker.boundingBox();
+    const abstractBox = await page.locator('textarea[id^="study-abstract-"]').boundingBox();
+    expect(authorMenuBox).not.toBeNull();
+    expect(studyAuthorPickerBox).not.toBeNull();
+    expect(abstractBox).not.toBeNull();
+    expect(authorMenuBox!.y).toBeGreaterThanOrEqual(studyAuthorPickerBox!.y + studyAuthorPickerBox!.height);
+    expect(abstractBox!.y).toBeGreaterThanOrEqual(authorMenuBox!.y + authorMenuBox!.height - 1);
     await page.getByRole("option", { name: "Juan Dela Cruz" }).click();
     await page.getByLabel("Study title").fill("Student research study");
     await page.getByRole("button", { name: "Add study" }).click();
     await expect(page.getByText("Study 2", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Study title")).toBeFocused();
 
     await page.getByRole("button", { name: "Remove study" }).last().click();
     await expect(page.getByText("Study 2", { exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Study classification" })).toBeVisible();
-    await page.getByLabel("Search approved topics").fill("waste");
+    await page.getByLabel("Search or add topics").fill("waste");
     await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
-    await page.getByLabel("Search approved topics").press("Enter");
+    await page.getByLabel("Search or add topics").press("Enter");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Upload PDFs" })).toBeVisible();
     await page.getByRole("button", { name: "Continue" }).click();
@@ -410,9 +450,9 @@ async function prepareCompiledPublication(page: Page) {
   await page.getByRole("combobox", { name: "Add author" }).click();
   await page.getByRole("option", { name: "Juan Dela Cruz" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Search approved topics").fill("waste");
+  await page.getByLabel("Search or add topics").fill("waste");
   await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
-  await page.getByLabel("Search approved topics").press("Enter");
+  await page.getByLabel("Search or add topics").press("Enter");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Front and back cover PDF").setInputFiles({ name: "cover.pdf", mimeType: "application/pdf", buffer: createPdf(2) });
   await expect(page.getByRole("combobox", { name: "Back cover page" })).toHaveText("Page 2");
@@ -432,7 +472,15 @@ async function mockUploadApis(page: Page, reviewStatus: "approved" | "pending_re
   } }));
   await page.route("**/authors", (route) => route.fulfill({ json: { author: { id: "author-new", full_name: "Simon Riley", works_count: 0 } }, status: 201 }));
   await page.route("**/api/content/upload", (route) => route.fulfill({ json: { filePath: "/storage/test.pdf", metadata: { pageCount: 4 } } }));
-  await page.route("**/api/topics**", (route) => route.fulfill({ json: [{ id: 32, name: "Waste-material-based concrete paving blocks", status: "approved" }] }));
+  await page.route("**/api/topics**", (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { name: string };
+      return route.fulfill({ status: 201, json: { id: 33, name: payload.name, status: "approved" } });
+    }
+    const query = new URL(request.url()).searchParams.get("q") ?? "";
+    return route.fulfill({ json: query.toLocaleLowerCase().includes("waste") ? [{ id: 32, name: "Waste-material-based concrete paving blocks", status: "approved" }] : [] });
+  });
   await page.route("**/api/documents", (route) => route.request().method() === "POST" ? route.fulfill({ json: { id: 42, review_status: reviewStatus } }) : route.continue());
   await page.route("**/api/compiled-documents", (route) => route.request().method() === "POST" ? route.fulfill({ json: { id: 77, reviewStatus } }) : route.continue());
   await page.route("**/api/compiled-documents/add-documents", (route) => route.fulfill({ json: { success: true } }));

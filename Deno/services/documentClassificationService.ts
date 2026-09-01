@@ -424,7 +424,7 @@ export async function updateKeyword(keywordId: number, value: unknown): Promise<
 export async function createTopic(
   name: string,
   actor: ClassificationActor,
-  status: TopicStatus = actor.role === "admin" ? "approved" : "pending",
+  status: TopicStatus = "approved",
 ): Promise<ClassificationTerm> {
   const displayName = name.trim().replace(/[\s]+/gu, " ");
   if (displayName.length < 2 || displayName.length > CLASSIFICATION_LIMITS.topicMaxLength) {
@@ -436,7 +436,21 @@ export async function createTopic(
   const result = await client.queryObject(`
     INSERT INTO topics (name, normalized_name, status, proposed_by, reviewed_by, reviewed_at)
     VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (normalized_name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+    ON CONFLICT (normalized_name) DO UPDATE SET
+      status = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN 'approved'
+        ELSE topics.status
+      END,
+      reviewed_by = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN EXCLUDED.reviewed_by
+        ELSE topics.reviewed_by
+      END,
+      reviewed_at = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN EXCLUDED.reviewed_at
+        ELSE topics.reviewed_at
+      END,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE topics.status <> 'retired'
     RETURNING id, name, status
   `, [
     displayName,
@@ -446,6 +460,10 @@ export async function createTopic(
     status === "approved" ? actor.id : null,
     status === "approved" ? new Date() : null,
   ]);
+  if (!result.rows[0] && status === "approved") {
+    throw new ClassificationValidationError("This topic has been retired", { name: "Choose another topic or reactivate it in Classification Management" });
+  }
+  if (!result.rows[0]) throw new ClassificationValidationError("Topic could not be created", { name: "Choose another topic" });
   return toTerm(result.rows[0] as Record<string, unknown>);
 }
 
@@ -688,7 +706,7 @@ export async function replaceDocumentClassification(
   documentId: number,
   input: ClassificationInput,
   actor: ClassificationActor,
-  options: { allowPendingTopics?: boolean; allowIncomplete?: boolean } = {},
+  options: { allowIncomplete?: boolean } = {},
 ): Promise<DocumentClassification> {
   const managesAgendas = Object.prototype.hasOwnProperty.call(input, "researchAgendaIds")
     || Object.prototype.hasOwnProperty.call(input, "primaryResearchAgendaId");
@@ -700,7 +718,6 @@ export async function replaceDocumentClassification(
     : undefined;
   const topicIds = uniquePositiveIds(input.topicIds, "topicIds");
   const keywordTerms = normalizedKeywords(input.keywords);
-  const allowPendingTopics = options.allowPendingTopics === true;
   const allowIncomplete = options.allowIncomplete === true;
 
   if (managesAgendas && agendaIds.length > CLASSIFICATION_LIMITS.agendasMax) {
@@ -743,9 +760,9 @@ export async function replaceDocumentClassification(
   if (topicRows.rows.length !== topicIds.length) {
     throw new ClassificationValidationError("One or more topics do not exist", { topicIds: "Choose existing topics" });
   }
-  const invalidTopics = (topicRows.rows as Record<string, unknown>[]).some((row) => row.status !== "approved" && !(allowPendingTopics && row.status === "pending"));
+  const invalidTopics = (topicRows.rows as Record<string, unknown>[]).some((row) => row.status !== "approved");
   if (invalidTopics) {
-    throw new ClassificationValidationError("Choose approved topics before publication", { topicIds: "Remove pending or retired topics before publication" });
+    throw new ClassificationValidationError("Choose active topics", { topicIds: "Remove retired or unavailable topics" });
   }
 
   const normalizedSet = new Set<string>();
@@ -802,7 +819,7 @@ export async function replaceDocumentClassification(
     await connection.queryArray(`UPDATE documents SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [documentId]);
   });
 
-  const current = await getDocumentClassification(documentId, allowPendingTopics);
+  const current = await getDocumentClassification(documentId, false);
   await import("../models/systemLogsModel.ts").then(({ SystemLogsModel }) => SystemLogsModel.createLog({
     log_type: "document_classification",
     user_id: actor.id,
@@ -841,5 +858,5 @@ export async function replaceDocumentKeywords(
     primaryResearchAgendaId: current.researchAgendas.find((item) => item.primary)?.id ?? current.researchAgendas[0]?.id,
     topicIds: current.topics.map((item) => item.id),
     keywords,
-  }, actor, { allowPendingTopics: true, allowIncomplete: true });
+  }, actor, { allowIncomplete: true });
 }

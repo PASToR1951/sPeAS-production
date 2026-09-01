@@ -176,17 +176,6 @@ export async function syncAdminActionNotifications() {
 
   await syncPendingSource({
     insertSql: `
-      SELECT 'topic_proposal_pending', 'topic', t.id::text, 'warning',
-             'Review proposed topic', t.name || ' is waiting for approval.',
-             '/admin/Components/classification-management.html?topicStatus=pending'
-      FROM topics t WHERE t.status = 'pending'
-    `,
-    notificationType: "topic_proposal_pending",
-    activeSql: `SELECT 1 FROM topics t WHERE t.id::text = n.entity_id AND t.status = 'pending'`,
-  });
-
-  await syncPendingSource({
-    insertSql: `
       SELECT 'classification_migration_pending', 'classification_review',
              r.document_id::text || ':' || r.legacy_research_agenda_id::text, 'warning',
              'Review legacy classification', r.legacy_value || ' needs a classification decision.',

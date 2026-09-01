@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
-import { searchTopics, proposeTopic } from "../../lib/api/upload";
+import { toast } from "../ui/toast";
+import { searchTopics, createTopic } from "../../lib/api/upload";
+import { getErrorMessage } from "../../lib/api/http";
 import { normalizeClassificationTerm } from "../../../../shared/classification";
 
 export interface DocumentClassificationEditorValue {
@@ -61,13 +63,15 @@ export function DocumentClassificationEditor({
     setTopicMatches([]);
   }
 
-  async function proposeCurrentTopic() {
+  async function createCurrentTopic() {
     const name = topicQuery.trim();
     if (name.length < 2 || value.topicIds.length >= 5) return;
     setTopicBusy(true);
     try {
-      const proposal = await proposeTopic(name);
-      addTopic(Number(proposal.id), proposal.name);
+      const topic = await createTopic(name);
+      addTopic(Number(topic.id), topic.name);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     } finally {
       setTopicBusy(false);
     }
@@ -83,11 +87,11 @@ export function DocumentClassificationEditor({
   return <div className="peas-classification-editor" aria-label="Document classification editor">
     <fieldset className="peas-classification-editor__group">
       <legend>Topics</legend>
-      <p>Curated subject headings. Select 1–5 approved topics; pending proposals can be replaced during review.</p>
+      <p>Reusable subject headings. Select an existing topic or add a new one immediately.</p>
       {value.topicNames.length ? <div className="peas-keyword-input__badges" role="list" aria-label="Selected topics">{value.topicNames.map((name, index) => <Badge key={`${name}-${index}`} tone="blue" role="listitem">{name}<button className="peas-classification-editor__remove" type="button" aria-label={`Remove topic ${name}`} disabled={disabled} onClick={() => onChange({ ...value, topicIds: value.topicIds.filter((_, itemIndex) => itemIndex !== index), topicNames: value.topicNames.filter((_, itemIndex) => itemIndex !== index) })}><X aria-hidden="true" /></button></Badge>)}</div> : null}
       <div className="peas-document-tag-editor__input">
-        <Input id={`${idPrefix}-topic-search`} aria-label="Search approved topics" value={topicQuery} disabled={disabled || value.topicIds.length >= 5} placeholder="Search approved topics…" onChange={(event) => setTopicQuery(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (topicMatches[0]) addTopic(topicMatches[0].id, topicMatches[0].name); else void proposeCurrentTopic(); } }} />
-        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Topic suggestions">{topicBusy ? <span>Searching topics…</span> : topicMatches.map((topic) => <button type="button" role="option" key={topic.id} onMouseDown={(event) => { event.preventDefault(); addTopic(topic.id, topic.name); }}>{topic.name}{topic.status === "pending" ? " · pending" : ""}</button>)}{!topicBusy && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void proposeCurrentTopic(); }}>Propose “{topicQuery.trim()}”</button> : null}</div> : null}
+        <Input id={`${idPrefix}-topic-search`} aria-label="Search or add topics" value={topicQuery} disabled={disabled || value.topicIds.length >= 5} placeholder="Search or add topics…" onChange={(event) => setTopicQuery(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (topicMatches[0]) addTopic(topicMatches[0].id, topicMatches[0].name); else void createCurrentTopic(); } }} />
+        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Topic suggestions">{topicBusy ? <span>Searching topics…</span> : topicMatches.map((topic) => <button type="button" role="option" key={topic.id} onMouseDown={(event) => { event.preventDefault(); addTopic(topic.id, topic.name); }}>{topic.name}</button>)}{!topicBusy && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void createCurrentTopic(); }}>Add “{topicQuery.trim()}”</button> : null}</div> : null}
       </div>
     </fieldset>
 

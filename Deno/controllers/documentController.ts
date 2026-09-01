@@ -460,7 +460,6 @@ export async function createDocument(req: Request): Promise<Response> {
             body.classification,
             { id: String(body.uploaded_by || "system"), role: String(body.classificationActorRole || "admin") },
             {
-              allowPendingTopics: body.review_status === "pending_review",
               allowIncomplete: body.review_status === "pending_review",
             },
           );
