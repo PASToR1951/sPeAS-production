@@ -85,6 +85,7 @@ Deno/scratch/
 *.sqlite
 *.sqlite3
 
+/Document-parsing
 /Documentation
 /Proposal
 ops/build_server_proposal.py

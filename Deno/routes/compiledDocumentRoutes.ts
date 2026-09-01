@@ -585,7 +585,7 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
             });
             authorsByDocument.set(documentId, authors);
         }
-        const enrichedRows = childRows.map((row) => {
+        const enrichedRows = await Promise.all(childRows.map(async (row) => {
             const documentId = Number(row.id);
             const classification = classifications.get(documentId) ?? { researchAgendas: [], topics: [], keywords: [], complete: false, source: "document" };
             return {
@@ -595,8 +595,9 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
                 topics: classification.topics,
                 keywords: classification.keywords.map((keyword) => keyword.name),
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
+                download_available: await isStoredPdfAvailable(row.file_path),
             };
-        });
+        }));
 
         ctx.response.body = administratorPreview
             ? enrichedRows

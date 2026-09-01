@@ -219,8 +219,9 @@ test("guest compiled records render the collection overview and child works", as
       document_type: "THESIS",
       publication_date: "2020-05-01",
       pages: 18,
+      download_available: true,
       abstract: "This study examines a practical research problem through a structured review and analysis of the available evidence. The findings provide a useful reference for future researchers, institutional planning, and related community applications across the university.",
-      authors: [{ full_name: "Ana Reyes" }],
+      authors: [{ id: "author-1", full_name: "Ana Reyes" }],
       classification: {
         researchAgendas: [{ id: 1, name: "Environmental Discipline and Stewardship" }],
         topics: [{ id: 2, name: "Sustainable construction" }],
@@ -236,17 +237,20 @@ test("guest compiled records render the collection overview and child works", as
   await expect(page.getByText("A public collection overview.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Documents in this collection" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Study One" })).toBeVisible();
-  await expect(page.getByText("Ana Reyes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ana Reyes" })).toHaveAttribute("href", "/pages/authorprofile.html?id=author-1");
   await expect(page.getByText("Publication date", { exact: true })).toBeVisible();
-  await expect(page.getByText("Environmental Discipline and Stewardship", { exact: true })).toBeVisible();
+  await expect(page.getByText("Environmental Discipline and Stewardship", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sustainable construction" })).toHaveAttribute("href", "/pages/searchResultsPage.html?topic=2");
+  await expect(page.getByRole("link", { name: "rice hull" })).toHaveAttribute("href", "/pages/searchResultsPage.html?keyword=3");
   await expect(page.getByRole("link", { name: "View details for Study One" })).toHaveText("View");
   await expect(page.getByRole("link", { name: "View details for Study One" })).toHaveAttribute("href", "/pages/guest-single.html?id=31");
+  await expect(page.getByRole("link", { name: "Download PDF for Study One" })).toHaveAttribute("href", "/api/public/documents/31/download");
   const abstractToggle = page.getByRole("button", { name: "Show full abstract" });
   await expect(abstractToggle).toHaveAttribute("aria-expanded", "false");
   await abstractToggle.click();
   await expect(page.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
-  await expect(page.getByText("This PDF is publicly available and can be downloaded immediately.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download foreword" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
+  await expect(page.getByText("The foreword PDF is publicly available and can be downloaded immediately.")).toBeVisible();
   await expect(page.getByText(/request access/i)).toHaveCount(0);
   await expect(page.locator(".peas-error-page")).toHaveCount(0);
   expect(requestedUrls).toContain("/api/guest/compiled-documents/53");
@@ -266,9 +270,10 @@ test("compiled records omit unavailable foreword downloads while retaining child
   }));
 
   await page.goto("/pages/guest-compiled.html?id=54");
-  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
-  await expect(page.getByText("The PDF file is currently unavailable. The reviewed repository record remains accessible.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download foreword" })).toHaveCount(0);
+  await expect(page.getByText("The foreword PDF is currently unavailable. The reviewed collection and its studies remain accessible.")).toBeVisible();
   await expect(page.getByRole("link", { name: "View details for Available child record" })).toHaveAttribute("href", "/pages/guest-single.html?id=32");
+  await expect(page.getByRole("link", { name: "Download PDF for Available child record" })).toHaveCount(0);
 });
 
 test("public author profiles render publication analytics and filterable works", async ({ page }) => {
