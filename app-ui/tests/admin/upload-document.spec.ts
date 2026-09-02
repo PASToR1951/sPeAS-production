@@ -97,6 +97,11 @@ test.describe("guided upload workflow", () => {
     await expect(page.getByRole("heading", { name: "Your upload is published" })).toBeVisible();
     await expect(page.locator(".peas-upload-completion").getByRole("button", { name: "View documents" })).toBeVisible();
     expect(abstractStatusRequests).toBe(0);
+
+    await page.reload();
+    await waitForWorkspace(page);
+    await expect(page.locator("#single-title")).toHaveValue("");
+    await expect(page.locator(".peas-upload-draft-status")).toHaveCount(0);
   });
 
   test("automatic abstract extraction is confirmed before publication", async ({ page }) => {
@@ -104,7 +109,12 @@ test.describe("guided upload workflow", () => {
     let reviewAttempts = 0;
     let abstractAction: Record<string, unknown> | null = null;
     let statusRequests = 0;
-    await page.route("**/api/documents", (route) => route.request().method() === "POST" ? route.fulfill({ json: { id: 42, review_status: "pending_review" } }) : route.continue());
+    let documentCreates = 0;
+    await page.route("**/api/documents", (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      documentCreates += 1;
+      return route.fulfill({ json: { id: 42, review_status: "pending_review" } });
+    });
     await page.route("**/api/admin/abstract-reviews?record_type=document&record_id=42", (route) => {
       statusRequests += 1;
       const ready = statusRequests > 1;
@@ -138,6 +148,13 @@ test.describe("guided upload workflow", () => {
     await prepareSingleDocument(page, "Extraction fixture");
     await page.getByRole("button", { name: "Publish document" }).click();
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
+    await expect(page.locator(".peas-upload-draft-status")).toContainText("This upload is protected");
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.reload();
+    await waitForWorkspace(page);
+    await expect(page.locator(".peas-upload-draft-status")).toContainText("Your upload draft was recovered");
+    await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
+    expect(documentCreates).toBe(1);
     await expect(page.locator(".peas-upload-extraction__editor textarea")).toHaveValue("Extracted abstract candidate.", { timeout: 8_000 });
     await page.getByRole("button", { name: "Confirm abstract" }).click();
     await expect(page.getByRole("button", { name: "Retry publication" })).toBeVisible();
@@ -321,6 +338,39 @@ test.describe("guided upload workflow", () => {
 
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Upload PDF" })).toBeVisible();
+  });
+
+  test("recovers form details and a selected PDF after an offline interruption and refresh", async ({ page, context }) => {
+    await page.goto("/admin/Components/upload_document.html");
+    await waitForWorkspace(page);
+    await page.locator("#single-title").fill("Connection recovery study");
+    await page.getByRole("combobox", { name: "Add author" }).click();
+    await page.getByRole("option", { name: "Juan Dela Cruz" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("combobox", { name: "Publication month" }).click();
+    await page.getByRole("option", { name: "August" }).click();
+    await page.locator("#single-year").fill("2026");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.locator("#single-topic-search").fill("waste");
+    await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
+    await page.locator("#single-topic-search").press("Enter");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("radio", { name: /Manual entry/ }).check();
+    await page.getByLabel("Document PDF").setInputFiles({ name: "recovery-study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 recovery") });
+
+    await context.setOffline(true);
+    await page.locator("#single-abstract").fill("This abstract was entered while the connection was unavailable.");
+    const recoveryStatus = page.locator(".peas-upload-draft-status");
+    await expect(recoveryStatus).toContainText("This upload is protected");
+    await context.setOffline(false);
+
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.reload();
+    await waitForWorkspace(page);
+    await expect(page.getByRole("heading", { name: "Upload PDF" })).toBeVisible();
+    await expect(page.locator(".peas-upload-draft-status")).toContainText("Your upload draft was recovered");
+    await expect(page.locator("#single-abstract")).toHaveValue("This abstract was entered while the connection was unavailable.");
+    await expect(page.locator(".peas-file-dropzone").getByText("recovery-study.pdf", { exact: true })).toBeVisible();
   });
 
   test("compiled publications expose conditional fields and study status", async ({ page }) => {

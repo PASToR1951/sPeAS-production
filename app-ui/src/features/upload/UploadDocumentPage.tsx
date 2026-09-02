@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Plus, RefreshCw, Trash2, UploadCloud, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Plus, RefreshCw, Save, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
 import { getDocument as getPdfDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { ApiError, getErrorMessage } from "../../lib/api/http";
@@ -37,6 +37,12 @@ import {
   updateAbstractReview,
   type AbstractReviewItem,
 } from "../../lib/api/documents";
+import {
+  createUploadDraftKey,
+  deleteUploadDraft,
+  loadUploadDraft,
+  saveUploadDraft,
+} from "./uploadDraftRecovery";
 
 type UploadMode = "single" | "compiled";
 type UploadStep = 1 | 2 | 3 | 4 | 5;
@@ -115,8 +121,21 @@ interface ExtractionSession {
   targetKeys: string[];
 }
 
+interface UploadDraftState {
+  mode: UploadMode;
+  step: UploadStep;
+  singleForm: SingleFormState;
+  compiledForm: CompiledFormState;
+  extractionSession: ExtractionSession | null;
+  abstractDrafts: Record<string, string>;
+  manualEntryTargets: Record<string, boolean>;
+}
+
+type DraftPersistenceStatus = "loading" | "idle" | "saving" | "saved" | "error";
+
 const ABSTRACT_POLL_MS = 3_000;
 const ABSTRACT_MANUAL_FALLBACK_MS = 60_000;
+const DRAFT_AUTOSAVE_DELAY_MS = 500;
 const DOCUMENT_PDF_MAX_BYTES = 100_000_000;
 const ABSTRACT_EXTRACTION_STAGES = [
   "Queue extraction jobs",
@@ -154,7 +173,7 @@ const compiledSteps = ["Publication details", "Study details", "Study classifica
 const FINAL_UPLOAD_STEP: UploadStep = 5;
 
 export function UploadDocumentPage() {
-  const { role } = useAdminIdentity();
+  const { role, userId } = useAdminIdentity();
   const isPublisher = false;
   const [mode, setMode] = useState<UploadMode>("single");
   const [step, setStep] = useState<UploadStep>(1);
@@ -175,15 +194,54 @@ export function UploadDocumentPage() {
   const [abstractActionKey, setAbstractActionKey] = useState<string | null>(null);
   const [publishingExtraction, setPublishingExtraction] = useState(false);
   const [publicationError, setPublicationError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<DraftPersistenceStatus>("loading");
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftFilesIncluded, setDraftFilesIncluded] = useState(true);
   const [authors, setAuthors] = useState<AuthorRecord[]>([]);
   const [checklistExpanded, setChecklistExpanded] = useState(() =>
     typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches
   );
   const publicationAttemptedRef = useRef(false);
+  const draftKey = useMemo(() => createUploadDraftKey(userId), [userId]);
 
   useEffect(() => {
     void fetchAuthors().then(setAuthors).catch(() => setAuthors([]));
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    setDraftReady(false);
+    setDraftStatus("loading");
+    void loadUploadDraft<UploadDraftState>(draftKey)
+      .then((record) => {
+        if (!active) return;
+        if (!record || !isUploadDraftState(record.state)) {
+          setDraftStatus("idle");
+          return;
+        }
+        const restoredMode = record.state.extractionSession?.type ?? record.state.mode;
+        setMode(restoredMode);
+        setStep(record.state.extractionSession ? FINAL_UPLOAD_STEP : record.state.step);
+        setSingleForm(record.state.singleForm);
+        setCompiledForm(record.state.compiledForm);
+        setExtractionSession(record.state.extractionSession);
+        setAbstractDrafts(record.state.abstractDrafts);
+        setManualEntryTargets(record.state.manualEntryTargets);
+        setDraftRecovered(true);
+        setDraftStatus("saved");
+        setDraftSavedAt(record.savedAt);
+        setDraftFilesIncluded(record.filesIncluded);
+      })
+      .catch(() => {
+        if (active) setDraftStatus("error");
+      })
+      .finally(() => {
+        if (active) setDraftReady(true);
+      });
+    return () => { active = false; };
+  }, [draftKey]);
 
   useEffect(() => {
     if (!extractionSession) return;
@@ -231,6 +289,45 @@ export function UploadDocumentPage() {
   const dirty = useMemo(() => isSingleFormDirty(singleForm) || isCompiledFormDirty(compiledForm), [compiledForm, singleForm]);
 
   useEffect(() => {
+    if (!draftReady) return;
+    if (receipt) {
+      setDraftRecovered(false);
+      setDraftStatus("idle");
+      setDraftSavedAt(null);
+      void deleteUploadDraft(draftKey);
+      return;
+    }
+    const hasRecoverableWork = dirty || Boolean(extractionSession) || Object.keys(abstractDrafts).length > 0;
+    if (!hasRecoverableWork) {
+      setDraftStatus("idle");
+      setDraftSavedAt(null);
+      void deleteUploadDraft(draftKey);
+      return;
+    }
+
+    setDraftStatus("saving");
+    const timer = window.setTimeout(() => {
+      const state: UploadDraftState = {
+        mode,
+        step,
+        singleForm,
+        compiledForm,
+        extractionSession,
+        abstractDrafts,
+        manualEntryTargets,
+      };
+      void saveUploadDraft(draftKey, state, removeFilesFromDraft(state))
+        .then((result) => {
+          setDraftStatus("saved");
+          setDraftSavedAt(result.savedAt);
+          setDraftFilesIncluded(result.filesIncluded);
+        })
+        .catch(() => setDraftStatus("error"));
+    }, extractionSession ? 0 : DRAFT_AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [abstractDrafts, compiledForm, dirty, draftKey, draftReady, extractionSession, manualEntryTargets, mode, receipt, singleForm, step]);
+
+  useEffect(() => {
     if (!pendingFocusKey) return;
     const focusKey = pendingFocusKey;
     setPendingFocusKey(null);
@@ -264,6 +361,25 @@ export function UploadDocumentPage() {
     setStep(1);
     setErrors({});
     setSubmissionError(null);
+  }
+
+  async function discardRecoveryDraft() {
+    if (busy || !window.confirm("Discard this recovery draft and clear the upload form?")) return;
+    setDraftReady(false);
+    setMode("single");
+    setStep(1);
+    setSingleForm(initialSingleForm);
+    setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
+    setErrors({});
+    setSubmissionError(null);
+    setPendingFocusKey(null);
+    setDraftRecovered(false);
+    setDraftStatus("idle");
+    setDraftSavedAt(null);
+    setDraftFilesIncluded(true);
+    await deleteUploadDraft(draftKey);
+    setDraftReady(true);
+    toast.success("Recovery draft discarded.");
   }
 
   function continueWorkflow() {
@@ -629,6 +745,17 @@ export function UploadDocumentPage() {
         actions={<Badge tone={mode === "single" ? "green" : "gold"}>{mode === "single" ? "Single" : "Compiled"}</Badge>}
       />
 
+      {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) ? (
+        <UploadDraftStatus
+          status={draftStatus}
+          recovered={draftRecovered}
+          savedAt={draftSavedAt}
+          filesIncluded={draftFilesIncluded}
+          disabled={busy}
+          onDiscard={() => void discardRecoveryDraft()}
+        />
+      ) : null}
+
       <section className={`peas-upload-shell ${checklistExpanded ? "is-checklist-expanded" : "is-checklist-collapsed"}`}>
         <div className="peas-upload-main">
           <Tabs value={mode} onValueChange={(value) => changeMode(value as UploadMode)}>
@@ -679,6 +806,32 @@ export function UploadDocumentPage() {
         <UploadChecklist mode={mode} step={step} singleForm={singleForm} compiledForm={compiledForm} compiledTitle={compiledTitle} receipt={receipt?.type === mode ? receipt : null} expanded={checklistExpanded} onExpandedChange={setChecklistExpanded} />
       </section>
     </main>
+  );
+}
+
+function UploadDraftStatus({ status, recovered, savedAt, filesIncluded, disabled, onDiscard }: { status: DraftPersistenceStatus; recovered: boolean; savedAt: number | null; filesIncluded: boolean; disabled: boolean; onDiscard: () => void }) {
+  const saving = status === "saving";
+  const failed = status === "error";
+  const title = failed ? "Draft recovery is unavailable" : recovered ? "Your upload draft was recovered" : saving ? "Protecting this upload…" : "This upload is protected";
+  const savedLabel = savedAt ? formatDraftSavedAt(savedAt) : "on this device";
+  const message = failed
+    ? "PeAS could not use browser storage. Keep this tab open and copy important text before leaving the page."
+    : !filesIncluded
+      ? `Form details were saved ${savedLabel}, but this browser could not preserve the selected PDFs. Reattach any PDFs before publishing.`
+      : saving
+        ? "Saving the latest form details and selected PDFs on this device."
+        : recovered
+          ? `Restored from ${savedLabel}. New changes and selected PDFs continue to save automatically for seven days.`
+          : `Saved ${savedLabel}. Form details and selected PDFs can be restored after a refresh or connection interruption.`;
+  return (
+    <section className={`peas-upload-draft-status${failed ? " is-error" : recovered ? " is-recovered" : ""}`} role="status" aria-live="polite">
+      <span className="peas-upload-draft-status__icon" aria-hidden="true">{recovered ? <ShieldCheck /> : <Save />}</span>
+      <div>
+        <strong>{title}</strong>
+        <p>{message}</p>
+      </div>
+      <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onDiscard}>Discard draft</Button>
+    </section>
   );
 }
 
@@ -1635,6 +1788,38 @@ function safeInt(value: string) { const numberValue = Number.parseInt(value, 10)
 function isPdf(file: File) { return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"); }
 function isSingleFormDirty(form: SingleFormState) { return Boolean(form.title.trim() || form.abstract.trim() || form.abstractMode !== initialSingleForm.abstractMode || form.authors.length || form.pubMonth || form.pubYear || form.topicIds.length || form.topicNames.length || form.keywords.length || form.file || form.category !== initialSingleForm.category); }
 function isCompiledFormDirty(form: CompiledFormState) { return Boolean(form.category !== initialCompiledForm.category || form.startYear || form.endYear || form.volume || form.issueNumber || form.department || form.forewordAbstract.trim() || form.forewordFile || form.coverFile || form.coverPageCount || form.frontCoverPage || form.backCoverPage || form.sections.length !== 1 || form.sections.some((section) => section.title.trim() || section.authors.length || section.topicIds.length || section.topicNames.length || section.keywords.length || section.abstract.trim() || section.file)); }
+function isUploadDraftState(value: unknown): value is UploadDraftState {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<UploadDraftState>;
+  return (draft.mode === "single" || draft.mode === "compiled")
+    && Number.isInteger(draft.step)
+    && Number(draft.step) >= 1
+    && Number(draft.step) <= FINAL_UPLOAD_STEP
+    && Boolean(draft.singleForm && typeof draft.singleForm === "object")
+    && Boolean(draft.compiledForm && typeof draft.compiledForm === "object" && Array.isArray(draft.compiledForm.sections))
+    && (draft.extractionSession === null || Boolean(draft.extractionSession && typeof draft.extractionSession === "object"))
+    && Boolean(draft.abstractDrafts && typeof draft.abstractDrafts === "object")
+    && Boolean(draft.manualEntryTargets && typeof draft.manualEntryTargets === "object");
+}
+function removeFilesFromDraft(state: UploadDraftState): UploadDraftState {
+  return {
+    ...state,
+    singleForm: { ...state.singleForm, file: null },
+    compiledForm: {
+      ...state.compiledForm,
+      forewordFile: null,
+      coverFile: null,
+      coverPageCount: null,
+      frontCoverPage: "",
+      backCoverPage: "",
+      coverInspectionStatus: "idle",
+      sections: state.compiledForm.sections.map((section) => ({ ...section, file: null })),
+    },
+  };
+}
+function formatDraftSavedAt(savedAt: number) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(savedAt));
+}
 async function inspectClientPdfPageCount(file: File): Promise<number> {
   const loadingTask = getPdfDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   try {

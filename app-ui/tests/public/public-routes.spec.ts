@@ -109,10 +109,11 @@ test("FAQ page supports searchable, categorized, accessible answers", async ({ p
   await page.goto("/faq.html");
 
   await expect(page).toHaveTitle("Frequently Asked Questions | PeAS");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", "Get quick answers about browsing, searching, downloading, and requesting support in the PeAS research repository.");
   await expect(page.getByRole("heading", { name: "Frequently asked questions", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "All topics", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Getting started", exact: true })).toBeVisible();
-  await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
+  await expect(page.getByText("What is PeAS and what can I find here?", { exact: true })).toBeVisible();
 
   const search = page.getByRole("searchbox", { name: "Search frequently asked questions" });
   await search.fill("download a full paper");
@@ -126,15 +127,15 @@ test("FAQ page supports searchable, categorized, accessible answers", async ({ p
   await expect(page.getByText(/choose Download PDF/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear FAQ search" }).click();
-  await page.getByRole("button", { name: "Accounts and access", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Accounts and access", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Downloads and access", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Downloads and access", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".peas-faq-group")).toHaveCount(1);
-  await expect(page.locator(".peas-faq-item")).toHaveCount(3);
+  await expect(page.locator(".peas-faq-item")).toHaveCount(1);
 
   await search.fill("not a real FAQ question");
   await expect(page.getByRole("status")).toContainText("No questions match");
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
+  await expect(page.getByText("What is PeAS and what can I find here?", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Still have a question?").getByRole("link", { name: "Contact the office" })).toHaveAttribute("href", "/contact.html");
 
   await page.setViewportSize({ width: 375, height: 667 });

@@ -51,3 +51,15 @@ unauthenticated administrative author access, exact guest author keys,
 readiness, `security.txt`, and PDF attachment/no-store/anti-sniff behavior.
 It also checks the CSP reporting directives, reporting endpoint header, and a
 non-persisting media-type probe against the report receiver.
+
+## Upload draft recovery
+
+The administrator upload workflow automatically saves unfinished single and
+compiled uploads in browser storage under the authenticated administrator ID.
+IndexedDB preserves structured form state and selected PDF `File` objects; a
+metadata-only local-storage copy is retained as a fallback when IndexedDB or
+browser quota is unavailable. Drafts expire after seven days, are removed after
+successful publication or submission, and can be explicitly discarded from the
+upload page. An interrupted abstract-extraction session is saved with the draft
+so its server-side status polling resumes after a refresh without creating a
+duplicate repository record.

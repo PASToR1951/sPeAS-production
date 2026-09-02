@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EXPERIENCE_SCHEMA_VERSION = 5;
+export const EXPERIENCE_SCHEMA_VERSION = 6;
 
 export const EXPERIENCE_COMPONENT_TYPES = [
   "AnnouncementBanner",
@@ -355,7 +355,7 @@ export type ExperienceConfig = z.infer<typeof ExperienceConfigSchema>;
 export type UserExperiencePreferences = z.infer<typeof UserExperiencePreferencesSchema>;
 
 export function parseExperienceConfig(input: unknown): ExperienceConfig {
-  const config = ExperienceConfigSchema.parse(migrateExperienceConfigToV5(input));
+  const config = ExperienceConfigSchema.parse(migrateExperienceConfigToV6(input));
   const faqBlock = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
   if (!faqBlock) throw new Error("FAQ page must include its locked FaqBlock");
   FaqBlockPropsSchema.parse(faqBlock.props);
@@ -545,7 +545,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
     },
     faq: {
       title: "Frequently Asked Questions | PeAS",
-      description: "Find answers about the PeAS repository, public downloads, accounts, and research support.",
+      description: "Get quick answers about browsing, searching, downloading, and requesting support in the PeAS research repository.",
       data: {
         root: { props: { title: "Frequently Asked Questions" } },
         content: [
@@ -553,9 +553,9 @@ export const defaultExperienceConfig: ExperienceConfig = {
             type: "FaqBlock",
             props: {
               id: "faq-content",
-              eyebrow: "Help for readers",
+              eyebrow: "Repository help",
               title: "Frequently asked questions",
-              description: "Learn how PeAS preserves Paulinian research, helps you find it, and provides direct access to public PDFs.",
+              description: "Quick answers about finding, viewing, and downloading approved Paulinian research in PeAS.",
               categories: [
                 {
                   id: "getting-started",
@@ -563,18 +563,13 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   items: [
                     {
                       id: "what-is-peas",
-                      question: "What is PeAS?",
-                      answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It preserves academic works, makes approved scholarship easier to discover, and provides direct downloads for available public PDFs.",
-                    },
-                    {
-                      id: "materials-in-peas",
-                      question: "What materials can I find?",
-                      answer: "PeAS catalogs approved SPUD theses, dissertations, Confluence volumes, Synergy collections, and their related authors, abstracts, classifications, and publication details. Department News is available separately from repository records.",
+                      question: "What is PeAS and what can I find here?",
+                      answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It catalogs approved theses, dissertations, Confluence volumes, and Synergy collections, together with available abstracts, authors, classifications, and publication details. Department News is published separately.",
                     },
                     {
                       id: "browse-without-signing-in",
-                      question: "Can I browse without signing in?",
-                      answer: "Yes. Guests can browse approved public records, read metadata and abstracts, and download available PDFs directly from document pages without signing in.",
+                      question: "Can I use PeAS without an account?",
+                      answer: "Yes. Visitors can search and browse approved public records, view public author profiles, and download available PDFs without signing in or providing personal information. Sign-in is reserved for explicitly provisioned PeAS administrators.",
                     },
                   ],
                 },
@@ -584,39 +579,29 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   items: [
                     {
                       id: "how-to-search",
-                      question: "How do I search?",
-                      answer: "Use the search box on Home or the Repository page. Search by title, author, topic, keyword, or research agenda, then narrow results by document type, year, and other available filters.",
+                      question: "How do I find a paper?",
+                      answer: "Use the search box on the Home or Repository page. Search by title, author, topic, keyword, or research agenda, then narrow the results with the available document-type, year, and classification filters. Only approved public records appear; contact the office if an expected work is missing.",
                     },
                     {
                       id: "classification-terms",
                       question: "What are research agendas, topics, and keywords?",
-                      answer: "Research agendas are official institutional priorities. Topics are curated subject headings. Keywords are normalized search terms supplied for a work. They are separate vocabularies so each classification keeps its intended meaning.",
+                      answer: "Research agendas are official institutional priorities, topics are curated subject headings, and keywords are normalized terms associated with a work. Use each vocabulary to narrow related repository records.",
                     },
                     {
                       id: "compiled-collections",
                       question: "What are Confluence and Synergy collections?",
-                      answer: "Confluence and Synergy are compiled collections. A collection has its own overview and contains ordered child studies; classifications shown for the collection are aggregated from its eligible public studies.",
+                      answer: "Confluence and Synergy are compiled collections with their own overviews and ordered child studies. Their displayed classifications are aggregated from eligible public studies in the collection.",
                     },
                   ],
                 },
                 {
                   id: "accounts-and-access",
-                  label: "Accounts and access",
+                  label: "Downloads and access",
                   items: [
-                    {
-                      id: "how-to-sign-in",
-                      question: "Do I need an account?",
-                      answer: "No visitor account is needed. Browse approved public records and download available PDFs directly from their document pages.",
-                    },
-                    {
-                      id: "forgot-password",
-                      question: "Who can sign in?",
-                      answer: "Only explicitly provisioned PeAS administrators can sign in. Visitors do not need accounts.",
-                    },
                     {
                       id: "full-paper-access",
                       question: "How do I download a full paper?",
-                      answer: "Open an approved public document page and choose Download PDF. No account, identity form, email verification, or reader approval is required. If no button appears, the stored PDF is temporarily unavailable.",
+                      answer: "Open an approved public document page and choose Download PDF. No account, identity form, email verification, or reader approval is required. If the button is missing, the PDF is currently unavailable even though the reviewed record may remain visible. Use downloaded research responsibly and respect applicable intellectual-property rights.",
                     },
                   ],
                 },
@@ -626,13 +611,13 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   items: [
                     {
                       id: "who-can-upload",
-                      question: "Who can upload documents or publish news?",
-                      answer: "Only authorized administrators can upload documents, manage Department News, review uploads before publication, or change repository settings. Once a document is public, visitors can download its available PDF immediately.",
+                      question: "Who can submit or publish content?",
+                      answer: "Public visitors cannot upload through PeAS. Authorized administrators upload documents, review them before publication, manage Department News, and maintain repository settings. Use the Contact page to ask the Office of Research & Publications about submitting research.",
                     },
                     {
                       id: "contact-office",
-                      question: "How do I contact the office?",
-                      answer: "Use the Contact page for questions about research documents, submissions, access, technical concerns, or Office of Research & Publications matters. After you submit an inquiry, keep the reference code shown in the confirmation dialog.",
+                      question: "How do I contact the office and follow up?",
+                      answer: "Use the Contact page for questions about research documents, submissions, repository access, technical concerns, or other Office of Research & Publications matters. Keep the reference code shown after submission so the office can follow up on your inquiry.",
                     },
                   ],
                 },
@@ -649,6 +634,82 @@ export const defaultExperienceConfig: ExperienceConfig = {
   },
 };
 
+type FaqSeedItem = { id: string; question: string; answer: string };
+
+const FAQ_V5_HEADER = {
+  eyebrow: "Help for readers",
+  title: "Frequently asked questions",
+  description: "Learn how PeAS preserves Paulinian research, helps you find it, and provides direct access to public PDFs.",
+} as const;
+
+const FAQ_V5_CATEGORY_LABELS = new Map<string, string>([
+  ["getting-started", "Getting started"],
+  ["search-and-discovery", "Search and discovery"],
+  ["accounts-and-access", "Accounts and access"],
+  ["submissions-and-support", "Submissions and support"],
+]);
+
+const FAQ_V5_ITEMS: readonly FaqSeedItem[] = [
+  {
+    id: "what-is-peas",
+    question: "What is PeAS?",
+    answer: "PeAS is the Paulinian electronic Archiving System, the digital repository of St. Paul University Dumaguete's Office of Research & Publications. It preserves academic works, makes approved scholarship easier to discover, and provides direct downloads for available public PDFs.",
+  },
+  {
+    id: "materials-in-peas",
+    question: "What materials can I find?",
+    answer: "PeAS catalogs approved SPUD theses, dissertations, Confluence volumes, Synergy collections, and their related authors, abstracts, classifications, and publication details. Department News is available separately from repository records.",
+  },
+  {
+    id: "browse-without-signing-in",
+    question: "Can I browse without signing in?",
+    answer: "Yes. Guests can browse approved public records, read metadata and abstracts, and download available PDFs directly from document pages without signing in.",
+  },
+  {
+    id: "how-to-search",
+    question: "How do I search?",
+    answer: "Use the search box on Home or the Repository page. Search by title, author, topic, keyword, or research agenda, then narrow results by document type, year, and other available filters.",
+  },
+  {
+    id: "classification-terms",
+    question: "What are research agendas, topics, and keywords?",
+    answer: "Research agendas are official institutional priorities. Topics are curated subject headings. Keywords are normalized search terms supplied for a work. They are separate vocabularies so each classification keeps its intended meaning.",
+  },
+  {
+    id: "compiled-collections",
+    question: "What are Confluence and Synergy collections?",
+    answer: "Confluence and Synergy are compiled collections. A collection has its own overview and contains ordered child studies; classifications shown for the collection are aggregated from its eligible public studies.",
+  },
+  {
+    id: "how-to-sign-in",
+    question: "Do I need an account?",
+    answer: "No visitor account is needed. Browse approved public records and download available PDFs directly from their document pages.",
+  },
+  {
+    id: "forgot-password",
+    question: "Who can sign in?",
+    answer: "Only explicitly provisioned PeAS administrators can sign in. Visitors do not need accounts.",
+  },
+  {
+    id: "full-paper-access",
+    question: "How do I download a full paper?",
+    answer: "Open an approved public document page and choose Download PDF. No account, identity form, email verification, or reader approval is required. If no button appears, the stored PDF is temporarily unavailable.",
+  },
+  {
+    id: "who-can-upload",
+    question: "Who can upload documents or publish news?",
+    answer: "Only authorized administrators can upload documents, manage Department News, review uploads before publication, or change repository settings. Once a document is public, visitors can download its available PDF immediately.",
+  },
+  {
+    id: "contact-office",
+    question: "How do I contact the office?",
+    answer: "Use the Contact page for questions about research documents, submissions, access, technical concerns, or Office of Research & Publications matters. After you submit an inquiry, keep the reference code shown in the confirmation dialog.",
+  },
+];
+
+const FAQ_V5_ITEMS_BY_ID = new Map(FAQ_V5_ITEMS.map((item) => [item.id, item]));
+const FAQ_V6_RETIRED_ITEM_IDS = new Set(["materials-in-peas", "how-to-sign-in", "forgot-password"]);
+
 const EDITABLE_STRING_FIELDS: Record<string, readonly string[]> = {
   HeroBlock: ["eyebrow", "title", "body"],
   OverviewBlock: ["eyebrow", "title", "summary"],
@@ -664,13 +725,13 @@ const EDITABLE_STRING_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
- * Canonicalizes legacy v1-v4 documents and v5 drafts into the locked v5 layout. Only approved copy and image fields survive. Component
+ * Canonicalizes legacy v1-v5 documents and v6 drafts into the locked v6 layout. Only approved copy and image fields survive. Component
  * order, component types, link destinations, form semantics, theme, and
- * personalization are not stored in the v5 content document.
+ * personalization are not stored in the v6 content document.
  */
-export function migrateExperienceConfigToV5(input: unknown): ExperienceConfig {
+export function migrateExperienceConfigToV6(input: unknown): ExperienceConfig {
   const source = asRecord(input);
-  if (typeof source.schemaVersion === "number" && ![1, 2, 3, 4, 5].includes(source.schemaVersion)) {
+  if (typeof source.schemaVersion === "number" && ![1, 2, 3, 4, 5, 6].includes(source.schemaVersion)) {
     throw new Error(`Unsupported Experience schema version: ${source.schemaVersion}`);
   }
   const output = clone(defaultExperienceConfig);
@@ -697,7 +758,8 @@ export function migrateExperienceConfigToV5(input: unknown): ExperienceConfig {
       };
     });
   }
-  if (source.schemaVersion !== 5) applyDirectDownloadContent(output);
+  if (source.schemaVersion !== 5 && source.schemaVersion !== 6) applyDirectDownloadContent(output);
+  if (source.schemaVersion !== 6) applyCompactFaqContent(output);
   const faqBlock = output.pages.faq.data.content.find((block) => block.type === "FaqBlock");
   if (!faqBlock || !FaqBlockPropsSchema.safeParse(faqBlock.props).success) {
     throw new Error("The canonical FAQ configuration is invalid");
@@ -705,19 +767,24 @@ export function migrateExperienceConfigToV5(input: unknown): ExperienceConfig {
   return output;
 }
 
-/** @deprecated Use migrateExperienceConfigToV5. Kept for compatibility with recovery scripts. */
-export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV5(input);
+/** @deprecated Use migrateExperienceConfigToV6. Kept for compatibility with recovery scripts. */
+export function migrateExperienceConfigToV5(input: unknown): ExperienceConfig {
+  return migrateExperienceConfigToV6(input);
 }
 
-/** @deprecated Use migrateExperienceConfigToV5. Kept for compatibility with recovery scripts. */
+/** @deprecated Use migrateExperienceConfigToV6. Kept for compatibility with recovery scripts. */
+export function migrateExperienceConfigToV4(input: unknown): ExperienceConfig {
+  return migrateExperienceConfigToV6(input);
+}
+
+/** @deprecated Use migrateExperienceConfigToV6. Kept for compatibility with recovery scripts. */
 export function migrateExperienceConfigToV3(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV5(input);
+  return migrateExperienceConfigToV6(input);
 }
 
 /** @deprecated Kept for compatibility with recovery scripts. */
 export function migrateExperienceConfigV1ToV2(input: unknown): ExperienceConfig {
-  return migrateExperienceConfigToV5(input);
+  return migrateExperienceConfigToV6(input);
 }
 
 function applyDirectDownloadContent(config: ExperienceConfig): void {
@@ -747,9 +814,6 @@ function applyDirectDownloadContent(config: ExperienceConfig): void {
   if (!faqBlock || !defaultFaqBlock) return;
   const faqProps = asRecord(faqBlock.props);
   const defaultFaqProps = asRecord(defaultFaqBlock.props);
-  const defaultCategories = Array.isArray(defaultFaqProps.categories)
-    ? (defaultFaqProps.categories as unknown[]).map(asRecord)
-    : [];
   const replacementIds = new Set([
     "what-is-peas",
     "browse-without-signing-in",
@@ -757,13 +821,11 @@ function applyDirectDownloadContent(config: ExperienceConfig): void {
     "full-paper-access",
     "who-can-upload",
   ]);
-  const replacements = new Map<string, Record<string, unknown>>();
-  for (const category of defaultCategories) {
-    const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
-    for (const item of items) {
-      if (replacementIds.has(String(item.id))) replacements.set(String(item.id), item);
-    }
-  }
+  const replacements = new Map<string, Record<string, unknown>>(
+    FAQ_V5_ITEMS
+      .filter((item) => replacementIds.has(item.id))
+      .map((item) => [item.id, asRecord(item)]),
+  );
 
   const categories = Array.isArray(faqProps.categories)
     ? (faqProps.categories as unknown[]).map(asRecord)
@@ -803,6 +865,71 @@ function applyDirectDownloadContent(config: ExperienceConfig): void {
     description: defaultFaqProps.description,
     categories: migratedCategories,
   });
+}
+
+function applyCompactFaqContent(config: ExperienceConfig): void {
+  const faqBlock = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  const defaultFaqBlock = defaultExperienceConfig.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  if (!faqBlock || !defaultFaqBlock) return;
+
+  const faqProps = asRecord(faqBlock.props);
+  const defaultFaqProps = asRecord(defaultFaqBlock.props);
+  const defaultCategories = Array.isArray(defaultFaqProps.categories)
+    ? (defaultFaqProps.categories as unknown[]).map(asRecord)
+    : [];
+  const defaultCategoriesById = new Map(defaultCategories.map((category) => [String(category.id), category]));
+  const defaultItemsById = new Map<string, Record<string, unknown>>();
+  for (const category of defaultCategories) {
+    const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
+    for (const item of items) defaultItemsById.set(String(item.id), item);
+  }
+
+  const categories = Array.isArray(faqProps.categories)
+    ? (faqProps.categories as unknown[]).map(asRecord)
+    : [];
+  const occupiedCategoryLabels = new Set(categories.map((category) => normalizeFaqText(String(category.label))));
+  const occupiedQuestions = new Set(categories.flatMap((category) => {
+    const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
+    return items.map((item) => normalizeFaqText(String(item.question)));
+  }));
+  const migratedCategories = categories.map((category) => {
+    const categoryId = String(category.id);
+    const defaultCategory = defaultCategoriesById.get(categoryId);
+    const legacyLabel = FAQ_V5_CATEGORY_LABELS.get(categoryId);
+    const currentLabelKey = normalizeFaqText(String(category.label));
+    const defaultLabelKey = defaultCategory ? normalizeFaqText(String(defaultCategory.label)) : "";
+    const defaultLabelConflicts = defaultLabelKey !== currentLabelKey && occupiedCategoryLabels.has(defaultLabelKey);
+    const items = Array.isArray(category.items) ? (category.items as unknown[]).map(asRecord) : [];
+    const migratedItems = items.flatMap((item) => {
+      const itemId = String(item.id);
+      const legacyItem = FAQ_V5_ITEMS_BY_ID.get(itemId);
+      const matchesLegacySeed = legacyItem ? faqItemMatches(item, legacyItem) : false;
+      if (matchesLegacySeed && FAQ_V6_RETIRED_ITEM_IDS.has(itemId)) return [];
+      const defaultItem = defaultItemsById.get(itemId);
+      const currentQuestionKey = normalizeFaqText(String(item.question));
+      const defaultQuestionKey = defaultItem ? normalizeFaqText(String(defaultItem.question)) : "";
+      const defaultQuestionConflicts = defaultQuestionKey !== currentQuestionKey && occupiedQuestions.has(defaultQuestionKey);
+      return matchesLegacySeed && defaultItem && !defaultQuestionConflicts ? [clone(defaultItem)] : [item];
+    });
+
+    return {
+      ...category,
+      label: legacyLabel && category.label === legacyLabel && defaultCategory && !defaultLabelConflicts
+        ? defaultCategory.label
+        : category.label,
+      items: migratedItems,
+    };
+  });
+
+  const migratedProps: Record<string, unknown> = { ...faqProps, categories: migratedCategories };
+  for (const field of ["eyebrow", "title", "description"] as const) {
+    if (faqProps[field] === FAQ_V5_HEADER[field]) migratedProps[field] = defaultFaqProps[field];
+  }
+  faqBlock.props = FaqBlockPropsSchema.parse(migratedProps);
+}
+
+function faqItemMatches(item: Record<string, unknown>, expected: FaqSeedItem): boolean {
+  return item.id === expected.id && item.question === expected.question && item.answer === expected.answer;
 }
 
 export function getExperiencePublishErrors(config: ExperienceConfig): string[] {

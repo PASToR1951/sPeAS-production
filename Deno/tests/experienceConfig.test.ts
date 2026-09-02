@@ -6,8 +6,8 @@ import {
 
 Deno.test("default experience config is valid", () => {
   const parsed = parseExperienceConfig(defaultExperienceConfig);
-  if (parsed.schemaVersion !== 5) {
-    throw new Error("Expected schema version 5");
+  if (parsed.schemaVersion !== 6) {
+    throw new Error("Expected schema version 6");
   }
   if (!parsed.pages.landing.data.content.length || !parsed.pages.login.data.content.length || !parsed.pages.faq.data.content.length) {
     throw new Error("Expected landing, login, and FAQ defaults");

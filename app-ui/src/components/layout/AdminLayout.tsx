@@ -59,6 +59,7 @@ interface WorkspaceBootstrap {
 }
 
 interface AdminIdentity {
+  userId: string;
   userName: string;
   role: WorkspaceRole;
   roleLabel: "Administrator";
@@ -174,6 +175,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
       .filter(Boolean);
     return names.join(" ") || String(session?.user?.name ?? session?.username ?? session?.userId ?? "Administrator");
   }, [profile, session]);
+  const userId = String(session?.userId ?? session?.user?.id ?? profile?.id ?? session?.username ?? userName);
 
   const role = "Administrator";
   const sidebarToggleLabel = isMobileViewport
@@ -204,7 +206,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
   }
 
   return (
-    <AdminIdentityContext.Provider value={{ userName, role: workspaceRole, roleLabel: role, profile, updateProfile }}>
+    <AdminIdentityContext.Provider value={{ userId, userName, role: workspaceRole, roleLabel: role, profile, updateProfile }}>
     <div className={`peas-admin-shell${collapsed ? " is-collapsed" : ""}`}>
       <AdminSidebar
         collapsed={collapsed}

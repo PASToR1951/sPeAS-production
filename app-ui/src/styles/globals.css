@@ -1198,6 +1198,26 @@ body.peas-editor-open { overflow: hidden; }
 }
 
 /* Guided upload workflow */
+.peas-upload-draft-status {
+  align-items: center;
+  background: var(--dashboard-surface-subtle, #eef6f2);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 12px 14px;
+}
+
+.peas-upload-draft-status.is-recovered { background: #eaf6ef; }
+.peas-upload-draft-status.is-error { background: #fff3f1; }
+.peas-upload-draft-status__icon { align-items: center; background: #d8eddf; border-radius: 999px; color: var(--brand-green); display: inline-flex; height: 36px; justify-content: center; width: 36px; }
+.peas-upload-draft-status.is-error .peas-upload-draft-status__icon { background: #f9ddd8; color: #a8342b; }
+.peas-upload-draft-status__icon svg { height: 18px; width: 18px; }
+.peas-upload-draft-status > div { display: grid; gap: 2px; min-width: 0; }
+.peas-upload-draft-status strong { color: var(--foreground); font-size: .82rem; }
+.peas-upload-draft-status p { color: #5e7067; font-size: .76rem; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.peas-upload-draft-status.is-error p { color: #88453f; }
+
 .peas-upload-page .peas-upload-main,
 .peas-upload-page .peas-upload-preview {
   background: var(--card, #ffffff);
@@ -1467,6 +1487,8 @@ body.peas-editor-open { overflow: hidden; }
 .peas-upload-page .peas-upload-actions .peas-ui-button { min-height: 44px; }
 
 @media (max-width: 720px) {
+  .peas-upload-draft-status { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .peas-upload-draft-status .peas-ui-button { grid-column: 2; justify-self: start; }
   .peas-upload-page .peas-upload-mode-tabs { grid-template-columns: 1fr; }
   .peas-abstract-method__options { grid-template-columns: 1fr; }
   .peas-upload-progress { overflow-x: auto; }
