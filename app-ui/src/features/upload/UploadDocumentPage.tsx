@@ -176,6 +176,9 @@ export function UploadDocumentPage() {
   const [publishingExtraction, setPublishingExtraction] = useState(false);
   const [publicationError, setPublicationError] = useState<string | null>(null);
   const [authors, setAuthors] = useState<AuthorRecord[]>([]);
+  const [checklistExpanded, setChecklistExpanded] = useState(() =>
+    typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches
+  );
   const publicationAttemptedRef = useRef(false);
 
   useEffect(() => {
@@ -626,7 +629,7 @@ export function UploadDocumentPage() {
         actions={<Badge tone={mode === "single" ? "green" : "gold"}>{mode === "single" ? "Single" : "Compiled"}</Badge>}
       />
 
-      <section className="peas-upload-shell">
+      <section className={`peas-upload-shell ${checklistExpanded ? "is-checklist-expanded" : "is-checklist-collapsed"}`}>
         <div className="peas-upload-main">
           <Tabs value={mode} onValueChange={(value) => changeMode(value as UploadMode)}>
             <TabsList aria-label="Choose upload type" className="peas-upload-mode-tabs">
@@ -672,7 +675,8 @@ export function UploadDocumentPage() {
           </Tabs>
         </div>
 
-        <UploadChecklist mode={mode} step={step} singleForm={singleForm} compiledForm={compiledForm} compiledTitle={compiledTitle} receipt={receipt?.type === mode ? receipt : null} />
+        {checklistExpanded ? <button type="button" className="peas-upload-checklist__backdrop" aria-label="Close upload checklist" onClick={() => setChecklistExpanded(false)} /> : null}
+        <UploadChecklist mode={mode} step={step} singleForm={singleForm} compiledForm={compiledForm} compiledTitle={compiledTitle} receipt={receipt?.type === mode ? receipt : null} expanded={checklistExpanded} onExpandedChange={setChecklistExpanded} />
       </section>
     </main>
   );
@@ -1201,7 +1205,7 @@ function WorkflowPanel({ title, description, children }: { title: string; descri
   return <section className="peas-upload-panel"><header><div><h2>{title}</h2><p>{description}</p></div><span className="peas-upload-required-note"><b>*</b> Required</span></header>{children}</section>;
 }
 
-function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, receipt }: { mode: UploadMode; step: UploadStep; singleForm: SingleFormState; compiledForm: CompiledFormState; compiledTitle: string; receipt: UploadReceipt | null }) {
+function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, receipt, expanded, onExpandedChange }: { mode: UploadMode; step: UploadStep; singleForm: SingleFormState; compiledForm: CompiledFormState; compiledTitle: string; receipt: UploadReceipt | null; expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
   const isSingle = mode === "single";
   const documentType = singleForm.category === "THESIS" ? "Thesis" : "Dissertation";
   const detailsReady = Boolean(singleForm.title.trim() && singleForm.authors.length);
@@ -1223,10 +1227,25 @@ function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, 
     coverFrontPage <= compiledForm.coverPageCount && coverBackPage <= compiledForm.coverPageCount
   );
   const stepName = (isSingle ? singleSteps : compiledSteps)[step - 1];
+  const completeItems = isSingle
+    ? [detailsReady, publicationReady, topicsReady, pdfReady].filter(Boolean).length
+    : [yearsReady, !validatePositiveInteger(compiledForm.volume), allStudyDetailsReady, allStudiesClassified, coverReady, allStudyPdfsReady, !compiledForm.forewordFile || isPdf(compiledForm.forewordFile)].filter(Boolean).length;
+  const totalItems = isSingle ? 4 : 7;
+  const checklistContentId = "upload-checklist-content";
   return <aside className="peas-upload-preview peas-upload-checklist" aria-label="Upload checklist">
-    {receipt ? <div className="peas-upload-receipt"><CheckCircle2 aria-hidden="true" /><h2>{receipt.pendingReview ? "Files saved; extraction queued" : "Published successfully"}</h2><p>{receipt.title}</p>{receipt.pendingReview ? <p>Extraction queued. This publication remains private until an administrator resolves the abstract review and approves it.</p> : null}<div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><Button type="button" onClick={() => receipt.pendingReview ? window.location.reload() : window.location.assign("/admin/Components/documents_list.html")}>{receipt.pendingReview ? "Upload another" : "View documents"}</Button></div> : <>
-      <div><h2>{step === FINAL_UPLOAD_STEP ? "Ready to submit?" : "What you need to complete"}</h2><p className="peas-upload-checklist__intro">{isSingle ? `${documentType}${singleForm.title.trim() ? ` · ${singleForm.title.trim()}` : ""}` : `${compiledTitle} · ${compiledForm.sections.length} ${compiledForm.sections.length === 1 ? "study" : "studies"}`}</p><p className="peas-upload-checklist__step">Step {step} of {FINAL_UPLOAD_STEP}: {stepName}</p></div>
-      <dl>
+    <header className="peas-upload-checklist__header">
+      <div className="peas-upload-checklist__header-copy">
+        <h2>{receipt ? (receipt.pendingReview ? "Files saved; extraction queued" : "Published successfully") : step === FINAL_UPLOAD_STEP ? "Ready to submit?" : "What you need to complete"}</h2>
+        {!receipt ? <><p className="peas-upload-checklist__intro">{isSingle ? `${documentType}${singleForm.title.trim() ? ` · ${singleForm.title.trim()}` : ""}` : `${compiledTitle} · ${compiledForm.sections.length} ${compiledForm.sections.length === 1 ? "study" : "studies"}`}</p><p className="peas-upload-checklist__step">Step {step} of {FINAL_UPLOAD_STEP}: {stepName}</p></> : null}
+      </div>
+      <Button type="button" variant="outline" size="sm" className="peas-upload-checklist__toggle" aria-label={`${expanded ? "Collapse" : "Expand"} upload checklist`} aria-controls={checklistContentId} aria-expanded={expanded} title={`${expanded ? "Collapse" : "Expand"} upload checklist`} onClick={() => onExpandedChange(!expanded)}>
+        <span className="peas-upload-checklist__toggle-copy"><strong>Checklist</strong><small>{receipt ? "Done" : `${completeItems}/${totalItems}`}</small></span>
+        {expanded ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}
+      </Button>
+    </header>
+    {!expanded ? <div className="peas-upload-checklist__rail-summary" aria-hidden="true"><strong>{receipt ? "Done" : `${completeItems}/${totalItems}`}</strong><span>Checklist</span></div> : null}
+    <div id={checklistContentId} className="peas-upload-checklist__content" hidden={!expanded}>
+      {receipt ? <div className="peas-upload-receipt"><CheckCircle2 aria-hidden="true" /><p>{receipt.title}</p>{receipt.pendingReview ? <p>Extraction queued. This publication remains private until an administrator resolves the abstract review and approves it.</p> : null}<div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><Button type="button" onClick={() => receipt.pendingReview ? window.location.reload() : window.location.assign("/admin/Components/documents_list.html")}>{receipt.pendingReview ? "Upload another" : "View documents"}</Button></div> : <dl>
         {isSingle ? <>
           <ChecklistRow label="Document details" value={detailsReady ? `${singleForm.authors.length} ${singleForm.authors.length === 1 ? "author" : "authors"} added` : !singleForm.title.trim() ? "Add a title and at least one author" : "Add at least one author"} ready={detailsReady} />
           <ChecklistRow label="Publication date" value={publicationReady ? formatPublicationDate(singleForm.pubMonth, singleForm.pubYear) : "Choose a month and four-digit year"} ready={publicationReady} />
@@ -1242,7 +1261,8 @@ function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, 
           <ChecklistRow label="Foreword PDF" value={compiledForm.forewordFile ? (isPdf(compiledForm.forewordFile) ? compiledForm.forewordFile.name : "Choose a valid PDF file") : "Optional"} ready={!compiledForm.forewordFile || isPdf(compiledForm.forewordFile)} optional />
         </>}
       </dl>
-    </>}
+      }
+    </div>
   </aside>;
 }
 

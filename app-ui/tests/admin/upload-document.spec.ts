@@ -396,9 +396,40 @@ test.describe("guided upload workflow", () => {
     await expect(page.locator(".peas-upload-review__row").filter({ hasText: "Cover page mapping" })).toContainText("Front: page 1 · Back: page 2");
   });
 
+  test("upload checklist collapses and expands as a side menu", async ({ page }) => {
+    await page.setViewportSize({ width: 1152, height: 900 });
+    await page.goto("/admin/Components/upload_document.html");
+    await waitForWorkspace(page);
+
+    const shell = page.locator(".peas-upload-shell");
+    const checklist = page.getByRole("complementary", { name: "Upload checklist" });
+    await expect(shell).toHaveClass(/is-checklist-expanded/);
+    await expect(checklist.getByText("Document details", { exact: true })).toBeVisible();
+
+    const mainBox = await page.locator(".peas-upload-main").boundingBox();
+    const checklistBox = await checklist.boundingBox();
+    expect(mainBox).not.toBeNull();
+    expect(checklistBox).not.toBeNull();
+    expect(checklistBox!.x).toBeGreaterThan(mainBox!.x);
+
+    await page.getByRole("button", { name: "Collapse upload checklist" }).click();
+    await expect(shell).toHaveClass(/is-checklist-collapsed/);
+    await expect(checklist.locator("#upload-checklist-content")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toHaveAttribute("aria-expanded", "false");
+
+    await page.getByRole("button", { name: "Expand upload checklist" }).click();
+    await expect(shell).toHaveClass(/is-checklist-expanded/);
+    await expect(checklist.getByText("Document details", { exact: true })).toBeVisible();
+  });
+
   test("mobile upload page has no critical accessibility issues or overflow", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/admin/Components/upload_document.html");
+    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toBeVisible();
+    await page.getByRole("button", { name: "Expand upload checklist" }).click();
+    await expect(page.getByRole("button", { name: "Close upload checklist" })).toBeVisible();
+    await page.getByRole("button", { name: "Close upload checklist" }).click({ position: { x: 4, y: 4 } });
+    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toBeVisible();
     await page.addScriptTag({ content: axeSource });
     const critical = await page.evaluate(async () => (await (window as any).axe.run(document)).violations.filter((item: any) => item.impact === "critical"));
     expect(critical).toEqual([]);

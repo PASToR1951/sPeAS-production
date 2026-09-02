@@ -859,6 +859,11 @@ body:has(.peas-admin-shell) {
   align-items: start;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   margin-top: 20px;
+  transition: grid-template-columns 180ms ease;
+}
+
+.peas-upload-shell.is-checklist-collapsed {
+  grid-template-columns: minmax(0, 1fr) 68px;
 }
 
 .peas-upload-main {
@@ -868,6 +873,96 @@ body:has(.peas-admin-shell) {
 .peas-upload-preview {
   position: sticky;
   top: calc(var(--header-height, 72px) + 18px);
+}
+
+.peas-upload-checklist__backdrop {
+  display: none;
+}
+
+.peas-upload-checklist__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.peas-upload-checklist__header-copy {
+  min-width: 0;
+}
+
+.peas-upload-checklist__toggle {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding-inline: 9px;
+}
+
+.peas-upload-checklist__toggle > svg {
+  height: 17px;
+  width: 17px;
+}
+
+.peas-upload-checklist__toggle-copy {
+  display: none;
+}
+
+.peas-upload-checklist__content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.peas-upload-checklist__content[hidden] {
+  display: none;
+}
+
+.peas-upload-checklist__rail-summary {
+  align-items: center;
+  color: var(--foreground);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding-block: 6px;
+}
+
+.peas-upload-checklist__rail-summary strong {
+  background: var(--surface-muted, #f1f5f3);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 7px 5px;
+}
+
+.peas-upload-checklist__rail-summary span {
+  color: #64746c;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+}
+
+.peas-upload-shell.is-checklist-expanded .peas-upload-checklist__rail-summary {
+  display: none;
+}
+
+.peas-upload-page .peas-upload-shell.is-checklist-collapsed .peas-upload-preview {
+  gap: 12px;
+  overflow: hidden;
+  padding: 12px 10px;
+}
+
+.peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__header {
+  justify-content: center;
+}
+
+.peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__header-copy {
+  display: none;
+}
+
+.peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__toggle {
+  justify-content: center;
+  padding-inline: 0;
+  width: 38px;
 }
 
 .peas-upload-panel,
@@ -919,11 +1014,87 @@ body:has(.peas-admin-shell) {
 
 @media (max-width: 1120px) {
   .peas-upload-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
   }
 
   .peas-upload-preview {
-    position: static;
+    position: sticky;
+  }
+
+  .peas-upload-shell.is-checklist-collapsed {
+    grid-template-columns: minmax(0, 1fr) 68px;
+  }
+}
+
+@media (max-width: 900px) {
+  .peas-upload-shell,
+  .peas-upload-shell.is-checklist-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .peas-upload-preview,
+  .peas-upload-shell.is-checklist-collapsed .peas-upload-preview {
+    bottom: 14px;
+    position: fixed;
+    right: 14px;
+    top: auto;
+    z-index: 44;
+  }
+
+  .peas-upload-shell.is-checklist-expanded .peas-upload-preview {
+    max-height: calc(100dvh - 104px);
+    overflow-y: auto;
+    top: 84px;
+    width: min(360px, calc(100vw - 28px));
+  }
+
+  .peas-upload-page .peas-upload-shell.is-checklist-collapsed .peas-upload-preview {
+    border-radius: 999px;
+    padding: 8px 10px;
+    width: auto;
+  }
+
+  .peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__header-copy,
+  .peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__rail-summary {
+    display: none;
+  }
+
+  .peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__toggle {
+    gap: 8px;
+    padding-inline: 9px;
+    width: auto;
+  }
+
+  .peas-upload-shell.is-checklist-collapsed .peas-upload-checklist__toggle-copy {
+    align-items: baseline;
+    display: inline-flex;
+    gap: 6px;
+  }
+
+  .peas-upload-checklist__toggle-copy strong {
+    font-size: 0.76rem;
+  }
+
+  .peas-upload-checklist__toggle-copy small {
+    color: #697970;
+    font-size: 0.66rem;
+    font-weight: 800;
+  }
+
+  .peas-upload-checklist__backdrop {
+    background: rgba(15, 23, 42, 0.34);
+    border: 0;
+    display: block;
+    inset: 0;
+    padding: 0;
+    position: fixed;
+    z-index: 43;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peas-upload-shell {
+    transition: none;
   }
 }
 
