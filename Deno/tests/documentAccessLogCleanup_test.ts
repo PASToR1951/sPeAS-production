@@ -7,6 +7,6 @@ Deno.test("document-access log cleanup matches only retired email and job tags",
   assertEquals(isRetiredDocumentAccessLogRecord({ action: "DOCUMENT_NOT_FOUND", recipient: "unrelated@example.test" }, false), false);
   assertEquals(isRetiredDocumentAccessLogRecord({ action: "EMAIL_SEND_ERROR", recipient: "unrelated@example.test" }, false), false);
   assertEquals(isRetiredDocumentAccessLogRecord({ type: "email", data: { jobType: "approval" } }, true), true);
-  assertEquals(isRetiredDocumentAccessLogRecord({ type: "email", data: { jobType: "newsletter" } }, true), false);
+  assertEquals(isRetiredDocumentAccessLogRecord({ type: "email", data: { jobType: "contact" } }, true), false);
   assertEquals(isRetiredDocumentAccessLogRecord("malformed", false), false);
 });

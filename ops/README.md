@@ -93,3 +93,16 @@ a recovery message and suppresses duplicates until the next transition.
 Rollback keeps the reviewed previous application and ingress configuration.
 Never restore old code across incompatible migrations without the recorded
 release and backup. Keep old data paths untouched until recovery acceptance.
+
+## Newsletter retirement window
+
+Release 1 disables newsletter signup and delivery, cancels open newsletter
+jobs, removes the worker and application surfaces, and retains the dormant
+schema for seven days. Container deployments remove any old newsletter worker
+identified by the `peas-prod` Compose project/service labels before taking the
+deployment backup. Native Windows never launches that worker.
+
+Do not delete the existing newsletter token-secret file until the separately
+approved Release 2 purge has completed. During the rollback window, old
+newsletter page and API links return `410 Gone`; pre-retirement code may be
+restored only while the paused schema remains available.

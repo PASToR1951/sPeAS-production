@@ -19,6 +19,32 @@ for (const route of routes) {
   });
 }
 
+test("retired newsletter pages and APIs return a sanitized gone response", async ({ page }) => {
+  for (const path of ["/newsletter.html#confirm=secret-token", "/admin/Components/newsletter.html"]) {
+    const response = await page.goto(path);
+    expect(response?.status()).toBe(410);
+    await expect(page.getByRole("heading", { name: "Repository updates discontinued" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("secret-token");
+  }
+
+  const apiResponse = await page.request.post("/api/newsletter/subscriptions", {
+    data: { email: "person@example.test", token: "secret-token" },
+  });
+  expect(apiResponse.status()).toBe(410);
+  expect(await apiResponse.json()).toEqual({
+    error: "newsletter_retired",
+    message: "PeAS Repository Updates has been discontinued. No further newsletter messages will be sent.",
+    successor_url: "/news.html",
+  });
+});
+
+test("public news and footer no longer expose newsletter controls", async ({ page }) => {
+  await page.goto("/news.html");
+  await expect(page.getByRole("heading", { name: "Repository updates" })).toHaveCount(0);
+  await expect(page.getByLabel("Newsletter email address")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Subscribe" })).toHaveCount(0);
+});
+
 test("administrator password recovery sends the account email and accepts the magic-link token", async ({ page }) => {
   let resetRequest: Record<string, unknown> | null = null;
   let passwordUpdate: Record<string, unknown> | null = null;

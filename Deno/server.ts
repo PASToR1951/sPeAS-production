@@ -56,7 +56,7 @@ import { analyticsRateLimit } from "./middleware/rateLimit.ts"; // Per-IP rate l
 import { STORAGE_ROOT } from "./config/storage.ts";
 import experienceRoutes from "./routes/experienceRoutes.ts";
 import newsRoutes from "./routes/newsRoutes.ts";
-import newsletterRoutes from "./routes/newsletterRoutes.ts";
+import retiredNewsletterRoutes from "./routes/retiredNewsletterRoutes.ts";
 import userReadStatusRoutes from "./routes/userReadStatusRoutes.ts";
 import documentAnnotationRoutes from "./routes/documentAnnotationRoutes.ts";
 import { cleanupDocumentAnnotations } from "./services/documentAnnotationCleanupService.ts";
@@ -167,7 +167,7 @@ async function verifyProductionReadiness() {
   }
   const required = await client.queryObject<{ missing: string | null }>(`
     SELECT required.name
-    FROM unnest(ARRAY['users', 'documents', 'account', 'session', 'site_experience_versions', 'newsletter_settings', 'newsletter_mail_jobs']) AS required(name)
+    FROM unnest(ARRAY['users', 'documents', 'account', 'session', 'site_experience_versions']) AS required(name)
     WHERE to_regclass('public.' || required.name) IS NULL
     LIMIT 1
   `);
@@ -1116,8 +1116,6 @@ app.use(experienceRoutes.allowedMethods());
 // Register Research and Publications news routes
 app.use(newsRoutes.routes());
 app.use(newsRoutes.allowedMethods());
-app.use(newsletterRoutes.routes());
-app.use(newsletterRoutes.allowedMethods());
 
 // Owner-scoped document reading status is distinct from repository analytics.
 app.use(userReadStatusRoutes.routes());
@@ -1506,6 +1504,8 @@ router.get("/.well-known/security.txt", (ctx) => {
 // The tombstone does not parse query tokens or read request data.
 app.use(retiredDocumentRequestRoutes.routes());
 app.use(retiredDocumentRequestRoutes.allowedMethods());
+app.use(retiredNewsletterRoutes.routes());
+app.use(retiredNewsletterRoutes.allowedMethods());
 
 // Add a route for getting detailed compiled document information with visit statistics
 router.get("/api/compiled-documents/:id/details", isAuthenticated, async (ctx) => {

@@ -55,7 +55,7 @@ recorded. Repository automation does not prove that a live control is active.
 - [ ] Database row/count comparison and file-hash validation: ____________________
 - [ ] Two administrator logins: ____________________
 - [ ] Search, public/protected download, upload, review, reporting checks: ____________________
-- [ ] Experience Studio, media/abstract/newsletter workers, and ClamAV checks: ____________________
+- [ ] Experience Studio, media/abstract workers, and ClamAV checks: ____________________
 - [ ] Measured RPO: ______  Approved maximum: ______  Approver/date: __________
 - [ ] Measured RTO: ______  Approved maximum: ______  Approver/date: __________
 

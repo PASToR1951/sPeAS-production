@@ -1,5 +1,3 @@
-import { NewsletterSignup } from "./NewsletterSignup";
-
 export function PublicFooter() {
   return (
     <footer className="peas-public-footer">
@@ -31,8 +29,6 @@ export function PublicFooter() {
             </div>
           </nav>
         </div>
-        <NewsletterSignup variant="compact" />
-
         <div className="peas-public-footer__meta">
           <p>&copy; {new Date().getFullYear()} PeAS. All Rights Reserved.</p>
           <p>Paulinian electronic Archiving System</p>

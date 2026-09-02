@@ -19,7 +19,7 @@ if [[ -z "${PEAS_RELEASE_ID:-}" ]] && command -v git >/dev/null 2>&1; then
 fi
 
 if docker compose version >/dev/null 2>&1; then
-  exec docker compose up --build
+  exec docker compose up --build --remove-orphans
 fi
 
 if command -v docker-compose >/dev/null 2>&1; then

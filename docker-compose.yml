@@ -61,8 +61,6 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_TLS: ${SMTP_TLS:-true}
       CONTACT_RECIPIENT_EMAIL: ${CONTACT_RECIPIENT_EMAIL:-}
-      OFFICE_REPLY_TO_EMAIL: ${OFFICE_REPLY_TO_EMAIL:-}
-      NEWSLETTER_TOKEN_SECRET: ${NEWSLETTER_TOKEN_SECRET:?set NEWSLETTER_TOKEN_SECRET in .env}
     ports:
       - "${APP_PORT:-18080}:8000"
     volumes:
@@ -114,33 +112,6 @@ services:
       ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
     volumes:
       - peas-dev-storage:/app/storage
-
-  newsletter-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: ["task", "newsletter-worker"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      DENO_ENV: development
-      PGHOST: db
-      PGPORT: "5432"
-      PGUSER: postgres
-      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
-      PGDATABASE: peas_db
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:18080}
-      NEWSLETTER_TOKEN_SECRET: ${NEWSLETTER_TOKEN_SECRET:?set NEWSLETTER_TOKEN_SECRET in .env}
-      NEWSLETTER_SEND_RATE_PER_MINUTE: ${NEWSLETTER_SEND_RATE_PER_MINUTE:-20}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-465}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_TLS: ${SMTP_TLS:-true}
-      CONTACT_RECIPIENT_EMAIL: ${CONTACT_RECIPIENT_EMAIL:-}
-      OFFICE_REPLY_TO_EMAIL: ${OFFICE_REPLY_TO_EMAIL:-}
-    restart: unless-stopped
 
 volumes:
   peas-dev-postgres:

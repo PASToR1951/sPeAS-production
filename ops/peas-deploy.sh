@@ -67,6 +67,17 @@ compose() {
   docker compose "${files[@]}" "$@"
 }
 
+remove_retired_newsletter_container() {
+  local id
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    info "removing retired newsletter container $id"
+    docker rm --force "$id" >/dev/null
+  done < <(docker ps --all --quiet \
+    --filter 'label=com.docker.compose.project=peas-prod' \
+    --filter 'label=com.docker.compose.service=newsletter-worker')
+}
+
 set_config_value() {
   local key="$1" value="$2" tmp
   [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || die "invalid configuration key: $key"
@@ -119,7 +130,7 @@ validate_config() {
   [[ "$CONTACT_RECIPIENT_EMAIL" == *@* ]] || die "CONTACT_RECIPIENT_EMAIL must be an email address"
   [[ "$smtp_port" =~ ^[0-9]+$ ]] && ((smtp_port >= 1 && smtp_port <= 65535)) || die "SMTP_PORT must be between 1 and 65535"
   [[ "$smtp_tls" == true || "$smtp_tls" == false ]] || die "SMTP_TLS must be true or false"
-  for key in db_admin_password db_app_password better_auth_secret newsletter_token_secret smtp_password restic_password; do
+  for key in db_admin_password db_app_password better_auth_secret smtp_password restic_password; do
     [[ -s "$SECRETS_DIR/$key" ]] || die "missing secret: $key"
   done
 }
@@ -173,9 +184,10 @@ backup() {
   manifest="$STAGING_DIR/manifest-$stamp.txt"
 
   info "stopping application writers for a consistent backup"
+  remove_retired_newsletter_container
   compose up -d db >/dev/null
   wait_for_health db 180
-  for service in app media-worker abstract-worker newsletter-worker; do
+  for service in app media-worker abstract-worker; do
     container_id="$(compose ps -q "$service" 2>/dev/null || true)"
     if [[ -n "$container_id" && "$(docker inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)" == true ]]; then
       running_services+=("$service")
@@ -231,12 +243,12 @@ deploy() {
   set_config_value PEAS_IMAGE "$image"
   load_config
   validate_config
-  compose pull app media-worker abstract-worker newsletter-worker migrate
+  compose pull app media-worker abstract-worker migrate
   compose up -d db clamav
   wait_for_health db 180
   wait_for_health clamav 300
   compose run --rm migrate
-  compose up -d app media-worker abstract-worker newsletter-worker caddy
+  compose up -d --remove-orphans app media-worker abstract-worker caddy
   wait_for_health app 240
   verify
   record_release
@@ -385,11 +397,12 @@ SQL
 
   export PEAS_POSTGRES_VOLUME="$new_db"
   export PEAS_STORAGE_VOLUME="$new_storage"
-  compose stop app media-worker abstract-worker newsletter-worker caddy db >/dev/null 2>&1 || true
+  remove_retired_newsletter_container
+  compose stop app media-worker abstract-worker caddy db >/dev/null 2>&1 || true
   compose up -d db
   wait_for_health db 180
   compose run --rm migrate
-  compose up -d app media-worker abstract-worker newsletter-worker caddy
+  compose up -d --remove-orphans app media-worker abstract-worker caddy
   wait_for_health app 240
   verify
   set_config_value PEAS_POSTGRES_VOLUME "$new_db"
@@ -483,15 +496,14 @@ configure_email_values() {
   prompt_config_value SMTP_TLS "Use implicit TLS (true for port 465; false for STARTTLS on port 587)" "false"
   prompt_config_value SMTP_USERNAME "SMTP username / sender email"
   prompt_config_value CONTACT_RECIPIENT_EMAIL "Contact form recipient email" "${SMTP_USERNAME:-}"
-  prompt_config_value OFFICE_REPLY_TO_EMAIL "Newsletter reply-to email" "${CONTACT_RECIPIENT_EMAIL:-}"
-  prompt_config_value NEWSLETTER_SEND_RATE_PER_MINUTE "Newsletter messages per minute" "20"
   prompt_secret_update smtp_password "SMTP password"
 }
 
 restart_app_after_configuration() {
   if [[ -n "$(compose ps -q app 2>/dev/null || true)" ]]; then
     info "restarting the application to load the updated credentials"
-    compose up -d --force-recreate app newsletter-worker
+    remove_retired_newsletter_container
+    compose up -d --remove-orphans --force-recreate app
     wait_for_health app 240
     verify
   else
@@ -564,7 +576,6 @@ install_host() {
   generate_secret_if_missing db_admin_password
   generate_secret_if_missing db_app_password
   generate_secret_if_missing better_auth_secret
-  generate_secret_if_missing newsletter_token_secret
   set_config_value RESTIC_PASSWORD_FILE "$SECRETS_DIR/restic_password"
   set_config_value PEAS_REPO_ROOT "$APP_ROOT/current"
 
@@ -684,7 +695,7 @@ case "$command" in
         TRUSTED_ORIGINS)
           set_config_value "$key" "$value"
           ;;
-        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|OFFICE_REPLY_TO_EMAIL|NEWSLETTER_SEND_RATE_PER_MINUTE|RESTIC_REPOSITORY|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES|PEAS_CSP_MODE|TRUSTED_PROXY_RANGES|SECURITY_CONTACT_EMAIL|SECURITY_TXT_EXPIRES|PEAS_VERIFY_PUBLIC_DOCUMENT_ID)
+        PUBLIC_APP_URL|BETTER_AUTH_URL|ACME_EMAIL|PEAS_IMAGE|PEAS_RELEASE_ID|PEAS_POSTGRES_IMAGE|PEAS_CADDY_IMAGE|PEAS_CLAMAV_IMAGE|PEAS_UTILITY_IMAGE|SMTP_HOST|SMTP_PORT|SMTP_USERNAME|SMTP_TLS|CONTACT_RECIPIENT_EMAIL|RESTIC_REPOSITORY|DOCUMENT_ANNOTATIONS_ENABLED|ABSTRACT_OCR_LANGUAGES|PEAS_CSP_MODE|TRUSTED_PROXY_RANGES|SECURITY_CONTACT_EMAIL|SECURITY_TXT_EXPIRES|PEAS_VERIFY_PUBLIC_DOCUMENT_ID)
           [[ -n "$value" ]] || die "$key cannot be empty"
           set_config_value "$key" "$value"
           ;;
