@@ -111,6 +111,7 @@ const PROTECTED_DOCUMENT_FILE_PREFIXES = [
   "/storage/hello/",
   "/storage/compiled/",
   "/storage/documents/",
+  "/storage/imports/",
   "/storage/files/",
   "/storage/uploads/",
   "/files/",

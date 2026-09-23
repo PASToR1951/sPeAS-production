@@ -7,6 +7,8 @@ import { ApiError, getErrorMessage } from "../../lib/api/http";
 import { compiledCoverUrl, compiledForewordUrl, compiledStudyPdfUrl, fetchCompiledPreviewManifest, type CompiledPreviewManifest, type CompiledPreviewStudy } from "../../lib/api/compiled-documents";
 import type { DocumentRecord } from "../../lib/api/types";
 import { SimplePdfReader, type PdfReaderError } from "../../components/documents/SimplePdfReader";
+import { VolumeContentsReader } from "../../components/documents/VolumeContentsReader";
+import { useDocumentPreparationFeatures } from "../../lib/useDocumentPreparationFeatures";
 
 type CollectionSelection =
   | { kind: "overview" }
@@ -16,6 +18,7 @@ type CollectionSelection =
   | { kind: "study"; studyId: number };
 
 export function CompiledWorkPreviewDialog({ document, onOpenChange }: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void }) {
+  const features = useDocumentPreparationFeatures();
   const [manifest, setManifest] = useState<CompiledPreviewManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -137,13 +140,13 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange }: { document
                 {manifest.collection.hasCover ? <CollectionTab tabId="compiled-preview-tab-front-cover" active={selection.kind === "front-cover"} label="Front cover" panelId="compiled-preview-panel" meta={`PDF page ${manifest.collection.frontCoverPage ?? 1}`} icon={<BookCopy aria-hidden="true" />} onClick={() => setSelection({ kind: "front-cover" })} /> : null}
                 <CollectionTab ref={overviewTabRef} tabId="compiled-preview-tab-overview" active={selection.kind === "overview"} label="Collection overview" panelId="compiled-preview-panel" icon={<FolderOpen aria-hidden="true" />} onClick={() => setSelection({ kind: "overview" })} />
                 {manifest.collection.hasForeword ? <CollectionTab tabId="compiled-preview-tab-foreword" active={selection.kind === "foreword"} label="Collection foreword" panelId="compiled-preview-panel" icon={<BookOpen aria-hidden="true" />} onClick={() => setSelection({ kind: "foreword" })} /> : null}
-                {filteredStudies.map((study) => <CollectionTab key={study.id} tabId={`compiled-preview-tab-study-${study.id}`} active={selection.kind === "study" && selection.studyId === study.id} label={`${study.order}. ${study.title}`} panelId="compiled-preview-panel" meta={study.authors.map((author) => author.fullName).join(", ")} unavailable={!study.hasPdf} icon={<FileText aria-hidden="true" />} onClick={() => setSelection({ kind: "study", studyId: study.id })} />)}
+                {!features.volumeReader && filteredStudies.map((study) => <CollectionTab key={study.id} tabId={`compiled-preview-tab-study-${study.id}`} active={selection.kind === "study" && selection.studyId === study.id} label={`${study.order}. ${study.title}`} panelId="compiled-preview-panel" meta={study.authors.map((author) => author.fullName).join(", ")} unavailable={!study.hasPdf} icon={<FileText aria-hidden="true" />} onClick={() => setSelection({ kind: "study", studyId: study.id })} />)}
                 {manifest.collection.hasCover ? <CollectionTab tabId="compiled-preview-tab-back-cover" active={selection.kind === "back-cover"} label="Back cover" panelId="compiled-preview-panel" meta={`PDF page ${manifest.collection.backCoverPage ?? manifest.collection.coverPageCount ?? 1}`} icon={<BookCopy aria-hidden="true" />} onClick={() => setSelection({ kind: "back-cover" })} /> : null}
                 {filter && filteredStudies.length === 0 ? <p className="peas-compiled-preview-contents__empty">No matching studies.</p> : null}
               </div>
             </nav>
             <section id="compiled-preview-panel" className="peas-compiled-preview-pane" role="tabpanel" aria-labelledby={activeTabId} aria-label={selectedTitle || "Collection overview"} aria-live="polite">
-              {selection.kind === "overview" ? <CollectionOverview manifest={manifest} /> : selection.kind === "foreword" ? <PdfSelectionPane key={`foreword-${document?.id ?? ""}`} title="Collection foreword" description="The foreword for this compiled publication." pdf={selectedPdf} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} /> : coverSelected ? <PdfSelectionPane key={`${selection.kind}-${document?.id ?? ""}`} title={selectedTitle} description={`${selectedTitle} selected from page ${selectedInitialPage} of the cover PDF.`} pdf={selectedPdf} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} initialPage={selectedInitialPage} /> : selectedStudy ? <StudySelectionPane key={selectedStudy.id} study={selectedStudy} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} /> : <CollectionOverview manifest={manifest} />}
+              {selection.kind === "overview" ? <><CollectionOverview manifest={manifest} />{features.volumeReader && document ? <VolumeContentsReader id={String(document.id)} administrator /> : null}</> : selection.kind === "foreword" ? <PdfSelectionPane key={`foreword-${document?.id ?? ""}`} title="Collection foreword" description="The foreword for this compiled publication." pdf={selectedPdf} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} /> : coverSelected ? <PdfSelectionPane key={`${selection.kind}-${document?.id ?? ""}`} title={selectedTitle} description={`${selectedTitle} selected from page ${selectedInitialPage} of the cover PDF.`} pdf={selectedPdf} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} initialPage={selectedInitialPage} /> : selectedStudy ? <StudySelectionPane key={selectedStudy.id} study={selectedStudy} url={selectedPdfUrl} downloadUrl={selectedDownloadUrl} /> : <CollectionOverview manifest={manifest} />}
             </section>
           </div>
         ) : null}

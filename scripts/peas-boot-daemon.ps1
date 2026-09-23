@@ -289,6 +289,7 @@ function Wait-PeasStable(
     [System.Diagnostics.Process]$WebProcess,
     [System.Diagnostics.Process]$MediaProcess,
     [System.Diagnostics.Process]$AbstractProcess,
+    [System.Diagnostics.Process]$ImportProcess,
     [int]$StabilitySeconds = 120
 ) {
     $healthUri = "http://${healthProbeHost}:$($env:PORT)/health/ready"
@@ -298,7 +299,8 @@ function Wait-PeasStable(
         foreach ($process in @(
             @{ Name = 'Web server'; Value = $WebProcess },
             @{ Name = 'Media worker'; Value = $MediaProcess },
-            @{ Name = 'Abstract worker'; Value = $AbstractProcess }
+            @{ Name = 'Abstract worker'; Value = $AbstractProcess },
+            @{ Name = 'Import worker'; Value = $ImportProcess }
         )) {
             if ($process.Value.HasExited) {
                 throw "$($process.Name) exited during the sustained readiness check (PID $($process.Value.Id), code $($process.Value.ExitCode))."
@@ -342,6 +344,7 @@ function New-PeasStartupReport(
     [System.Diagnostics.Process]$MediaProcess,
     [System.Diagnostics.Process]$AbstractProcess,
     [System.Diagnostics.Process]$WebProcess,
+    [System.Diagnostics.Process]$ImportProcess,
     [pscustomobject]$Readiness
 ) {
     New-Item -ItemType Directory -Force -Path $startupReportDir | Out-Null
@@ -400,6 +403,7 @@ function New-PeasStartupReport(
         "Web server: $(Format-ProcessState $WebProcess)"
         "Media worker: $(Format-ProcessState $MediaProcess)"
         "Abstract worker: $(Format-ProcessState $AbstractProcess)"
+        "Import worker: $(Format-ProcessState $ImportProcess)"
         ''
         'Email configuration'
         '-------------------'
@@ -445,6 +449,11 @@ function Send-PeasStartupReport([string]$ReportPath) {
 
 $mediaArgs = @('run', "--env-file=$envFile", '--allow-net', '--allow-read', '--allow-write', '--allow-env', '--allow-run=ffmpeg,ffprobe,clamdscan', 'media-worker.ts')
 $abstractArgs = @('run', "--env-file=$envFile", '--allow-env', '--allow-read', '--allow-write', '--allow-net', '--allow-run=pdfinfo,pdftotext,pdftoppm,tesseract', 'abstract-worker.ts')
+$importExecutables = @('soffice', 'soffice.exe', 'pdfinfo', 'pdftotext', 'pdftoppm', 'tesseract')
+if ($env:IMPORT_LIBREOFFICE_PATH) { $importExecutables += $env:IMPORT_LIBREOFFICE_PATH }
+$importRunPermission = '"--allow-run=' + ($importExecutables -join ',') + '"'
+$importArgs = @('run', "--env-file=$envFile", '--allow-env', '--allow-read', '--allow-write', '--allow-net', $importRunPermission, 'import-worker.ts')
+$importWorker = $null
 $webArgs = @('run', "--env-file=$envFile", '--allow-net', '--allow-read', '--allow-write', '--allow-env', '--allow-run=pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan', 'server.ts')
 $media = $null
 $abstract = $null
@@ -452,12 +461,13 @@ $web = $null
 try {
     $media = Start-PeasProcess 'Media worker' $mediaArgs (Join-Path $logs 'media-worker.out.log') (Join-Path $logs 'media-worker.err.log')
     $abstract = Start-PeasProcess 'Abstract worker' $abstractArgs (Join-Path $logs 'abstract-worker.out.log') (Join-Path $logs 'abstract-worker.err.log')
+    $importWorker = Start-PeasProcess 'Import worker' $importArgs (Join-Path $logs 'import-worker.out.log') (Join-Path $logs 'import-worker.err.log')
     $web = Start-PeasProcess 'Web server' $webArgs (Join-Path $logs 'web.out.log') (Join-Path $logs 'web.err.log')
     $readiness = Wait-PeasReady $web
-    Wait-PeasStable $web $media $abstract 120
+    Wait-PeasStable $web $media $abstract $importWorker 120
     $startupStopwatch.Stop()
     Write-Log "System startup passed local readiness and stability checks in $([math]::Round($startupStopwatch.Elapsed.TotalSeconds, 2)) seconds."
-    $startupReport = New-PeasStartupReport $media $abstract $web $readiness
+    $startupReport = New-PeasStartupReport $media $abstract $web $importWorker $readiness
     Write-Log "Detailed startup report created: $startupReport"
     Send-PeasStartupReport $startupReport
 } catch {
@@ -466,7 +476,8 @@ try {
     Write-DiagnosticTail 'Web stdout' (Join-Path $logs 'web.out.log')
     Write-DiagnosticTail 'Media worker stderr' (Join-Path $logs 'media-worker.err.log') 40
     Write-DiagnosticTail 'Abstract worker stderr' (Join-Path $logs 'abstract-worker.err.log') 40
-    $processIds = @($media, $abstract, $web) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }
+    Write-DiagnosticTail 'Import worker stderr' (Join-Path $logs 'import-worker.err.log') 40
+    $processIds = @($media, $abstract, $importWorker, $web) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }
     if ($processIds) { Stop-Process -Id $processIds -Force -ErrorAction SilentlyContinue }
     exit 1
 }
@@ -476,7 +487,7 @@ while ($true) {
     $maintenance = Get-ActiveMaintenanceRequest
     if ($maintenance) {
         Write-Log "Maintenance request $($maintenance.id) detected; stopping PeAS writer processes."
-        $processIds = @($media, $abstract, $web) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }
+        $processIds = @($media, $abstract, $importWorker, $web) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }
         if ($processIds) { Stop-Process -Id $processIds -Force -ErrorAction SilentlyContinue }
         Write-MaintenanceAcknowledgement $maintenance
         while (Get-ActiveMaintenanceRequest) { Start-Sleep -Seconds 2 }
@@ -485,6 +496,7 @@ while ($true) {
         try {
             $media = Start-PeasProcess 'Media worker' $mediaArgs (Join-Path $logs 'media-worker.out.log') (Join-Path $logs 'media-worker.err.log')
             $abstract = Start-PeasProcess 'Abstract worker' $abstractArgs (Join-Path $logs 'abstract-worker.out.log') (Join-Path $logs 'abstract-worker.err.log')
+            $importWorker = Start-PeasProcess 'Import worker' $importArgs (Join-Path $logs 'import-worker.out.log') (Join-Path $logs 'import-worker.err.log')
             $web = Start-PeasProcess 'Web server' $webArgs (Join-Path $logs 'web.out.log') (Join-Path $logs 'web.err.log')
             $null = Wait-PeasReady $web
             Write-Log 'PeAS children restarted after maintenance.'
@@ -500,6 +512,11 @@ while ($true) {
         } catch {
             Write-Log "ERROR: Media worker restart failed: $($_.Exception.Message)"
         }
+    }
+    if ($null -eq $importWorker -or $importWorker.HasExited) {
+        Write-Log 'Import worker exited; restarting.'
+        try { $importWorker = Start-PeasProcess 'Import worker' $importArgs (Join-Path $logs 'import-worker.out.log') (Join-Path $logs 'import-worker.err.log') }
+        catch { Write-Log "ERROR: Import worker restart failed: $($_.Exception.Message)" }
     }
     if ($abstract.HasExited) {
         Write-Log 'Abstract worker exited; restarting.'

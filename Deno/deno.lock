@@ -3,6 +3,7 @@
   "specifiers": {
     "npm:@pdf-lib/fontkit@1.1.1": "1.1.1",
     "npm:better-auth@1.6.23": "1.6.23_pg@8.22.0",
+    "npm:fflate@0.8.2": "0.8.2",
     "npm:nodemailer@9.0.5": "9.0.5",
     "npm:pdf-lib@1.17.1": "1.17.1",
     "npm:pg@8.22.0": "8.22.0",
@@ -150,6 +151,9 @@
     },
     "defu@6.1.7": {
       "integrity": "sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ=="
+    },
+    "fflate@0.8.2": {
+      "integrity": "sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A=="
     },
     "jose@6.2.3": {
       "integrity": "sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw=="

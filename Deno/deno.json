@@ -5,7 +5,7 @@
     "watch": "deno run --watch --allow-net --allow-read --allow-write --allow-env --allow-run=pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan server.ts",
     "debug": "deno run --inspect-brk --allow-net --allow-read --allow-write --allow-env --allow-run=pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan server.ts",
     "media-worker": "deno run --allow-net --allow-read --allow-write --allow-env --allow-run=ffmpeg,ffprobe,clamdscan media-worker.ts",
-    "check": "deno check server.ts",
+    "check": "deno check server.ts import-worker.ts",
     "test": "DENO_ENV=test PGUSER=test PGUSER_FILE= PGDATABASE=peas_test PGHOST=127.0.0.1 PGPORT=5432 PGPASSWORD=test-only-not-a-production-secret BETTER_AUTH_SECRET=test-only-secret-for-unit-tests-32chars deno test --allow-env --allow-read --allow-write tests/",
     "abstract:test": "deno test --allow-env --allow-read tests/abstractExtraction_test.ts tests/abstractSchema_test.ts",
     "classification:audit": "deno run --allow-env --allow-net --allow-read scripts/classification-audit.ts",
@@ -36,7 +36,8 @@
     "db:migrate:status": "deno run --allow-env --allow-net --allow-read scripts/migrate.ts status",
     "logs:purge-document-access": "deno run --allow-env --allow-read --allow-write=logs scripts/purge-document-access-logs.ts",
     "admin:bootstrap": "deno run --allow-env --allow-net --allow-read scripts/bootstrap-admin.ts",
-    "admin:set-password": "deno run --allow-env --allow-net --allow-read scripts/set-admin-password.ts"
+    "admin:set-password": "deno run --allow-env --allow-net --allow-read scripts/set-admin-password.ts",
+    "imports:worker": "deno run --allow-env --allow-read --allow-write --allow-net --allow-run=soffice,/usr/local/bin/peas-convert-word,pdfinfo,pdftotext,pdftoppm,tesseract import-worker.ts"
   },
   "imports": {
     "zod": "npm:zod@4.4.3",

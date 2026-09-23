@@ -203,7 +203,7 @@ export class DocumentModel {
            JOIN compiled_document_items cdi ON d.id = cdi.document_id
            WHERE cdi.compiled_document_id = $1
            AND d.deleted_at IS NULL
-           ORDER BY cdi.order_position ASC`,
+           ORDER BY cdi.position ASC`,
           [compiledDocId]
         );
         
@@ -877,7 +877,7 @@ export class DocumentModel {
          JOIN documents d ON cdi.document_id = d.id
          WHERE cdi.compiled_document_id = $1 
          AND d.deleted_at IS NULL
-         ORDER BY cdi.order_position ASC`,
+         ORDER BY cdi.position ASC`,
         [docId]
       );
       

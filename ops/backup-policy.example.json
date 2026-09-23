@@ -57,6 +57,9 @@
     "config\\secrets\\*delete*credential*",
     "current\\Deno\\.cache",
     "staging",
-    "restore"
+    "restore",
+    "import-staging",
+    "current\\import-staging",
+    "current\\Deno\\import-staging"
   ]
 }

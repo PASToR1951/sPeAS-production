@@ -46,6 +46,10 @@ coverage/
 test-results/
 playwright-report/
 blob-report/
+**/playwright/.auth/
+admin-auth.json
+peas-import-test-*/
+peas-word-qualification-*/
 *.tsbuildinfo
 Deno/admin/experience-studio/
 Deno/admin/react-ui/
@@ -53,6 +57,8 @@ Deno/Public/react-ui/
 
 # Runtime data
 storage/
+# Private import sources, conversions, and exports at any workspace depth
+import-staging/
 Deno/storage/
 Deno/uploads/
 Deno/logs/

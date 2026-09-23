@@ -1,15 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
-import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
+import { getDocument, TextLayer, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
+
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import "pdfjs-dist/web/pdf_viewer.css";
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 export type PdfReaderError = "not-found" | "invalid" | "auth-expired" | "unknown";
 
-export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError }: { url: string; title: string; initialPage?: number; onLoaded: () => void; onError: (kind: PdfReaderError) => void }) {
+export function SimplePdfReader({ url, title, initialPage = 1, page: controlledPage, onPageChange, onLoaded, onError }: { url: string; title: string; initialPage?: number; page?: number; onPageChange?: (page: number) => void; onLoaded: () => void; onError: (kind: PdfReaderError) => void }) {
   const readerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(initialPage);
+  const page = controlledPage ?? internalPage;
+  const setPage = (value: number | ((previous: number) => number)) => {
+    const next = typeof value === "function" ? value(page) : value;
+    setInternalPage(next); onPageChange?.(next);
+  };
+  const changePageRef = useRef(setPage); changePageRef.current = setPage;
+  const initialPageRef = useRef(initialPage); initialPageRef.current = controlledPage ?? initialPage;
+  const textRef = useRef<HTMLDivElement>(null);
+  const [hasText, setHasText] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [fitScale, setFitScale] = useState(1);
   const [fullscreen, setFullscreen] = useState(false);
@@ -22,10 +35,12 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
   useEffect(() => {
     let active = true;
     setPdf(null);
-    setPage(Math.max(1, Math.floor(initialPage)));
+    const firstPage = Math.max(1, Math.floor(initialPageRef.current));
+    setInternalPage(firstPage);
     setZoom(1);
-    getDocument({ url, withCredentials: true }).promise
-      .then((loaded) => { if (active) { setPage(Math.min(loaded.numPages, Math.max(1, Math.floor(initialPage)))); setPdf(loaded); onLoadedRef.current(); } })
+    const loading = getDocument({ url, withCredentials: true, disableAutoFetch: true, disableStream: true, rangeChunkSize: 65536 });
+    loading.promise
+      .then((loaded) => { if (active) { changePageRef.current(Math.min(loaded.numPages, Math.max(1, Math.floor(initialPageRef.current)))); setPdf(loaded); onLoadedRef.current(); } })
       .catch((error: unknown) => {
         if (!active) return;
         const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : NaN;
@@ -35,8 +50,8 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
         else if (status === 415 || /invalid\s+pdf|invalidpdf|415/iu.test(message)) onErrorRef.current("invalid");
         else onErrorRef.current("unknown");
       });
-    return () => { active = false; };
-  }, [initialPage, url]);
+    return () => { active = false; renderTaskRef.current?.cancel(); void loading.destroy(); };
+  }, [url]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -56,6 +71,7 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
     let active = true;
+    let textLayer: TextLayer | null = null;
     const render = async () => {
       const previousTask = renderTaskRef.current;
       if (previousTask) {
@@ -75,6 +91,18 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
       canvas.height = Math.ceil(viewport.height * ratio);
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
+      if (textRef.current) {
+        const textContent = await pdfPage.getTextContent();
+        if (!active) return;
+        setHasText(textContent.items.some((item) => "str" in item && item.str.trim()));
+        textRef.current.replaceChildren();
+        textRef.current.style.setProperty("--scale-factor", String(viewport.scale));
+        textRef.current.style.setProperty("--total-scale-factor", String(viewport.scale * viewport.userUnit));
+        textRef.current.style.setProperty("--scale-round-x", "1px");
+        textRef.current.style.setProperty("--scale-round-y", "1px");
+        textLayer = new TextLayer({ textContentSource: textContent, container: textRef.current, viewport });
+        void textLayer.render().catch(() => undefined);
+      }
       const task = pdfPage.render({ canvas, canvasContext: context, viewport, transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined });
       renderTaskRef.current = task;
       try { await task.promise; } catch { /* stale/cancelled renders are ignored */ }
@@ -84,6 +112,7 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
     return () => {
       active = false;
       renderTaskRef.current?.cancel();
+      textLayer?.cancel();
     };
   }, [fitScale, page, pdf, zoom]);
 
@@ -111,6 +140,8 @@ export function SimplePdfReader({ url, title, initialPage = 1, onLoaded, onError
       <button type="button" aria-label="Fit page" aria-pressed={zoom === 1} onClick={() => setZoom(1)}>Fit</button>
       <button type="button" aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</button>
     </div>
-    <div ref={stageRef} className="peas-simple-pdf-reader__stage"><canvas ref={canvasRef} /></div>
+    {!pdf ? <p role="status">Loading PDF…</p> : null}
+    {!hasText && pdf ? <p className="peas-reader-scan-note">This page is scanned. Selectable text is unavailable.</p> : null}
+    <div ref={stageRef} className="peas-simple-pdf-reader__stage" role="region" aria-label={`PDF page ${page}`} tabIndex={0}><div className="peas-pdf-page" style={{ position: "relative" }}><canvas ref={canvasRef} aria-hidden="true" /><div className="textLayer" ref={textRef} aria-label={`Text on page ${page}`} /></div></div>
   </div>;
 }

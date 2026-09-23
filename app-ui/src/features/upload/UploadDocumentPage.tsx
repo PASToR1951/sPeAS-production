@@ -3,6 +3,8 @@ import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Pl
 import { getDocument as getPdfDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { ApiError, getErrorMessage } from "../../lib/api/http";
+import { ImportPreparationWorkspace } from "./ImportPreparationWorkspace";
+import { useDocumentPreparationFeatures } from "../../lib/useDocumentPreparationFeatures";
 import { fetchAuthors } from "../../lib/api/authors";
 import type { AuthorRecord } from "../../lib/api/types";
 import type { DocumentAuthorSelection } from "../../lib/authorSelection";
@@ -173,6 +175,8 @@ const compiledSteps = ["Publication details", "Study details", "Study classifica
 const FINAL_UPLOAD_STEP: UploadStep = 5;
 
 export function UploadDocumentPage() {
+  const preparationFeatures = useDocumentPreparationFeatures();
+  const [preparationMode, setPreparationMode] = useState<"single" | "compiled" | "batch" | null>(null);
   const { role, userId } = useAdminIdentity();
   const isPublisher = false;
   const [mode, setMode] = useState<UploadMode>("single");
@@ -745,6 +749,8 @@ export function UploadDocumentPage() {
         actions={<Badge tone={mode === "single" ? "green" : "gold"}>{mode === "single" ? "Single" : "Compiled"}</Badge>}
       />
 
+      {preparationFeatures.imports ? <section className="peas-preparation-summary"><h2>Prepare multiple source files</h2><p>Review PDF and Word components before creating a repository record.</p><div className="peas-preparation-actions"><Button onClick={() => setPreparationMode("single")}>Prepare one paper</Button><Button onClick={() => setPreparationMode("compiled")}>Prepare a compiled volume</Button><Button onClick={() => setPreparationMode("batch")}>Open batch workspace</Button>{preparationMode ? <Button variant="outline" onClick={() => setPreparationMode(null)}>Return to existing upload</Button> : null}</div></section> : null}
+      {preparationMode && preparationFeatures.imports ? <ImportPreparationWorkspace key={preparationMode} initialMode={preparationMode} /> : <>
       {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) ? (
         <UploadDraftStatus
           status={draftStatus}
@@ -805,6 +811,7 @@ export function UploadDocumentPage() {
         {checklistExpanded ? <button type="button" className="peas-upload-checklist__backdrop" aria-label="Close upload checklist" onClick={() => setChecklistExpanded(false)} /> : null}
         <UploadChecklist mode={mode} step={step} singleForm={singleForm} compiledForm={compiledForm} compiledTitle={compiledTitle} receipt={receipt?.type === mode ? receipt : null} expanded={checklistExpanded} onExpandedChange={setChecklistExpanded} />
       </section>
+      </>}
     </main>
   );
 }

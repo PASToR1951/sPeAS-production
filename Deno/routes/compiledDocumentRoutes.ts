@@ -11,7 +11,7 @@ import { client, withTransaction } from "../db/denopost_conn.ts"; // Import the 
 import { isAuthenticated, isAdmin, requireCapability } from "../middleware/authMiddleware.ts";
 import { getSessionFromHeaders } from "../utils/sessionUtils.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
-import { canViewCompilation } from "../services/contentAuthorizationService.ts";
+import { canViewCompilation, canViewDocument } from "../services/contentAuthorizationService.ts";
 import { getDocumentClassification, getDocumentClassifications, type DocumentClassification } from "../services/documentClassificationService.ts";
 import { compilationAbstractsResolved, forceCompilationPrivateForAbstract, listUnresolvedAbstractTargets } from "../services/abstractWorkflowService.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
@@ -340,6 +340,16 @@ const reviewCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
     const reviewerId = String(ctx.state.user.id);
     const publish = decision === "approved" && body.publish === true;
     if (decision === "approved") {
+        const importWorkspace = await client.queryObject<{ id: string }>(
+            "SELECT b.id FROM import_batches b WHERE b.compiled_document_id=$1 AND b.status='draft' LIMIT 1", [id]);
+        if (importWorkspace.rows.length) {
+            ctx.response.status = 409;
+            ctx.response.body = { error: "Approve this import in its preparation workspace so all intended papers and reviews are checked together", importBatchId: importWorkspace.rows[0].id };
+            return;
+        }
+    }
+
+    if (decision === "approved") {
         if (!await compilationAbstractsResolved(id)) {
             ctx.response.status = 422;
             ctx.response.body = {
@@ -589,22 +599,24 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
     try {
         // Query to get documents associated with this compiled document
         const result = await client.queryObject(`
-            SELECT d.* 
+            SELECT d.*, d.publication_date::text AS publication_date_text
             FROM documents d
             JOIN compiled_document_items cdi ON d.id = cdi.document_id
             WHERE cdi.compiled_document_id = $1
-              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
-            ORDER BY cdi.id ASC
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE AND d.compiled_parent_id=$1
+                AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
+            ORDER BY cdi.position ASC
         `, [compiledDocId, administratorPreview]);
         
         let childRows = result.rows as Record<string, unknown>[];
         if (childRows.length === 0) {
             // Try alternative method
             const altResult = await client.queryObject(`
-                SELECT d.* 
+                SELECT d.*, d.publication_date::text AS publication_date_text
                 FROM documents d
                 WHERE d.compiled_parent_id = $1
-                  AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
+                  AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE
+                    AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
                 ORDER BY d.id ASC
             `, [compiledDocId, administratorPreview]);
             
@@ -658,7 +670,13 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
 
         ctx.response.body = administratorPreview
             ? enrichedRows
-            : removeCompiledFileFields(enrichedRows);
+            : (await Promise.all(enrichedRows.map(async (row: Record<string, any>) => await canViewDocument(undefined, row.id) ? {
+                id: row.id, title: row.title, abstract: row.abstract, publication_date: row.publication_date_text,
+                publication_date_precision: row.publication_date_precision, document_type: row.document_type,
+                pages: row.pages, classification: row.classification, topics: row.topics, keywords: row.keywords,
+                download_available: row.download_available,
+                authors: row.authors.map((author: Record<string, unknown>) => ({ id: String(author.id), full_name: String(author.full_name) })),
+              } : null))).filter(Boolean);
     } catch (error) {
         ctx.response.status = 500;
         ctx.response.body = { 
@@ -698,8 +716,9 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
             FROM compiled_document_items cdi
             JOIN documents d ON cdi.document_id = d.id
             WHERE cdi.compiled_document_id = $1
-              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
-            ORDER BY cdi.id ASC
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE AND d.compiled_parent_id=$1
+                AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
+            ORDER BY cdi.position ASC
         `, [compiledDocId, administratorPreview]);
         
         if (result.rows.length === 0) {
@@ -709,10 +728,12 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
         }
         
         // Return the found items
-        ctx.response.body = { 
-            items: result.rows,
-            success: true
-        };
+        const visibleItems = administratorPreview ? result.rows : (await Promise.all(result.rows.map(async (row: Record<string, any>) =>
+            await canViewDocument(undefined, row.document_id) ? {
+                document_id: row.document_id, title: row.title, abstract: row.abstract,
+                publication_date: row.publication_date,
+            } : null))).filter(Boolean).map((row, index) => ({ ...row, position: index + 1 }));
+        ctx.response.body = { items: visibleItems, success: true };
     } catch (error) {
         ctx.response.status = 500;
         ctx.response.body = { 

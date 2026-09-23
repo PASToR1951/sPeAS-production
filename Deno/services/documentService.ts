@@ -1,4 +1,4 @@
-import { client } from "../db/denopost_conn.ts";
+import { client, withTransaction } from "../db/denopost_conn.ts";
 import { getDocumentClassification, getDocumentClassifications, type DocumentClassification } from "./documentClassificationService.ts";
 
 // Define interfaces for our data structures
@@ -915,10 +915,7 @@ export async function createCompiledDocument(
 ): Promise<number> {
   try {
         
-    // Start a transaction
-    await client.queryArray("BEGIN");
-    
-    try {
+    return await withTransaction(async (connection) => {
       // Generate a title for logging purposes
       const documentTitle = `${compiledDoc.category || 'Compiled Document'} Vol. ${compiledDoc.volume || '1'}${compiledDoc.start_year ? ` (${compiledDoc.start_year})` : ''}`;
       
@@ -968,7 +965,7 @@ export async function createCompiledDocument(
         compiledDoc.reviewed_at || null,
       ];
       
-      const compiledResult = await client.queryObject(compiledQuery, compiledParams);
+      const compiledResult = await connection.queryObject(compiledQuery, compiledParams);
       
       if (!compiledResult.rows || compiledResult.rows.length === 0) {
         throw new Error("Failed to create compiled document entry");
@@ -978,43 +975,11 @@ export async function createCompiledDocument(
       const compiledDocId = typeof row.id === 'bigint' ? Number(row.id) : Number(row.id);
       
             
-      // Associate document IDs with the compiled document if provided
-      if (documentIds.length > 0) {
-                let successCount = 0;
-        let failCount = 0;
-        
-        for (const docId of documentIds) {
-          try {
-            // Update the compiled_parent_id in the documents table
-            const updateQuery = `
-              UPDATE documents 
-              SET compiled_parent_id = $1
-              WHERE id = $2
-            `;
-            
-            await client.queryObject(updateQuery, [compiledDocId, docId]);
-            
-            // Also add to the junction table for backward compatibility
-            await addDocumentToCompilation(compiledDocId, docId);
-            
-            successCount++;
-          } catch (error) {
-            failCount++;
-          }
-        }
-        
-                                                      } else {
-              }
-      
-      // Commit the transaction
-      await client.queryArray("COMMIT");
-      
+      for (const docId of documentIds) {
+        await connection.queryArray("INSERT INTO compiled_document_items(compiled_document_id,document_id) VALUES($1,$2)", [compiledDocId,docId]);
+      }
       return compiledDocId;
-    } catch (error) {
-      // Rollback in case of any error
-      await client.queryArray("ROLLBACK");
-      throw error;
-    }
+    });
   } catch (error) {
     throw error;
   }

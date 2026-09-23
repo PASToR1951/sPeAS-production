@@ -3,6 +3,8 @@ import { BookCopy, BookOpen, CalendarDays, Download, FileText } from "lucide-rea
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import type { LooseRecord } from "../../lib/api/account";
 import { formatDate } from "../../lib/formatters/date";
+import { VolumeContentsReader } from "../../components/documents/VolumeContentsReader";
+import { useDocumentPreparationFeatures } from "../../lib/useDocumentPreparationFeatures";
 
 type DisplayAuthorReference = { id?: string; full_name: string };
 type ClassificationParameter = "topic" | "keyword";
@@ -15,6 +17,7 @@ interface CompiledPublicationTemplateProps {
 
 /** Shared public collection template for both Confluence and Synergy records. */
 export function CompiledPublicationTemplate({ id, record, children }: CompiledPublicationTemplateProps) {
+  const features = useDocumentPreparationFeatures();
   const classification = classificationOf(record);
   const period = collectionPeriodOf(record);
 
@@ -40,6 +43,7 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
           backPage={positivePage(record.back_cover_page)}
         />
         <CollectionForewordPanel id={id} available={record.foreword_download_available === true} />
+        {features.volumeReader ? <VolumeContentsReader id={id} /> : null}
         <section aria-labelledby="compiled-publication-contents-title">
           <div className="peas-document-collection-heading">
             <div><h2 id="compiled-publication-contents-title">Documents in this collection</h2><p>Open a study for its complete repository record, or download an available paper directly.</p></div>
@@ -126,6 +130,8 @@ function collectionPeriodOf(item: LooseRecord) {
 }
 function publicationDateOf(item: LooseRecord) {
   const date = item.publication_date || item.publicationDate;
+  if (date && item.publication_date_precision === "year") return String(date).slice(0,4);
+  if (date && item.publication_date_precision === "month") return String(date).slice(0,7);
   if (date) return formatDate(String(date));
   const year = item.publication_year || item.year;
   if (year) return String(year);

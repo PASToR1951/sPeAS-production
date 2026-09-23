@@ -19,7 +19,11 @@
     "test:reporting-ui": "playwright test -c app-ui/playwright.admin.config.ts --grep @reporting",
     "test:reporting:unit": "cd Deno && deno test --allow-env --allow-read tests/operationalReporting_test.ts tests/reportingContract_test.ts tests/reportingExport_test.ts tests/topActivityReporting_test.ts",
     "test:reporting:db": "node scripts/run-reporting-db-test.mjs",
-    "test:reporting:routes": "cd Deno && deno test --allow-env --allow-read tests/reportingRoutes_test.ts"
+    "test:reporting:routes": "cd Deno && deno test --allow-env --allow-read tests/reportingRoutes_test.ts",
+    "test:imports:unit": "cd Deno && DENO_ENV=test deno test --allow-env --allow-read --allow-write tests/importPreparation_test.ts",
+    "test:imports:integration": "node scripts/run-import-tests.mjs integration",
+    "test:imports:e2e": "node scripts/run-import-tests.mjs e2e",
+    "test:volume-reader": "node scripts/run-import-tests.mjs reader"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",

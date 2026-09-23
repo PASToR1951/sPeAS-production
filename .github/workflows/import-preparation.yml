@@ -1,0 +1,50 @@
+name: Import preparation acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-imports:
+    name: Isolated migrations, worker, import UI and volume reader
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.7.13
+      - name: Install PostgreSQL 17 and PDF tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-17 poppler-utils
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Verify vendored catalog dependency
+        working-directory: Deno/vendor/sheetjs
+        run: sha256sum --check SHA256SUMS
+      - name: Type checks and import unit tests
+        run: |
+          npm run check:app-ui
+          npm run check:deno
+          npm run test:imports:unit
+      - name: Real database, worker, retention and migration acceptance
+        run: npm run test:imports:integration
+      - name: Unmocked browser acceptance
+        run: npm run test:imports:e2e
+      - name: Parse converter wrapper
+        run: sh -n ops/convert-word-isolated.sh

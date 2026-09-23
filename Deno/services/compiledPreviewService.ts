@@ -74,7 +74,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
 
   const studiesResult = await client.queryObject<Record<string, unknown>>(`
     WITH explicitly_linked AS (
-      SELECT d.id, MIN(cdi.id)::INTEGER AS sort_order
+      SELECT d.id, MIN(cdi.position)::INTEGER AS sort_order
       FROM compiled_document_items cdi
       JOIN documents d ON d.id = cdi.document_id
       WHERE cdi.compiled_document_id = $1

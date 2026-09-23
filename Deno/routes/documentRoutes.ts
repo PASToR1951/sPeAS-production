@@ -659,6 +659,16 @@ const reviewDocument = async (ctx: RouterContext<any, any, any>) => {
     }
 
     const publish = decision === "approved" && body.publish === true;
+    if (decision === "approved") {
+        const importWorkspace = await client.queryObject<{ id: string }>(
+            "SELECT b.id FROM import_batches b JOIN import_items i ON i.batch_id=b.id WHERE i.document_id=$1 AND b.status='draft' LIMIT 1", [id]);
+        if (importWorkspace.rows.length) {
+            ctx.response.status = 409;
+            ctx.response.body = { error: "Approve this import in its preparation workspace so all intended papers and reviews are checked together", importBatchId: importWorkspace.rows[0].id };
+            return;
+        }
+    }
+
     const reviewerId = String(ctx.state.user.id);
     if (decision === "approved") {
         if (!(await abstractTargetResolved("document", id))) {

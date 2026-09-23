@@ -59,6 +59,9 @@ services:
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
       STORAGE_ROOT: /app/storage
+      IMPORT_STAGING_ROOT: /app/import-staging
+      IMPORT_PREPARATION_ENABLED: ${IMPORT_PREPARATION_ENABLED:-false}
+      VOLUME_READER_ENABLED: ${VOLUME_READER_ENABLED:-false}
       NEWS_MEDIA_WORKER_ENABLED: "false"
       DOCUMENT_ANNOTATIONS_ENABLED: ${DOCUMENT_ANNOTATIONS_ENABLED:-true}
       NEWS_MEDIA_CLAMAV_ENABLED: "true"
@@ -80,6 +83,7 @@ services:
       - smtp_password
     volumes:
       - storage-data:/app/storage
+      - import-staging-data:/app/import-staging
       - logs-data:/app/Deno/logs
     networks: [edge, backend]
     restart: unless-stopped
@@ -147,6 +151,38 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
 
+  import-worker:
+    mem_limit: 1g
+    pids_limit: 128
+    image: ${PEAS_IMAGE:?set PEAS_IMAGE}
+    command: ["task", "imports:worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DENO_ENV: production
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: peas_app
+      PGPASSWORD_FILE: /run/secrets/db_app_password
+      PGDATABASE: peas_db
+      STORAGE_ROOT: /app/storage
+      IMPORT_STAGING_ROOT: /app/import-staging
+      IMPORT_PREPARATION_ENABLED: ${IMPORT_PREPARATION_ENABLED:-false}
+      IMPORT_LIBREOFFICE_PATH: /usr/local/bin/peas-convert-word
+      IMPORT_LIBREOFFICE_VERSION: ${IMPORT_LIBREOFFICE_VERSION:-}
+      IMPORT_FONT_MANIFEST_SHA256: ${IMPORT_FONT_MANIFEST_SHA256:-}
+      IMPORT_CONVERTER_ISOLATED: ${IMPORT_CONVERTER_ISOLATED:-false}
+      PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:?set PEAS_RELEASE_ID}
+      ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
+    secrets: [db_app_password]
+    volumes: ["storage-data:/app/storage", "import-staging-data:/app/import-staging"]
+    networks: [backend]
+    restart: unless-stopped
+    init: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
   clamav:
     image: ${PEAS_CLAMAV_IMAGE:?set PEAS_CLAMAV_IMAGE to a pinned ClamAV image digest}
     networks: [backend]
@@ -188,6 +224,7 @@ networks:
     internal: true
 
 volumes:
+  import-staging-data:
   postgres-data:
     name: ${PEAS_POSTGRES_VOLUME:-peas-prod-postgres}
   storage-data:

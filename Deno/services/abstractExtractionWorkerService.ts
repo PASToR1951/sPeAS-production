@@ -95,7 +95,6 @@ export async function updateAbstractWorkerHeartbeat(workerId: string): Promise<v
 }
 
 export async function processAbstractJob(job: JobRow): Promise<void> {
-  const deadline = Date.now() + ABSTRACT_JOB_TIMEOUT_MS;
   const source = await getJobSource(job);
   if (!source?.file_path) throw new Error("ABSTRACT_SOURCE_MISSING");
   const pdfPath = resolveStoredPdfPath(source.file_path);
@@ -103,6 +102,14 @@ export async function processAbstractJob(job: JobRow): Promise<void> {
 
   const sourceDigest = await sha256File(pdfPath);
   await saveSourceDigest(job, sourceDigest);
+
+  const { pageCount, candidate } = await extractAbstractFromPdfPath(pdfPath);
+  await finishAbstractJob(job, sourceDigest, pageCount, candidate);
+}
+
+/** Path supplied only by trusted storage services; never by an HTTP client. No repository writes. */
+export async function extractAbstractFromPdfPath(pdfPath: string): Promise<{ pageCount: number; candidate: AbstractCandidate | null }> {
+  const deadline = Date.now() + ABSTRACT_JOB_TIMEOUT_MS;
 
   const inspection = await inspectPdf(pdfPath, remainingTimeout(deadline, 30_000));
   if (!inspection) throw new Error("PDF_INSPECTION_FAILED");
@@ -127,7 +134,7 @@ export async function processAbstractJob(job: JobRow): Promise<void> {
       if (ocrCandidate && (!candidate || ocrCandidate.confidence > candidate.confidence)) candidate = ocrCandidate;
     }
 
-    await finishAbstractJob(job, sourceDigest, inspection.pageCount, candidate);
+    return { pageCount: inspection.pageCount, candidate };
   } finally {
     await Deno.remove(tempDirectory, { recursive: true }).catch(() => undefined);
   }

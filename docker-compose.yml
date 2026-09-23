@@ -52,6 +52,9 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
       STORAGE_ROOT: /app/storage
+      IMPORT_STAGING_ROOT: /app/import-staging
+      IMPORT_PREPARATION_ENABLED: ${IMPORT_PREPARATION_ENABLED:-false}
+      VOLUME_READER_ENABLED: ${VOLUME_READER_ENABLED:-false}
       NEWS_MEDIA_WORKER_ENABLED: "false"
       DOCUMENT_ANNOTATIONS_ENABLED: "true"
       NEWS_MEDIA_CLAMAV_ENABLED: "false"
@@ -65,6 +68,7 @@ services:
       - "${APP_PORT:-18080}:8000"
     volumes:
       - peas-dev-storage:/app/storage
+      - peas-dev-import-staging:/app/import-staging
       - peas-dev-logs:/app/Deno/logs
     restart: unless-stopped
     healthcheck:
@@ -113,7 +117,39 @@ services:
     volumes:
       - peas-dev-storage:/app/storage
 
+  import-worker:
+    mem_limit: 1g
+    pids_limit: 128
+    restart: unless-stopped
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["task", "imports:worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ${PGPASSWORD:-peas_dev_password}
+      PGDATABASE: peas_db
+      STORAGE_ROOT: /app/storage
+      IMPORT_STAGING_ROOT: /app/import-staging
+      IMPORT_PREPARATION_ENABLED: ${IMPORT_PREPARATION_ENABLED:-false}
+      IMPORT_LIBREOFFICE_PATH: /usr/local/bin/peas-convert-word
+      IMPORT_LIBREOFFICE_VERSION: ${IMPORT_LIBREOFFICE_VERSION:-}
+      IMPORT_FONT_MANIFEST_SHA256: ${IMPORT_FONT_MANIFEST_SHA256:-}
+      IMPORT_CONVERTER_ISOLATED: ${IMPORT_CONVERTER_ISOLATED:-false}
+      PEAS_RELEASE_ID: ${PEAS_RELEASE_ID:-development}
+      ABSTRACT_OCR_LANGUAGES: ${ABSTRACT_OCR_LANGUAGES:-eng+fil}
+    volumes:
+      - peas-dev-storage:/app/storage
+      - peas-dev-import-staging:/app/import-staging
+
 volumes:
+  peas-dev-import-staging:
   peas-dev-postgres:
   peas-dev-storage:
   peas-dev-logs:
