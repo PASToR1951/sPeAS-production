@@ -85,6 +85,16 @@ export interface UpdateAuthorPayload {
   profilePicUrl: string;
 }
 
+export interface DeleteAuthorResponse {
+  deleted: { id: string; fullName: string };
+}
+
+export interface MergeAuthorsResponse {
+  author: AdminAuthorRecord;
+  mergedSource: { id: string; fullName: string };
+  transferred: { documents: number; newsPosts: number };
+}
+
 export type AuthorUpdateField = "fullName" | "spudId" | "department" | "affiliation" | "email" | "biography" | "profilePicture";
 
 export async function fetchAuthors(filters: { search?: string; department?: string; affiliation?: string } = {}): Promise<AuthorRecord[]> {
@@ -148,6 +158,19 @@ export function updateAuthor(authorId: string | number, payload: UpdateAuthorPay
   });
 }
 
+export function deleteAuthor(authorId: string | number) {
+  return apiFetch<DeleteAuthorResponse>(`/authors/${encodeURIComponent(String(authorId))}`, {
+    method: "DELETE",
+  });
+}
+
+export function mergeAuthors(sourceAuthorId: string | number, targetAuthorId: string | number) {
+  return apiFetch<MergeAuthorsResponse>(`/authors/${encodeURIComponent(String(sourceAuthorId))}/merge`, {
+    method: "POST",
+    json: { targetAuthorId: String(targetAuthorId) },
+  });
+}
+
 export function getAuthorUpdateFieldErrors(error: unknown): Partial<Record<AuthorUpdateField, string>> {
   if (!(error instanceof ApiError) || !error.payload || typeof error.payload !== "object") return {};
   const fieldErrors = (error.payload as Record<string, unknown>).fieldErrors;
@@ -183,6 +206,7 @@ export function restoreAuthor(authorId: string | number) {
 }
 
 function normalizeAuthor(raw: AdminAuthorRecord): AuthorRecord {
+  const legacyProfileComplete = (raw as AdminAuthorRecord & { profile_complete?: boolean }).profile_complete;
   return {
     id: raw.id,
     fullName: raw.full_name,
@@ -194,8 +218,10 @@ function normalizeAuthor(raw: AdminAuthorRecord): AuthorRecord {
     profilePicture: stringifyNullable(raw.profilePicUrl),
     biography: stringifyNullable(raw.bio),
     createdSource: stringifyNullable(raw.createdSource),
-    profileComplete: raw.profileComplete,
+    profileComplete:
+      raw.profileComplete ?? (typeof legacyProfileComplete === "boolean" ? legacyProfileComplete : undefined),
     worksCount: raw.worksCount,
+    newsPostsCount: raw.newsPostsCount ?? 0,
     raw: { ...raw },
   };
 }

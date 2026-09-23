@@ -23,6 +23,7 @@
     "reporting:backfill-fixture": "deno run --allow-env --allow-net --allow-read scripts/reporting-backfill-fixture.ts",
     "reporting:backfill-test": "deno run --allow-env --allow-net --allow-read scripts/reporting-backfill-test.ts",
     "reporting:schema-test": "deno run --allow-env --allow-net --allow-read scripts/reporting-schema-test.ts",
+    "author-management:db-test": "deno run --allow-env --allow-net --allow-read scripts/author-management-database-test.ts",
     "legacy:soak-report": "deno run --allow-env --allow-read --allow-net scripts/legacy-public-soak-report.ts",
     "abstract:migrate": "deno run --allow-env --allow-read --allow-net scripts/abstract-migrate.ts",
     "abstract:migrate:apply": "deno run --allow-env --allow-read --allow-net scripts/abstract-migrate.ts --apply",

@@ -234,6 +234,14 @@ Deno.test("full author directories and compatibility relationships stay administ
     authorRouteSource,
     'router.get("/api/authors/test", isAuthenticated, isAdmin, testAuthorApi)',
   );
+  assertStringIncludes(
+    authorRouteSource,
+    'router.delete("/authors/:id", isAuthenticated, isAdmin, deleteAuthor)',
+  );
+  assertStringIncludes(
+    authorRouteSource,
+    'router.post("/authors/:id/merge", isAuthenticated, isAdmin, mergeAuthor)',
+  );
 });
 
 Deno.test("active frontends use canonical author endpoints", async () => {

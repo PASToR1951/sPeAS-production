@@ -9,6 +9,15 @@ import {
   type AdminAuthorRecord,
   toAdminAuthorRecord,
 } from "../services/authorProjectionService.ts";
+import {
+  AuthorManagementConflictError,
+  AuthorManagementNotFoundError,
+  AuthorManagementValidationError,
+  deleteAuthorSafely,
+  mergeAuthors,
+} from "../services/authorManagementService.ts";
+import { SystemLogsModel } from "../models/systemLogsModel.ts";
+import { clientIpFromContext } from "../utils/clientIp.ts";
 
 interface Author {
   id: string;
@@ -684,30 +693,86 @@ export const deleteAuthor = async (ctx: Context) => {
       return;
     }
 
-    // Directly use the database client
-    const result = await client.queryArray(
-      "DELETE FROM authors WHERE id = $1",
-      [id]
-    );
-    
-    const rowCount = result.rowCount || 0;
-    if (rowCount > 0) {
-      ctx.response.status = 200;
-      ctx.response.type = "application/json";
-      ctx.response.body = { message: "Author deleted successfully" };
-    } else {
-      ctx.response.status = 404;
-      ctx.response.type = "application/json";
-      ctx.response.body = { error: "Author not found or could not be deleted" };
-    }
-  } catch (error) {
-    ctx.response.status = 500;
+    const result = await deleteAuthorSafely(id);
+    ctx.response.status = 200;
     ctx.response.type = "application/json";
-    ctx.response.body = { 
-      error: error instanceof Error ? error.message : "Unknown error" 
-    };
+    ctx.response.body = result;
+    await recordAuthorManagementLog(ctx, "author.delete", result.deleted.id, {
+      author_id: result.deleted.id,
+      author_name: result.deleted.fullName,
+    });
+  } catch (error) {
+    respondToAuthorManagementError(ctx, error, "Unable to delete author.");
   }
 };
+
+/** Merge one duplicate author into the chosen surviving author. */
+export const mergeAuthor = async (ctx: Context) => {
+  try {
+    const pathname = ctx.request.url.pathname;
+    const parts = pathname.split("/");
+    const sourceId = parts[parts.length - 2];
+    const body = ctx.request.body();
+    if (body.type !== "json") {
+      throw new AuthorManagementValidationError("Request body must be JSON.");
+    }
+    const input = await body.value;
+    const result = await mergeAuthors(sourceId, input?.targetAuthorId);
+    ctx.response.status = 200;
+    ctx.response.type = "application/json";
+    ctx.response.body = result;
+    await recordAuthorManagementLog(ctx, "author.merge", result.author.id, {
+      source_author_id: result.mergedSource.id,
+      source_author_name: result.mergedSource.fullName,
+      target_author_id: result.author.id,
+      target_author_name: result.author.full_name,
+      transferred_documents: result.transferred.documents,
+      transferred_news_posts: result.transferred.newsPosts,
+    });
+  } catch (error) {
+    respondToAuthorManagementError(ctx, error, "Unable to merge authors.");
+  }
+};
+
+function respondToAuthorManagementError(ctx: Context, error: unknown, fallback: string) {
+  ctx.response.type = "application/json";
+  if (error instanceof AuthorManagementValidationError) {
+    ctx.response.status = 400;
+    ctx.response.body = { error: error.message };
+    return;
+  }
+  if (error instanceof AuthorManagementNotFoundError) {
+    ctx.response.status = 404;
+    ctx.response.body = { error: error.message };
+    return;
+  }
+  if (error instanceof AuthorManagementConflictError) {
+    ctx.response.status = 409;
+    ctx.response.body = { error: error.message, dependencies: error.dependencies };
+    return;
+  }
+  console.error(fallback, error);
+  ctx.response.status = 500;
+  ctx.response.body = { error: fallback };
+}
+
+async function recordAuthorManagementLog(
+  ctx: Context,
+  action: string,
+  relatedId: string,
+  details: Record<string, unknown>,
+) {
+  await SystemLogsModel.createLog({
+    log_type: "author_management",
+    user_id: String(ctx.state.user.id),
+    username: String(ctx.state.user.id),
+    action,
+    details: { ...details, role: String(ctx.state.user.role) },
+    ip_address: clientIpFromContext(ctx),
+    status: "success",
+    related_id: relatedId,
+  }).catch((error) => console.error("Failed to record author management audit:", error));
+}
 
 /**
  * Restore a deleted author (placeholder)

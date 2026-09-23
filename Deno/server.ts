@@ -82,7 +82,8 @@ import { clientIpFromContext, trustedProxyRanges } from "./utils/clientIp.ts";
 import { securityDisclosureConfig, securityTxtBody } from "./services/securityDisclosureService.ts";
 import { createReadinessProbe } from "./services/readinessService.ts";
 import {
-  type AdminAuthorRecord,
+  type AdminAuthorDirectoryRecord,
+  toAdminAuthorDirectoryRecord,
   toPublicAuthorSearchResult,
 } from "./services/authorProjectionService.ts";
 import {
@@ -576,35 +577,23 @@ router.get("/api/authors/all", isAuthenticated, requireCapability("documents:upl
       clauses.push(`LOWER(BTRIM(a.affiliation)) = LOWER(BTRIM($${params.length}))`);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const authorsResult = await client.queryObject<AdminAuthorRecord & {
+    const authorsResult = await client.queryObject<AdminAuthorDirectoryRecord & {
       profile_complete: boolean;
       works_count: string | number;
+      news_posts_count: string | number;
     }>(`
       SELECT a.id, a.spud_id, a.full_name, a.department, a.affiliation, a.email,
              a.biography, a.profile_picture, a.created_source,
              (
                (NULLIF(BTRIM(a.department), '') IS NOT NULL OR NULLIF(BTRIM(a.affiliation), '') IS NOT NULL)
              ) AS profile_complete,
-             COUNT(da.document_id) AS works_count
+             (SELECT COUNT(*) FROM document_authors da WHERE da.author_id = a.id) AS works_count,
+             (SELECT COUNT(*) FROM news_post_authors npa WHERE npa.author_id = a.id) AS news_posts_count
       FROM authors a
-      LEFT JOIN document_authors da ON da.author_id = a.id
       ${where}
-      GROUP BY a.id
       ORDER BY a.full_name
     `, params);
-    const formattedAuthors = authorsResult.rows.map((author) => ({
-      id: author.id,
-      spud_id: author.spud_id || '',
-      full_name: author.full_name,
-      department: author.department || '',
-      affiliation: author.affiliation || '',
-      email: author.email || '',
-      bio: author.biography || '',
-      profilePicUrl: author.profile_picture || '',
-      createdSource: author.created_source || 'author_directory',
-      profileComplete: Boolean(author.profile_complete),
-      worksCount: Number(author.works_count || 0),
-    }));
+    const formattedAuthors = authorsResult.rows.map(toAdminAuthorDirectoryRecord);
     
     ctx.response.status = 200;
     ctx.response.body = {

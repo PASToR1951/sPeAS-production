@@ -132,6 +132,15 @@ jobs:
             echo 'peas_app unexpectedly has DDL privileges' >&2
             exit 1
           fi
+      - name: Verify author merge and deletion transactions
+        working-directory: Deno
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: ci-admin-password
+          PGDATABASE: peas_db
+        run: deno task author-management:db-test
 
   playwright:
     name: Public, administrator, and Experience Studio browser suites

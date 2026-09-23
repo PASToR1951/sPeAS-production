@@ -31,6 +31,7 @@ export interface AdminAuthorRecord extends PublicAuthorReference {
   createdSource: string;
   profileComplete: boolean;
   worksCount: number;
+  newsPostsCount: number;
 }
 
 export interface AdminDocumentAuthorRecord extends PublicAuthorReference {
@@ -195,6 +196,7 @@ export interface AuthorRecord {
   createdSource?: "document_upload" | "author_directory" | string | null;
   profileComplete?: boolean;
   worksCount: number;
+  newsPostsCount?: number;
   raw: Record<string, unknown>;
 }
 

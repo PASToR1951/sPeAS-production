@@ -5,6 +5,7 @@ import {
   createAuthor,
   createAuthors,
   deleteAuthor,
+  mergeAuthor,
   restoreAuthor,
   getAuthorPreview,
   getAuthorProfile,
@@ -33,6 +34,9 @@ router.post("/authors/batch", isAuthenticated, isAdmin, createAuthors);
 
 // Author deletion route (admin only)
 router.delete("/authors/:id", isAuthenticated, isAdmin, deleteAuthor);
+
+// Duplicate consolidation route (admin only)
+router.post("/authors/:id/merge", isAuthenticated, isAdmin, mergeAuthor);
 
 // Author restoration route (admin only)
 router.post("/authors/:id/restore", isAuthenticated, isAdmin, restoreAuthor);

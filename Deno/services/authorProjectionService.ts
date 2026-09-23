@@ -21,6 +21,19 @@ export interface AdminAuthorRecord extends PublicAuthorReference {
   created_source: string | null;
 }
 
+export interface AdminAuthorDirectoryRecord extends PublicAuthorReference {
+  spud_id: string;
+  affiliation: string;
+  department: string;
+  email: string;
+  bio: string;
+  profilePicUrl: string;
+  createdSource: string;
+  profileComplete: boolean;
+  worksCount: number;
+  newsPostsCount: number;
+}
+
 type AdminAuthorSource = {
   id: unknown;
   full_name: unknown;
@@ -32,6 +45,12 @@ type AdminAuthorSource = {
   biography?: unknown;
   profile_picture?: unknown;
   created_source?: unknown;
+};
+
+type AdminAuthorDirectorySource = AdminAuthorSource & {
+  profile_complete?: unknown;
+  works_count?: unknown;
+  news_posts_count?: unknown;
 };
 
 export function toPublicAuthorReference(
@@ -76,6 +95,27 @@ export function toAdminAuthorRecord(row: AdminAuthorSource): AdminAuthorRecord {
     biography: nullableString(row.biography),
     profile_picture: nullableString(row.profile_picture),
     created_source: nullableString(row.created_source),
+  };
+}
+
+/** Exact wire projection used by the administrator author directory. */
+export function toAdminAuthorDirectoryRecord(
+  row: AdminAuthorDirectorySource,
+): AdminAuthorDirectoryRecord {
+  const author = toAdminAuthorRecord(row);
+  return {
+    id: author.id,
+    full_name: author.full_name,
+    spud_id: author.spud_id ?? "",
+    affiliation: author.affiliation ?? "",
+    department: author.department ?? "",
+    email: author.email ?? "",
+    bio: author.biography ?? "",
+    profilePicUrl: author.profile_picture ?? "",
+    createdSource: author.created_source ?? "author_directory",
+    profileComplete: Boolean(row.profile_complete),
+    worksCount: Number(row.works_count ?? 0),
+    newsPostsCount: Number(row.news_posts_count ?? 0),
   };
 }
 
