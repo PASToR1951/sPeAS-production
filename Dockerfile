@@ -30,6 +30,10 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     clamav \
+    bubblewrap \
+    libreoffice-writer \
+    fonts-liberation \
+    fonts-dejavu-core \
     ffmpeg \
     poppler-utils \
     tesseract-ocr \
@@ -40,6 +44,8 @@ RUN apt-get update \
 
 COPY Deno ./Deno
 COPY shared ./shared
+COPY ops/convert-word-isolated.sh /usr/local/bin/peas-convert-word
+RUN chmod 755 /usr/local/bin/peas-convert-word
 COPY --from=ui-builder /build/Deno/admin/experience-studio ./Deno/admin/experience-studio
 COPY --from=ui-builder /build/Deno/admin/react-ui ./Deno/admin/react-ui
 COPY --from=ui-builder /build/Deno/Public/react-ui ./Deno/Public/react-ui
@@ -62,8 +68,9 @@ RUN printf '%s\n' \
     /app/storage/news-media/staging \
     /app/storage/news-media/source \
     /app/storage/news-media/variants \
+    /app/import-staging \
     /app/Deno/logs \
-  && deno cache Deno/server.ts Deno/scripts/migrate.ts Deno/scripts/bootstrap-admin.ts \
+  && cd /app/Deno && deno cache server.ts import-worker.ts scripts/migrate.ts scripts/bootstrap-admin.ts \
   && chown -R deno:deno /app
 
 USER deno

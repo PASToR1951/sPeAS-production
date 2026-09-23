@@ -8,7 +8,7 @@ import { fromFileUrl } from "https://deno.land/std@0.200.0/path/from_file_url.ts
 
 let env: Record<string, string> = {};
 try {
-  env = await dotenvConfig({
+  env = Deno.env.get("DENO_ENV") === "test" ? {} : await dotenvConfig({
     envPath: fromFileUrl(new URL("../.env", import.meta.url)),
     export: true,
   });

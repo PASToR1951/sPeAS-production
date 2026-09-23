@@ -1,0 +1,271 @@
+.peas-preparation, .peas-volume-reader {
+  color: var(--foreground);
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.peas-preparation {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: clamp(12px, 2vw, 20px);
+}
+.peas-document-layout .peas-volume-reader {
+  background: var(--surface, var(--card));
+  border: 0;
+  padding: clamp(12px, 2vw, 24px);
+}
+.peas-document-layout .peas-volume-reader p {
+  color: var(--foreground);
+}
+.peas-preparation .peas-ui-badge--blue {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.peas-preparation h2, .peas-volume-reader h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.peas-preparation h3, .peas-volume-reader h3 {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+.peas-preparation h4 {
+  font-weight: 650;
+}
+.peas-preparation p, .peas-volume-reader p {
+  line-height: 1.6;
+  margin: 8px 0;
+}
+.peas-preparation small, .peas-volume-reader small {
+  color: var(--muted-foreground);
+  display: block;
+}
+.peas-preparation-surface, .peas-preparation-summary, .peas-volume-reader {
+  background: var(--surface, var(--card));
+  border-radius: var(--radius, 8px);
+  box-shadow: var(--shadow-sm);
+  padding: clamp(12px, 2vw, 24px);
+}
+.peas-preparation-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  margin: 16px 0;
+}
+.peas-preparation-field {
+  display: grid;
+  font-size: 0.9rem;
+  gap: 6px;
+  min-width: 0;
+}
+.peas-preparation-field > span {
+  font-weight: 600;
+}
+.peas-preparation-field input:not([type="checkbox"]),
+.peas-preparation-field select,
+.peas-preparation-field textarea,
+.peas-volume-reader nav input {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  color: inherit;
+  font: inherit;
+  min-height: 42px;
+  padding: 9px 12px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.peas-preparation-check {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.peas-preparation-check input {
+  height: 18px;
+  width: 18px;
+  flex: none;
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+.peas-preparation-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.peas-preparation-actions .peas-preparation-field {
+  flex: 1;
+  min-width: 160px;
+}
+.peas-preparation button:not([class*="peas-ui"]), .peas-volume-reader button {
+  background: var(--secondary);
+  border: 0;
+  border-radius: var(--radius, 8px);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 9px 13px;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.peas-preparation button:disabled, .peas-volume-reader button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.peas-preparation :focus-visible, .peas-volume-reader :focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.peas-preparation a, .peas-volume-reader a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.peas-preparation fieldset {
+  border: 0;
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  min-width: 0;
+  padding: 0;
+}
+.peas-preparation legend {
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+.peas-source-list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+}
+.peas-source-list > li {
+  background: var(--surface-muted);
+  border-radius: var(--radius, 8px);
+  padding: 16px;
+  min-width: 0;
+}
+.peas-preparation-notice {
+  background: var(--surface-muted);
+  border-radius: var(--radius);
+  padding: 16px;
+  white-space: pre-line;
+}
+.peas-preparation [role="alert"] {
+  color: var(--destructive);
+}
+.peas-preparation summary, .peas-volume-reader summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 10px 0;
+}
+.peas-preparation-matches {
+  list-style: none;
+  max-height: 260px;
+  overflow: auto;
+  padding: 0;
+}
+.peas-preparation-matches button {
+  width: 100%;
+}
+.peas-preparation-preview, .peas-preparation-review {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+.peas-preparation code {
+  font-size: 0.8em;
+  overflow-wrap: anywhere;
+}
+.peas-volume-reader > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.peas-volume-reader__layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+}
+.peas-volume-reader__layout.is-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.peas-volume-reader__layout nav {
+  align-self: start;
+  background: var(--surface-muted);
+  border-radius: var(--radius);
+  max-height: 760px;
+  overflow: auto;
+  padding: 16px;
+}
+.peas-volume-reader__layout nav ol {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.peas-volume-reader__layout nav button {
+  background: var(--surface);
+  width: 100%;
+}
+.peas-volume-reader__layout nav button[aria-current="true"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.peas-volume-reader article {
+  min-width: 0;
+}
+.peas-volume-reader__layout nav button[aria-current="true"] small {
+  color: inherit;
+}
+.peas-preparation .peas-simple-pdf-reader,
+.peas-volume-reader .peas-simple-pdf-reader {
+  height: 680px;
+  max-height: 85vh;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-muted);
+}
+.peas-simple-pdf-reader__stage {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+.peas-pdf-page {
+  flex: none;
+  background: white;
+}
+.peas-reader-scan-note {
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+@media (max-width: 736px) {
+  .peas-volume-reader__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .peas-volume-reader__layout nav {
+    max-height: 330px;
+  }
+  .peas-preparation .peas-simple-pdf-reader,
+  .peas-volume-reader .peas-simple-pdf-reader {
+    height: 500px;
+  }
+  .peas-preparation-actions > * {
+    max-width: 100%;
+  }
+  .peas-simple-pdf-reader__toolbar {
+    flex-wrap: wrap;
+  }
+}

@@ -251,7 +251,7 @@ function Convert-ToShadowPath([string]$Path, [object]$Shadow) {
 }
 
 function Get-StorageInventory([string]$ShadowStorage, [string]$OutputPath) {
-    $rows = Get-ChildItem -LiteralPath $ShadowStorage -File -Recurse -Force -ErrorAction Stop | Where-Object { $_.FullName -notmatch '[\\/]news-media[\\/]staging([\\/]|$)' } | ForEach-Object {
+    $rows = Get-ChildItem -LiteralPath $ShadowStorage -File -Recurse -Force -ErrorAction Stop | Where-Object { $_.FullName -notmatch '([\\/]news-media[\\/]staging|[\\/]import-staging)([\\/]|$)' } | ForEach-Object {
         $relative = $_.FullName.Substring($ShadowStorage.Length).TrimStart('\')
         [ordered]@{ path=$relative.Replace('\','/'); bytes=$_.Length; sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     }
@@ -295,6 +295,8 @@ function Invoke-Backup {
             $paths=@($manifestPath,$storageInventoryPath,$releaseInventoryPath,(Convert-ToShadowPath (Join-Path $script:Policy.appRoot 'config') $shadow),(Convert-ToShadowPath (Join-Path $script:Policy.appRoot 'state') $shadow),$shadowRelease,(Convert-ToShadowPath (Join-Path $script:Policy.appRoot 'scripts') $shadow),(Convert-ToShadowPath (Join-Path $script:Policy.appRoot 'logs') $shadow),(Convert-ToShadowPath $stagingRoot $shadow),$shadowStorage)
             $args=@('backup','--json','--host',$env:COMPUTERNAME,'--tag','peas-native','--tag',"backup-set:$backupId",'--tag',"reason:$($Reason.ToLowerInvariant())")
             foreach($excluded in @($script:Policy.excludedRelativePaths)){ $args += @('--exclude',"*$($excluded.Replace('\','/'))*") }
+            # This exclusion also applies to policies written before import preparation existed.
+            $args += @('--exclude','*import-staging*')
             $output=Invoke-Restic $repo ($args+$paths) -Capture
             $summary=$output | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object message_type -eq 'summary' | Select-Object -Last 1
             if(-not $summary.snapshot_id){throw "Restic did not return a snapshot ID for $($repo.Definition.id)."}
@@ -509,7 +511,7 @@ function Invoke-Maintain {
 
 function Invoke-Archive {
     $archiveRoot=Join-Path $script:Policy.appRoot 'archive-manifests'; Protect-Directory $archiveRoot
-    $storage=Join-Path $script:Policy.appRoot 'storage'; $entries=Get-ChildItem -LiteralPath $storage -File -Recurse -ErrorAction Stop|Where-Object{$_.FullName -notmatch '[\\/]news-media[\\/]staging([\\/]|$)'}|ForEach-Object{[ordered]@{path=$_.FullName.Substring($storage.Length).TrimStart('\').Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
+    $storage=Join-Path $script:Policy.appRoot 'storage'; $entries=Get-ChildItem -LiteralPath $storage -File -Recurse -ErrorAction Stop|Where-Object{$_.FullName -notmatch '([\\/]news-media[\\/]staging|[\\/]import-staging)([\\/]|$)'}|ForEach-Object{[ordered]@{path=$_.FullName.Substring($storage.Length).TrimStart('\').Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
     [ordered]@{schemaVersion=1;generatedAt=[DateTimeOffset]::UtcNow.ToString('o');mode=$ArchiveMode;notice='Candidate inventory only. Records-owner approval and normalized metadata export are required before permanent preservation.';files=$entries}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $archiveRoot 'research-candidates.json') -Encoding utf8NoBOM
 }
 

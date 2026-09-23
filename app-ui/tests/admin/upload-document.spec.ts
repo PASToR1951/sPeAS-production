@@ -488,6 +488,7 @@ test.describe("guided upload workflow", () => {
 });
 
 async function mockWorkspace(page: Page, role: "admin" | "publisher") {
+  await page.route("**/api/features/document-preparation", (route) => route.fulfill({ json: { imports: false, volumeReader: false } }));
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: { session: { id: `session-${role}` }, user: { id: `${role}-01`, name: role === "admin" ? "Admin M User" : "Content Publisher", role, username: `${role}-01` } } }));
   await page.route("**/api/user/profile", (route) => route.fulfill({ json: role === "admin" ? { id: "admin-01", first_name: "Admin", middle_name: "M", last_name: "User" } : { id: "publisher-01", first_name: "Content", last_name: "Publisher" } }));
   await page.route("**/api/admin/contact-inquiries/summary", (route) => route.fulfill({ json: { byStatus: { new: 0, read: 0, resolved: 0, spam: 0 }, failedNotifications: 0, recipientConfigured: true } }));

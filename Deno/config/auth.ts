@@ -11,7 +11,7 @@ import { buildTrustedOrigins } from "./trustedOrigins.ts";
 import { fromFileUrl } from "https://deno.land/std@0.200.0/path/from_file_url.ts";
 
 try {
-  await dotenvConfig({
+  if (Deno.env.get("DENO_ENV") !== "test") await dotenvConfig({
     envPath: fromFileUrl(new URL("../.env", import.meta.url)),
     export: true,
   });

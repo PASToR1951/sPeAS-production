@@ -45,6 +45,7 @@ function createEmptyPdf(pageCount: number) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/features/document-preparation", (route) => route.fulfill({ json: { imports: false, volumeReader: false } }));
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: {
     session: { id: "session-admin" },
     user: { id: "admin-01", name: "Admin M User", role: "admin", username: "admin-01" },

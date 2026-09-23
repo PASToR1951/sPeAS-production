@@ -7,6 +7,8 @@ import { researchAgendaRoutesArray } from "./researchAgendaRoutes.ts";
 import { compiledDocumentRoutes } from "./compiledDocumentRoutes.ts";
 import { documentEditRoutes } from "./documentEditRoutes.ts";
 import { paperRoutes } from "./paperRoutes.ts";
+import { importRoutes } from "./importRoutes.ts";
+import { volumeContentsRoutes } from "./volumeContentsRoutes.ts";
 // author routes are now handled directly in server.ts
 
 // Define the route interface
@@ -92,6 +94,8 @@ export const routes: Route[] = [
   // Other routes
   ...userRoutes,
   ...permissionsRoutes,
+  ...importRoutes,
+  ...volumeContentsRoutes,
   ...apiDocumentRoutes, // Use the mapped API document routes
   ...apiPaperRoutes,
   ...apiCompiledDocumentRoutes, // Use the mapped API compiled document routes
