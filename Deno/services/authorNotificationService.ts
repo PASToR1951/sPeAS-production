@@ -75,7 +75,6 @@ export async function syncAuthorProfileNotification(authorId: string, fullName: 
 
 export async function syncAdminActionNotifications() {
   await ensureIncompleteAuthorNotifications();
-  await syncNewsletterOperationalNotifications();
 
   await syncPendingSource({
     insertSql: `
@@ -176,17 +175,6 @@ export async function syncAdminActionNotifications() {
 
   await syncPendingSource({
     insertSql: `
-      SELECT 'topic_proposal_pending', 'topic', t.id::text, 'warning',
-             'Review proposed topic', t.name || ' is waiting for approval.',
-             '/admin/Components/classification-management.html?topicStatus=pending'
-      FROM topics t WHERE t.status = 'pending'
-    `,
-    notificationType: "topic_proposal_pending",
-    activeSql: `SELECT 1 FROM topics t WHERE t.id::text = n.entity_id AND t.status = 'pending'`,
-  });
-
-  await syncPendingSource({
-    insertSql: `
       SELECT 'classification_migration_pending', 'classification_review',
              r.document_id::text || ':' || r.legacy_research_agenda_id::text, 'warning',
              'Review legacy classification', r.legacy_value || ' needs a classification decision.',
@@ -198,34 +186,6 @@ export async function syncAdminActionNotifications() {
   });
 
   await syncContactRecipientConfiguration();
-}
-
-async function syncNewsletterOperationalNotifications() {
-  await client.queryArray(`
-    INSERT INTO admin_notifications(notification_type,entity_type,entity_id,severity,title,message,action_path)
-    SELECT 'newsletter_worker_stale','newsletter','worker','urgent','Newsletter worker needs attention',
-      'The Newsletter worker heartbeat is missing or more than two minutes old.',
-      '/admin/Components/newsletter.html'
-    FROM newsletter_settings s
-    WHERE s.worker_heartbeat_at IS NULL OR s.worker_heartbeat_at < clock_timestamp()-interval '2 minutes'
-    ON CONFLICT(notification_type,entity_type,entity_id) DO UPDATE SET
-      severity=EXCLUDED.severity,title=EXCLUDED.title,message=EXCLUDED.message,action_path=EXCLUDED.action_path,
-      resolved_at=NULL,dismissed_at=NULL,updated_at=CURRENT_TIMESTAMP;
-    UPDATE admin_notifications n SET resolved_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-    FROM newsletter_settings s WHERE n.notification_type='newsletter_worker_stale'
-      AND n.entity_type='newsletter' AND n.entity_id='worker' AND n.resolved_at IS NULL
-      AND s.worker_heartbeat_at >= clock_timestamp()-interval '2 minutes';
-    INSERT INTO admin_notifications(notification_type,entity_type,entity_id,severity,title,message,action_path)
-    SELECT 'newsletter_delivery_auto_paused','newsletter','delivery','urgent','Newsletter delivery paused',
-      COALESCE(NULLIF(s.pause_reason,''),'Campaign delivery has been paused.'),'/admin/Components/newsletter.html'
-    FROM newsletter_settings s WHERE s.delivery_paused AND s.pause_reason='SMTP configuration failure'
-    ON CONFLICT(notification_type,entity_type,entity_id) DO UPDATE SET
-      message=EXCLUDED.message,resolved_at=NULL,dismissed_at=NULL,updated_at=CURRENT_TIMESTAMP;
-    UPDATE admin_notifications n SET resolved_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-    FROM newsletter_settings s WHERE n.notification_type='newsletter_delivery_auto_paused'
-      AND n.entity_type='newsletter' AND n.entity_id='delivery' AND n.resolved_at IS NULL
-      AND NOT (s.delivery_paused AND s.pause_reason='SMTP configuration failure');
-  `);
 }
 
 async function syncPendingSource({ insertSql, notificationType, activeSql }: { insertSql: string; notificationType: string; activeSql: string }) {

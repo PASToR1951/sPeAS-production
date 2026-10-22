@@ -1,3 +1,7 @@
+import { useAdminIdentity } from "../../components/layout/AdminLayout";
+import { formatPublicationDate } from "../../lib/formatters/date";
+import type { PublicationDatePrecision } from "../../../../shared/imports";
+import { createAbstractDraftKey, deleteUploadDraft, loadUploadDraft, saveUploadDraft, type AbstractReviewDraft } from "../upload/uploadDraftRecovery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, CheckCircle2, ExternalLink, FileWarning, RefreshCw, Save, X, XCircle, ChevronLeft, ChevronRight, Minus, Plus, Maximize2, Minimize2, Search, Home } from "lucide-react";
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
@@ -5,9 +9,9 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { AnimatePresence } from "motion/react";
 import { DocumentAuthorPicker } from "../../components/forms/DocumentAuthorPicker";
 import { DocumentClassificationEditor, type DocumentClassificationEditorValue } from "../../components/forms/DocumentClassificationEditor";
-import { archiveDocument, fetchAbstractReviews, fetchCategories, fetchChildDocuments, fetchDocuments, retryAbstractReview, reviewDocument, updateAbstractReview, updateDocumentMetadata, type AbstractReviewItem } from "../../lib/api/documents";
+import { archiveDocument, fetchAbstractReviews, fetchExtractionDiagnostics, type ExtractionDiagnostics, fetchCategories, fetchChildDocuments, fetchDocuments, retryAbstractReview, reviewDocument, updateAbstractReview, updateDocumentMetadata, type AbstractReviewItem } from "../../lib/api/documents";
 import { fetchAuthors } from "../../lib/api/authors";
-import { fetchDocumentClassification, fetchResearchAgendas, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
+import { fetchDocumentClassification, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
 import { updateCompiledDocument as updateCompiledDocumentRecord } from "../../lib/api/compiled-documents";
 import { CompiledWorkPreviewDialog } from "./CompiledWorkPreviewDialog";
 import { getErrorMessage } from "../../lib/api/http";
@@ -20,6 +24,7 @@ import { PeasEmptyState, PeasErrorState, PeasInlineSpinner, PeasLoadingState } f
 import { PeasPagination } from "../../components/data-display/PeasPagination";
 import { Reveal } from "../../components/motion/Reveal";
 import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -59,6 +64,7 @@ const DEFAULT_DOCUMENT_FILTER: DocumentFilterState = {
 };
 
 export function DocumentsAdminPage() {
+  const { userId } = useAdminIdentity();
   const [filter, setFilter] = useState<DocumentFilterState>(readDocumentFilter);
   const debouncedSearch = useDebouncedValue(filter.search, 250);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
@@ -73,11 +79,13 @@ export function DocumentsAdminPage() {
   const [loadingChildren, setLoadingChildren] = useState<Set<number>>(new Set());
   const [archiveTarget, setArchiveTarget] = useState<DocumentRecord | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const previewTrigger = useRef<HTMLElement | null>(null);
   const [previewTarget, setPreviewTarget] = useState<DocumentRecord | null>(null);
   const [editTarget, setEditTarget] = useState<DocumentRecord | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [reviewBusyId, setReviewBusyId] = useState<number | null>(null);
   const [abstractReviewTarget, setAbstractReviewTarget] = useState<DocumentRecord | null>(null);
+  const abstractReviewTrigger = useRef<HTMLButtonElement | null>(null);
   const requestIdRef = useRef(0);
 
   const queryFilter = useMemo(
@@ -236,8 +244,6 @@ export function DocumentsAdminPage() {
         await linkDocumentAuthors(editTarget.id, authors);
         if (classification) {
           await updateDocumentClassification(editTarget.id, {
-            researchAgendaIds: classification.researchAgendaIds,
-            primaryResearchAgendaId: classification.primaryResearchAgendaId,
             topicIds: classification.topicIds,
             keywords: classification.keywords,
           });
@@ -266,6 +272,7 @@ export function DocumentsAdminPage() {
     setReviewBusyId(document.id);
     try {
       await reviewDocument(document.id, document.isCompiled, decision, publish);
+      if (publish) await deleteUploadDraft(createAbstractDraftKey(userId, document.isCompiled ? "compiled" : "document", document.id));
       toast.success(
         decision === "rejected"
           ? `${document.title} was rejected.`
@@ -329,14 +336,14 @@ export function DocumentsAdminPage() {
                       childrenDocuments={childrenByParent[document.id] ?? []}
                       loadingChildren={loadingChildren.has(document.id)}
                       onToggleChildren={handleToggleChildren}
-                      onPreview={setPreviewTarget}
+                      onPreview={(record, trigger) => { previewTrigger.current = trigger ?? window.document.activeElement as HTMLElement; setPreviewTarget(record); }}
                       onEdit={handleEdit}
                       onArchive={setArchiveTarget}
                     />
                   ) : (
                     <PeasDocumentCard
                       document={document}
-                      onPreview={setPreviewTarget}
+                      onPreview={(record, trigger) => { previewTrigger.current = trigger ?? window.document.activeElement as HTMLElement; setPreviewTarget(record); }}
                       onEdit={handleEdit}
                       onArchive={setArchiveTarget}
                     />
@@ -344,7 +351,7 @@ export function DocumentsAdminPage() {
                   {document.reviewStatus === "pending_review" ? (
                     <div className="peas-review-actions">
                       <div><strong>Pending administrator review</strong><span>Resolve required abstracts before publishing. The record remains private while extraction is running.</span></div>
-                      <Button size="sm" variant="outline" onClick={() => setAbstractReviewTarget(document)}>
+                      <Button size="sm" variant="outline" onClick={(event) => { abstractReviewTrigger.current = event.currentTarget; setAbstractReviewTarget(document); }}>
                         <FileWarning aria-hidden="true" /> Review abstracts
                       </Button>
                       <Button size="sm" variant="outline" disabled={reviewBusyId === document.id} onClick={() => void handleReview(document, "rejected")}>
@@ -393,10 +400,11 @@ export function DocumentsAdminPage() {
         onSave={handleSaveEdit}
       />
 
-      <PdfPreviewDialog document={previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)} />
+      <PdfPreviewDialog onCloseAutoFocus={(event) => { event.preventDefault(); previewTrigger.current?.focus(); }} document={previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)} />
 
       <AbstractReviewDialog
         document={abstractReviewTarget}
+        onCloseAutoFocus={(event) => { event.preventDefault(); abstractReviewTrigger.current?.focus(); }}
         onOpenChange={(open) => {
           if (!open) setAbstractReviewTarget(null);
         }}
@@ -409,16 +417,31 @@ export function DocumentsAdminPage() {
 function AbstractReviewDialog({
   document,
   onOpenChange,
+  onCloseAutoFocus,
   onResolved,
 }: {
   document: DocumentRecord | null;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
   onResolved: () => void;
 }) {
+  const { userId } = useAdminIdentity();
+  const [diagnostics, setDiagnostics] = useState<ExtractionDiagnostics | null>(null);
+  const draftKey = document ? createAbstractDraftKey(userId, document.isCompiled ? "compiled" : "document", document.id) : null;
   const [items, setItems] = useState<AbstractReviewItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [selectedKey, setSelectedKey] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadKey, setLoadKey] = useState(0);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const item = items.find((entry) => `${entry.targetType}:${entry.targetId}` === selectedKey) ?? items[0];
+  const key = item ? `${item.targetType}:${item.targetId}` : "";
+  const resolved = item?.status === "accepted" || item?.status === "unavailable";
+  const draft = item ? resolved ? item.currentAbstract ?? "" : drafts[key] ?? item.currentAbstract ?? item.candidate ?? "" : "";
+  const characterCount = Array.from(draft.replace(/\r\n?/gu, "\n").trim()).length;
+  const resolvedCount = items.filter((entry) => entry.status === "accepted" || entry.status === "unavailable").length;
 
   useEffect(() => {
     if (!document) {
@@ -428,20 +451,56 @@ function AbstractReviewDialog({
     }
     let active = true;
     setLoading(true);
-    void fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id)
-      .then((result) => {
+    setLoadError(null);
+    setItems([]);
+    setDrafts({});
+    setSelectedKey("");
+    setDiagnostics(null);
+    void Promise.all([
+      fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id),
+      loadUploadDraft<AbstractReviewDraft>(draftKey!),
+      fetchExtractionDiagnostics().catch(() => null),
+    ])
+      .then(([result, saved, readiness]) => {
+        if (active) setDiagnostics(readiness);
         if (!active) return;
         setItems(result.items);
-        setDrafts(Object.fromEntries(result.items.map((item) => [`${item.targetType}:${item.targetId}`, item.currentAbstract ?? item.candidate ?? ""])));
+        setDrafts(saved?.state.drafts ?? {});
       })
-      .catch((error) => toast.error(getErrorMessage(error)))
+      .catch((error) => { if (active) setLoadError(getErrorMessage(error)); })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [document]);
+  }, [document, draftKey, loadKey]);
+
+  useEffect(() => {
+    if (!document || busyKey || !items.some((item) => item.status === "queued" || item.status === "processing")) return;
+    let active = true;
+    const timer = window.setInterval(() => {
+      void Promise.all([fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id), fetchExtractionDiagnostics().catch(() => null)])
+        .then(([result, readiness]) => { if (active) { setItems(result.items); setDiagnostics(readiness); } })
+        .catch(() => undefined);
+    }, 3000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [document, busyKey, items.some((item) => item.status === "queued" || item.status === "processing")]);
+
+  function changeDraft(value: string) {
+    const state = { drafts: { ...drafts, [key]: value } };
+    setDrafts(state.drafts);
+    if (draftKey) void saveUploadDraft(draftKey, state, state).catch((error) => toast.error(getErrorMessage(error)));
+  }
+
+  async function closeReview(open: boolean) {
+    if (open) return onOpenChange(true);
+    if (busyKey) return;
+    try {
+      if (draftKey && !loading && !loadError) await saveUploadDraft(draftKey, { drafts }, { drafts });
+      onOpenChange(false);
+    } catch (error) { toast.error(`Keep this review open: ${getErrorMessage(error)}`); }
+  }
 
   async function act(item: AbstractReviewItem, action: "accept_candidate" | "save_manual" | "mark_unavailable") {
     const key = `${item.targetType}:${item.targetId}`;
@@ -449,10 +508,11 @@ function AbstractReviewDialog({
     try {
       const updated = await updateAbstractReview(item.targetType === "compiled_foreword" ? "compiled-foreword" : "document", item.targetId, {
         action,
-        ...(action === "save_manual" ? { abstract: drafts[key] ?? "" } : {}),
+        ...(action === "save_manual" ? { abstract: drafts[key] ?? item.currentAbstract ?? item.candidate ?? "" } : {}),
       });
       setItems((current) => current.map((entry) => entry.targetType === item.targetType && entry.targetId === item.targetId ? updated : entry));
-      toast.success(action === "mark_unavailable" ? "Abstract marked unavailable." : action === "accept_candidate" ? "Candidate accepted." : "Manual abstract saved.");
+      setDrafts((current) => ({ ...current, [key]: updated.currentAbstract ?? "" }));
+      toast.success(action === "mark_unavailable" ? "Abstract marked unavailable." : "Abstract confirmed.");
       onResolved();
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -476,55 +536,83 @@ function AbstractReviewDialog({
   }
 
   return (
-    <Dialog open={Boolean(document)} onOpenChange={onOpenChange}>
-      <DialogContent className="peas-abstract-review-dialog">
+    <Dialog open={Boolean(document)} onOpenChange={(open) => void closeReview(open)}>
+      {document ? <DialogContent className="peas-abstract-review-dialog" onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={(event) => { event.preventDefault(); titleRef.current?.focus(); }}>
         <DialogHeader>
-          <DialogTitle>Review abstracts</DialogTitle>
-          <DialogDescription>{document?.title ?? "Record"}. Machine-extracted text is private until an administrator accepts it, edits it, or marks it unavailable.</DialogDescription>
+          <DialogTitle ref={titleRef} tabIndex={-1}>Review abstracts</DialogTitle>
+          <DialogDescription>Check the text and make any corrections before confirming. This does not publish the record.</DialogDescription>
         </DialogHeader>
-        <div className="peas-abstract-review-list" aria-live="polite">
-          {loading ? <PeasInlineSpinner label="Loading abstract review…" /> : null}
-          {!loading && !items.length ? <p>No abstract targets were found for this record.</p> : null}
-          {items.map((item) => {
-            const key = `${item.targetType}:${item.targetId}`;
-            const busy = busyKey === key;
-            const resolved = item.status === "accepted" || item.status === "unavailable";
-            return <section className="peas-abstract-review-item" key={key}>
-              <header><div><h3>{item.title}</h3><p>{item.targetType === "compiled_foreword" ? "Collection foreword" : item.documentType}</p></div><strong>{formatAbstractStatus(item.status)}</strong></header>
-              <p>Source: {item.method}{item.confidence === null ? "" : ` · confidence ${Math.round(item.confidence * 100)}%`}{item.pageStart ? ` · pages ${item.pageStart}–${item.pageEnd ?? item.pageStart}` : ""}</p>
-              {item.qualityFlags.length ? <p>Warnings: {item.qualityFlags.join(", ")}</p> : null}
-              {item.errorCode ? <p>Extraction status: {item.errorCode}</p> : null}
-              <label className="peas-field">
-                <span>Current / edited abstract</span>
+        {items.length > 1 ? <div className="peas-abstract-review-selector">
+          <label htmlFor="abstract-review-target">Abstract to review</label>
+          <Select value={key} onValueChange={setSelectedKey} disabled={Boolean(busyKey)}>
+            <SelectTrigger id="abstract-review-target"><SelectValue /></SelectTrigger>
+            <SelectContent>{items.map((entry, index) => <SelectItem key={`${entry.targetType}:${entry.targetId}`} value={`${entry.targetType}:${entry.targetId}`}>{index + 1}. {entry.title} · {formatAbstractStatus(entry.status)}</SelectItem>)}</SelectContent>
+          </Select>
+          <span role="status">{resolvedCount} of {items.length} resolved</span>
+        </div> : null}
+        <div className="peas-abstract-review-body" aria-busy={loading}>
+          {loading ? <PeasLoadingState /> : loadError ? <PeasErrorState title="Unable to load abstract review" message={loadError} onRetry={() => setLoadKey((current) => current + 1)} /> : !item ? <PeasEmptyState title="No abstracts to review" description="No abstract or foreword was found for this record." /> : <section className="peas-abstract-review-item" key={key}>
+              <header className="peas-abstract-review-summary"><div><h3>{item.title}</h3><p>{item.targetType === "compiled_foreword" ? "Collection foreword" : getCategoryMeta(item.documentType).label}</p></div><Badge tone={resolved ? "green" : item.status === "failed" ? "rose" : "gold"}>{formatAbstractStatus(item.status)}</Badge></header>
+              <p className="peas-abstract-review-status" role="status">{resolved ? item.status === "accepted" ? "Abstract confirmed. You can close this window and continue the publication review." : "Marked unavailable. This abstract review is resolved." : item.status === "queued" || item.status === "processing" ? "Automatic extraction is running. You can wait here or enter the abstract yourself; confirming your text will use it instead." : item.status === "failed" ? "Automatic extraction failed. Enter the abstract yourself or retry extraction below." : !item.candidate ? "No extracted abstract was found. Enter the text manually, or mark it unavailable if the source has no abstract." : "Review the full abstract below. You can edit the text directly."}</p>
+              {!resolved && diagnostics && !diagnostics.extractionReady ? <p className="peas-abstract-review-notice">Automatic extraction is unavailable. Your PDF is saved; you can still enter and confirm an abstract manually.</p> : null}
+              {!resolved && item.qualityFlags.length ? <div className="peas-abstract-review-notice"><strong>Check the extracted text</strong><ul>{item.qualityFlags.map((flag) => <li key={flag}>{formatAbstractQualityFlag(flag)}</li>)}</ul></div> : null}
+              {item.status !== "unavailable" ? <div className="peas-abstract-review-editor">
+                <div className="peas-abstract-review-editor-heading">
+                  <label htmlFor="abstract-review-text">{resolved ? "Confirmed abstract" : "Abstract to confirm"}</label>
+                  {!resolved && item.candidate && draft !== item.candidate ? <Button size="sm" variant="ghost" disabled={Boolean(busyKey)} onClick={() => changeDraft(item.candidate!)}>Use extracted text</Button> : null}
+                </div>
+                <p id="abstract-review-text-help">{resolved ? "This review has been saved." : "Check that the text is complete and matches the source PDF."}</p>
                 <Textarea
-                  value={drafts[key] ?? ""}
-                  maxLength={10000}
-                  rows={5}
-                  disabled={busy || resolved}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setDrafts((current) => ({ ...current, [key]: value }));
-                  }}
+                  id="abstract-review-text"
+                  aria-describedby="abstract-review-text-help abstract-review-count"
+                  aria-invalid={characterCount > 10000 || undefined}
+                  value={draft}
+                  rows={12}
+                  readOnly={resolved}
+                  disabled={Boolean(busyKey)}
+                  placeholder="Enter the complete abstract here…"
+                  onChange={(event) => changeDraft(event.currentTarget.value)}
                 />
-              </label>
-              {item.candidate ? <div className="peas-abstract-review-candidate"><strong>Candidate</strong><p>{item.candidate}</p></div> : null}
-              <div className="peas-review-actions">
-                <Button size="sm" disabled={busy || resolved || !item.candidate} onClick={() => void act(item, "accept_candidate")}>Accept candidate</Button>
-                <Button size="sm" variant="outline" disabled={busy || resolved || !(drafts[key] ?? "").trim()} onClick={() => void act(item, "save_manual")}>Edit and confirm</Button>
-                <Button size="sm" variant="outline" disabled={busy || resolved} onClick={() => void act(item, "mark_unavailable")}>Mark unavailable</Button>
-                <Button size="sm" variant="ghost" disabled={busy || !["failed", "needs_review"].includes(item.status)} onClick={() => void retry(item)}><RefreshCw aria-hidden="true" /> Retry</Button>
-              </div>
-            </section>;
-          })}
+                <span id="abstract-review-count" className={characterCount > 10000 ? "is-invalid" : undefined}>{characterCount.toLocaleString()} / 10,000 characters{characterCount > 10000 ? " — shorten the text to confirm" : ""}</span>
+              </div> : null}
+              {item.candidate && !resolved ? <details className="peas-abstract-review-reference"><summary>View original extracted text</summary><p>{item.candidate}</p></details> : null}
+              <details className="peas-abstract-review-reference"><summary>Extraction details</summary><dl>
+                <div><dt>Source</dt><dd>{{ pdf_text: "Embedded PDF text", ocr: "Scanned PDF (OCR)", manual: "Manual entry", none: "No extracted text" }[item.method]}</dd></div>
+                {item.confidence !== null ? <div><dt>Confidence</dt><dd>{Math.round(item.confidence * 100)}%</dd></div> : null}
+                {item.pageStart ? <div><dt>Location</dt><dd>{item.pageStart === (item.pageEnd ?? item.pageStart) ? `Page ${item.pageStart}` : `Pages ${item.pageStart}–${item.pageEnd}`}</dd></div> : null}
+                {item.errorCode ? <div><dt>Issue code</dt><dd>{item.errorCode}</dd></div> : null}
+              </dl>{!resolved && ["failed", "needs_review"].includes(item.status) ? <Button variant="outline" disabled={Boolean(busyKey) || !diagnostics?.extractionReady} onClick={() => void retry(item)}><RefreshCw aria-hidden="true" /> Retry extraction</Button> : null}</details>
+            </section>}
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button></DialogFooter>
-      </DialogContent>
+        <DialogFooter className="peas-abstract-review-footer">
+          <p>{busyKey ? "Saving your review…" : items.length > 0 && resolvedCount === items.length ? "All abstracts resolved. Close to continue the publication review." : "Close to keep unfinished edits on this browser."}</p>
+          <div>
+            <Button variant="outline" disabled={Boolean(busyKey)} onClick={() => void closeReview(false)}>Close</Button>
+            {item && !loading && !loadError && !resolved ? <>
+              <Button variant="ghost" disabled={Boolean(busyKey)} onClick={() => void act(item, "mark_unavailable")}>Mark unavailable</Button>
+              <Button disabled={Boolean(busyKey) || !draft.trim() || characterCount > 10000} onClick={() => void act(item, item.status === "needs_review" && draft === item.candidate && !item.qualityFlags.includes("candidate_too_long") ? "accept_candidate" : "save_manual")}><CheckCircle2 aria-hidden="true" /> {busyKey ? "Saving…" : "Confirm abstract"}</Button>
+            </> : null}
+          </div>
+        </DialogFooter>
+      </DialogContent> : null}
     </Dialog>
   );
 }
 
 function formatAbstractStatus(status: AbstractReviewItem["status"]): string {
-  return status.replace(/_/gu, " ").replace(/\b\w/gu, (character) => character.toUpperCase());
+  return { queued: "Waiting for extraction", processing: "Extracting text", needs_review: "Needs review", accepted: "Confirmed", unavailable: "Unavailable", failed: "Extraction failed" }[status];
+}
+
+function formatAbstractQualityFlag(flag: string): string {
+  const messages: Record<string, string> = {
+    non_text_characters_removed: "Some non-text characters were removed. Check for missing words or symbols.",
+    garbled_text: "Some text may be unreadable. Compare it with the PDF.",
+    table_of_contents_pattern: "The text may include a table of contents.",
+    repeated_header_or_footer: "Repeated headers or footers may be included.",
+    candidate_too_long: "The extracted text may be too long. Keep only the abstract.",
+    abstract_not_found: "No reliable abstract was found in the PDF.",
+  };
+  return messages[flag] ?? flag.replace(/_/gu, " ");
 }
 
 function ArchiveDocumentDialog({
@@ -586,14 +674,14 @@ function EditDocumentDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [publicationDate, setPublicationDate] = useState("");
+  const [datePrecision, setDatePrecision] = useState<PublicationDatePrecision>("legacy");
   const [category, setCategory] = useState<DocumentCategory>("THESIS");
   const [startYear, setStartYear] = useState("");
   const [endYear, setEndYear] = useState("");
   const [volume, setVolume] = useState("");
   const [issue, setIssue] = useState("");
   const [authors, setAuthors] = useState<DocumentAuthorSelection[]>([]);
-  const [classification, setClassification] = useState<DocumentClassificationEditorValue>({ researchAgendaIds: [], primaryResearchAgendaId: null, topicIds: [], topicNames: [], keywords: [] });
-  const [researchAgendas, setResearchAgendas] = useState<Array<{ id: number; name: string }>>([]);
+  const [classification, setClassification] = useState<DocumentClassificationEditorValue>({ topicIds: [], topicNames: [], keywords: [] });
   const [classificationLoading, setClassificationLoading] = useState(false);
   const [authorDirectory, setAuthorDirectory] = useState<AuthorRecord[]>([]);
   const [authorDirectoryLoading, setAuthorDirectoryLoading] = useState(false);
@@ -610,8 +698,6 @@ function EditDocumentDialog({
 
     const documentClassification = document.classification;
     const nextClassification: DocumentClassificationEditorValue = {
-      researchAgendaIds: documentClassification?.researchAgendas.map((item) => item.id).filter((id) => id > 0) ?? [],
-      primaryResearchAgendaId: documentClassification?.researchAgendas.find((item) => item.primary)?.id ?? documentClassification?.researchAgendas[0]?.id ?? null,
       topicIds: documentClassification?.topics.map((item) => item.id).filter((id) => id > 0) ?? [],
       topicNames: documentClassification?.topics.map((item) => item.name).filter(Boolean) ?? [],
       keywords: documentClassification?.keywords.map((item) => item.name).filter(Boolean) ?? [],
@@ -621,6 +707,7 @@ function EditDocumentDialog({
       title: document.title,
       description: document.description ?? "",
       publicationDate: document.publicationDate ? new Date(document.publicationDate).toISOString().slice(0, 10) : "",
+      datePrecision: document.datePrecision ?? "legacy",
       category: document.category === "All" ? "THESIS" : document.category,
       authors: document.authors
         .map((author) => ({
@@ -639,6 +726,7 @@ function EditDocumentDialog({
     setTitle(nextValues.title);
     setDescription(nextValues.description);
     setPublicationDate(nextValues.publicationDate);
+    setDatePrecision(nextValues.datePrecision);
     setCategory(nextValues.category);
     setAuthors(nextValues.authors);
     setClassification(nextValues.classification);
@@ -651,20 +739,16 @@ function EditDocumentDialog({
     let active = true;
     if (!document.isCompiled) {
       setClassificationLoading(true);
-      void Promise.all([fetchDocumentClassification(document.id), fetchResearchAgendas()])
-        .then(([detail, agendas]) => {
+      void fetchDocumentClassification(document.id)
+        .then((detail) => {
           if (!active) return;
           const raw = detail.classification;
           const loadedClassification: DocumentClassificationEditorValue = {
-            researchAgendaIds: raw.researchAgendas.map((item) => item.id),
-            primaryResearchAgendaId: raw.researchAgendas.find((item) => item.primary)?.id ?? raw.researchAgendas[0]?.id ?? null,
             topicIds: raw.topics.map((item) => item.id),
             topicNames: raw.topics.map((item) => item.name),
             keywords: raw.keywords.map((item) => item.name),
           };
           setClassification(loadedClassification);
-          const historicalAgendas = raw.researchAgendas.filter((item) => item.is_active === false).map((item) => ({ id: item.id, name: item.name, is_active: false }));
-          setResearchAgendas([...agendas, ...historicalAgendas.filter((item) => !agendas.some((agenda) => agenda.id === item.id))]);
           initialValuesRef.current = JSON.stringify({ ...nextValues, classification: loadedClassification });
         })
         .catch(() => undefined)
@@ -713,7 +797,7 @@ function EditDocumentDialog({
   }, [document]);
 
   const isCompiled = Boolean(document?.isCompiled);
-  const currentValues = JSON.stringify({ title, description, publicationDate, category, authors, classification, startYear, endYear, volume, issue });
+  const currentValues = JSON.stringify({ title, description, publicationDate, datePrecision, category, authors, classification, startYear, endYear, volume, issue });
   const isDirty = Boolean(document) && initialValuesRef.current !== currentValues;
 
   const handleOpenChange = (open: boolean) => {
@@ -758,6 +842,7 @@ function EditDocumentDialog({
               title: title.trim(),
               description: description.trim(),
               publication_date: publicationDate || null,
+              publication_date_precision: datePrecision,
               document_type: category,
             }, authors, classification);
           }}
@@ -821,7 +906,16 @@ function EditDocumentDialog({
                 </label>
                 <label className="peas-field">
                   <span>Publication Date</span>
-                  <Input type="date" value={publicationDate} onChange={(event) => setPublicationDate(event.currentTarget.value)} />
+                  <Select value={datePrecision} onValueChange={(value) => {
+                    const precision = value as PublicationDatePrecision;
+                    setDatePrecision(precision);
+                    if (publicationDate && precision === "year") setPublicationDate(`${publicationDate.slice(0, 4)}-01-01`);
+                    if (publicationDate && precision === "month") setPublicationDate(`${publicationDate.slice(0, 7)}-01`);
+                  }}><SelectTrigger aria-label="Publication date precision"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="year">Year only</SelectItem><SelectItem value="month">Month and year</SelectItem><SelectItem value="day">Exact date</SelectItem><SelectItem value="legacy">Legacy date (precision unknown)</SelectItem></SelectContent></Select>
+                  <Input aria-label="Publication date" type={datePrecision === "month" ? "month" : datePrecision === "year" ? "text" : "date"} value={datePrecision === "month" ? publicationDate.slice(0, 7) : datePrecision === "year" ? publicationDate.slice(0, 4) : publicationDate} onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setPublicationDate(!value ? "" : datePrecision === "year" ? `${value}-01-01` : datePrecision === "month" ? `${value}-01` : value);
+                  }} />
                 </label>
               </div>
               <div className="peas-field">
@@ -838,7 +932,7 @@ function EditDocumentDialog({
                 {authorDirectoryError ? <small className="peas-document-author-picker__status is-error">The author directory could not be loaded. Existing author names can still be saved.</small> : null}
                 {!authors.length ? <small className="peas-document-author-picker__status is-error">Select at least one author.</small> : null}
               </div>
-              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : <DocumentClassificationEditor value={classification} agendas={researchAgendas} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} />}
+              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : <DocumentClassificationEditor value={classification} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} />}
               <label className="peas-field">
                 <span>Description</span>
                 <Textarea value={description} onChange={(event) => setDescription(event.currentTarget.value)} rows={4} />
@@ -862,18 +956,20 @@ function EditDocumentDialog({
   );
 }
 
-function PdfPreviewDialog(props: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void }) {
+function PdfPreviewDialog(props: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void; onCloseAutoFocus: (event: Event) => void }) {
   return props.document?.isCompiled
-    ? <CompiledWorkPreviewDialog key={props.document.id} document={props.document} onOpenChange={props.onOpenChange} />
+    ? <CompiledWorkPreviewDialog key={props.document.id} document={props.document} onCloseAutoFocus={props.onCloseAutoFocus} onOpenChange={props.onOpenChange} />
     : <SingularWorkPreviewDialog {...props} />;
 }
 
 function SingularWorkPreviewDialog({
   document,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   document: DocumentRecord | null;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -889,12 +985,12 @@ function SingularWorkPreviewDialog({
 
   return (
     <Dialog open={Boolean(document)} onOpenChange={onOpenChange}>
-      <DialogContent className="peas-pdf-dialog">
+      {document ? <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="peas-pdf-dialog">
         <DialogHeader className="peas-pdf-dialog__header">
           <div>
             <DialogTitle>{document?.title ?? "Document preview"}</DialogTitle>
             <DialogDescription>
-              {document ? `${document.authorsText} · ${formatPreviewDate(document.publicationDate)}` : "PDF preview from the current document record."}
+              {document ? `${document.authorsText} · ${formatPublicationDate(document.publicationDate, document.datePrecision)}` : "PDF preview from the current document record."}
             </DialogDescription>
           </div>
           {document ? <a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-sm" href={`/api/documents/${document.id}/download?disposition=inline`} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" /> Open in new tab</a> : null}
@@ -924,7 +1020,7 @@ function SingularWorkPreviewDialog({
             No document selected.
           </div>
         )}
-      </DialogContent>
+      </DialogContent> : null}
     </Dialog>
   );
 }
@@ -1047,11 +1143,7 @@ function SimplePdfReader({ documentId, title, onLoaded, onError }: { documentId:
   </div>;
 }
 
-function formatPreviewDate(value: string | null) {
-  if (!value) return "Publication date not specified";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Publication date not specified" : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" }).format(date);
-}
+
 
 function numericOrNull(value: string) {
   const numberValue = Number(value);

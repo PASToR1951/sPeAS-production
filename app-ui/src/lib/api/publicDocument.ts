@@ -1,4 +1,5 @@
 import type { LooseRecord } from "./account";
+import type { PublicAuthorReference } from "./types";
 
 const PUBLIC_DOCUMENT_ERROR_STATUSES = [400, 401, 403, 404, 408, 429, 500, 503] as const;
 
@@ -40,9 +41,25 @@ async function fetchChildren(id: string, record: LooseRecord): Promise<LooseReco
   } catch { return []; }
 }
 
-async function fetchAuthors(id: string): Promise<LooseRecord[]> {
+async function fetchAuthors(id: string): Promise<PublicAuthorReference[]> {
   const path = `/api/guest/documents/${id}/authors`;
-  try { const payload = await fetchCanonical(path); return Array.isArray(payload.authors) ? payload.authors as LooseRecord[] : []; } catch { return []; }
+  try {
+    const payload = await fetchCanonical(path);
+    if (!Array.isArray(payload.authors)) return [];
+    return payload.authors
+      .map((author: unknown) => toPublicAuthorReference(author))
+      .filter((author: PublicAuthorReference | null): author is PublicAuthorReference => author !== null);
+  } catch {
+    return [];
+  }
+}
+
+function toPublicAuthorReference(value: unknown): PublicAuthorReference | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const id = String(row.id ?? "").trim();
+  const fullName = String(row.full_name ?? "").trim();
+  return id && fullName ? { id, full_name: fullName } : null;
 }
 
 async function fetchCanonical(path: string): Promise<any> {

@@ -1917,7 +1917,6 @@
     // API Endpoints
     const API = {
         documents: '/api/documents',
-        authors: '/api/authors/all',
         categories: '/api/categories',
         keywords: '/api/keywords',
         researchAgenda: '/api/research-agenda',
@@ -1925,27 +1924,20 @@
     };
 
     /**
-     * Fetches filter data (authors, years, keywords for dropdown, categoryCounts, totalDocuments) from existing APIs.
+     * Fetches public filter data without preloading an author directory.
      */
     async function fetchFiltersData() {
         try {
             // Fetch initial data to populate filters
-            const [categoryResponse, authorResponse, keywordResponse, documentResponse] = await Promise.all([
+            const [categoryResponse, keywordResponse, documentResponse] = await Promise.all([
                 fetchData(API.categories),
-                fetchData(API.authors),
                 fetchData(API.keywords),
                 fetchData(`${API.documents}?limit=100`) // Get documents to extract years and counts
             ]);
             
-            // Process authors
+            // Public author discovery is query-driven through
+            // /api/authors/search; the complete filter directory is private.
             const authors = [];
-            if (authorResponse && authorResponse.authors) {
-                authorResponse.authors.forEach(author => {
-                    if (author.full_name) {
-                        authors.push(author.full_name);
-                    }
-                });
-            }
             
             // Process keywords
             const keywords = keywordResponse || [];

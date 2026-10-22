@@ -61,13 +61,14 @@ export function uploadDocumentFile(formData: FormData) {
   });
 }
 
-export function uploadFile(file: File, options: { storagePath: string; documentType: string; category?: string; isForeword?: boolean }, onProgress?: (progress: UploadTransferProgress) => void) {
+export function uploadFile(file: File, options: { storagePath: string; documentType: string; category?: string; isForeword?: boolean; isCover?: boolean }, onProgress?: (progress: UploadTransferProgress) => void) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("storagePath", options.storagePath);
   formData.append("document_type", options.documentType);
   if (options.category) formData.append("category", options.category);
   if (options.isForeword) formData.append("is_foreword", "true");
+  if (options.isCover) formData.append("is_cover", "true");
 
   return new Promise<UploadedFileResult>((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -204,8 +205,8 @@ export function searchTopics(query: string) {
   return apiFetch<Array<{ id: number; name: string; status?: string }>>(`/api/topics?q=${encodeURIComponent(trimmed)}`);
 }
 
-export function proposeTopic(name: string) {
-  return apiFetch<{ id: number; name: string; status?: string }>("/api/topics/proposals", {
+export function createTopic(name: string) {
+  return apiFetch<{ id: number; name: string; status?: string }>("/api/topics", {
     method: "POST",
     json: { name },
   });

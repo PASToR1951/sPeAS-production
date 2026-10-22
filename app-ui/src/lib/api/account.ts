@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { apiFetch } from "./http";
 
 export type LooseRecord = Record<string, unknown>;
@@ -5,6 +6,7 @@ export type LooseRecord = Record<string, unknown>;
 export type AccountRecordType = "document" | "compiled";
 
 export interface AccountLibraryItem extends LooseRecord {
+  publication_date_precision?: PublicationDatePrecision;
   record_id: number;
   record_type: AccountRecordType;
   title: string;
@@ -85,5 +87,3 @@ export function fetchUserHistory(params: URLSearchParams) {
 }
 export function uploadProfilePicture(file: File) { const form = new FormData(); form.append("profilePicture", file); return apiFetch<LooseRecord>("/api/user/profile/picture", { method: "POST", body: form }); }
 export function changePassword(currentPassword: string, newPassword: string) { return apiFetch("/api/auth/change-password", { method: "POST", json: { currentPassword, newPassword, revokeOtherSessions: true } }); }
-export function fetchAuthors() { return apiFetch<{ authors?: LooseRecord[] }>("/api/authors/all"); }
-export function fetchAuthorWorks(id: string) { return apiFetch<{ works?: LooseRecord[] }>(`/api/authors/${encodeURIComponent(id)}/works`); }

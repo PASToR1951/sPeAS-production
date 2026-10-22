@@ -1444,13 +1444,10 @@ window.documentEdit = {
     // Fetch authors for a document separately
     fetchAuthorsForDocument: function(documentId) {
                 
-        // Try multiple potential endpoints, adding compiled-specific endpoints
+        // Use the canonical administrator endpoint. The non-API alias is
+        // retained server-side only for the bounded deprecation window.
         const endpoints = [
-            `/api/document-authors/${documentId}`,
-            `/api/documents/${documentId}/authors`,
-            `/document-authors/${documentId}`,
-            `/api/compiled-documents/${documentId}/authors`,
-            `/compiled-documents/${documentId}/authors`
+            `/api/document-authors/${documentId}`
         ];
         
         return new Promise(async (resolve, reject) => {
@@ -2590,11 +2587,8 @@ window.documentEdit = {
                 
         // First check if author already exists to prevent duplicates
         try {
-                        const searchEndpoints = [
-                `/api/authors/search?q=${encodeURIComponent(name)}`,
-                `/api/authors?search=${encodeURIComponent(name)}`,
-                `/api/authors?q=${encodeURIComponent(name)}`,
-                `/authors/search?q=${encodeURIComponent(name)}`
+            const searchEndpoints = [
+                `/api/authors/all?q=${encodeURIComponent(name)}`
             ];
             
             for (const endpoint of searchEndpoints) {
@@ -2802,13 +2796,10 @@ window.documentEdit = {
             
             try {
                                 
-                // Try multiple potential author search endpoints
+                // Search the administrator-only directory so unpublished
+                // author records remain available to the document picker.
                 const endpoints = [
-                    `/api/authors/search?q=${encodeURIComponent(query)}`,
-                    `/api/authors?search=${encodeURIComponent(query)}`,
-                    `/api/authors?q=${encodeURIComponent(query)}`,
-                    `/authors/search?q=${encodeURIComponent(query)}`,
-                    `/authors?search=${encodeURIComponent(query)}`
+                    `/api/authors/all?q=${encodeURIComponent(query)}`
                 ];
                 
                 let authors = [];
@@ -2845,7 +2836,7 @@ window.documentEdit = {
                 // If no authors found, try getting all authors and filtering
                 if (authors.length === 0) {
                                         try {
-                        const allAuthorsResponse = await fetch('/api/authors');
+                        const allAuthorsResponse = await fetch('/api/authors/all');
                         if (allAuthorsResponse.ok) {
                             const allAuthorsData = await allAuthorsResponse.json();
                                                         

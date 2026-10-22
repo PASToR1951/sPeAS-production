@@ -3,7 +3,7 @@ import { isReportRange, resolveReportWindow, REPORTING_TIMEZONE, type ReportRang
 
 export type SearchAnalyticsAction = "submit" | "suggestion_select";
 export type SearchAnalyticsSource = "home" | "results";
-export type SearchAnalyticsTermType = "work" | "news" | "author" | "topic" | "keyword" | "agenda" | "free_text";
+export type SearchAnalyticsTermType = "work" | "news" | "author" | "topic" | "keyword" | "free_text";
 
 export function normalizeSearchTerm(value: unknown): string {
   return String(value ?? "").normalize("NFKC").trim().replace(/[\s]+/gu, " ").toLocaleLowerCase();
@@ -20,6 +20,7 @@ export async function recordSearchActivity(input: { term: string; displayTerm?: 
   const source = input.source;
   let type = input.termType ?? "free_text";
   if (!(["submit", "suggestion_select"] as string[]).includes(action) || !(["home", "results"] as string[]).includes(source)) return false;
+  if (!(["work", "news", "author", "topic", "keyword", "free_text"] as string[]).includes(type)) type = "free_text";
   const connection = await pool.connect();
   try {
     const table = await connection.queryObject<{ exists: boolean }>("SELECT to_regclass('public.search_activity_rollups') IS NOT NULL AS exists");
@@ -33,7 +34,6 @@ export async function recordSearchActivity(input: { term: string; displayTerm?: 
           UNION ALL SELECT 'author'::TEXT FROM authors a JOIN document_authors da ON da.author_id = a.id JOIN documents d ON d.id = da.document_id WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND LOWER(BTRIM(a.full_name)) = $1 LIMIT 1
           UNION ALL SELECT 'topic'::TEXT FROM topics t JOIN document_topics dt ON dt.topic_id = t.id JOIN documents d ON d.id = dt.document_id WHERE t.status = 'approved' AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND t.normalized_name = $1 LIMIT 1
           UNION ALL SELECT 'keyword'::TEXT FROM keywords k JOIN document_keywords dk ON dk.keyword_id = k.id JOIN documents d ON d.id = dk.document_id WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND k.normalized_term = $1 LIMIT 1
-          UNION ALL SELECT 'agenda'::TEXT FROM research_agenda ra JOIN document_research_agenda dra ON dra.research_agenda_id = ra.id JOIN documents d ON d.id = dra.document_id WHERE ra.is_official = TRUE AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND ra.normalized_name = $1 LIMIT 1
           UNION ALL SELECT 'news'::TEXT FROM news_posts n WHERE n.status = 'published' AND n.deleted_at IS NULL AND n.published_at IS NOT NULL AND n.published_at <= CURRENT_TIMESTAMP AND LOWER(BTRIM(n.title)) = $1 LIMIT 1
         ) resolved LIMIT 1
       `, [normalized]);
@@ -85,7 +85,7 @@ export async function getSearchAnalyticsReport(query: SearchAnalyticsQuery) {
     const state = await connection.queryObject<{ enabled: boolean }>("SELECT COALESCE(search_analytics_reads_enabled, FALSE) AS enabled FROM operational_analytics_state WHERE state_id = TRUE").catch(() => ({ rows: [{ enabled: true }] }));
     if (state.rows[0]?.enabled === false) throw new Error("REPORTING_NOT_READY");
     const params: unknown[] = [];
-    const filters: string[] = [];
+    const filters: string[] = ["term_type <> 'agenda'"];
     if (query.search) { params.push(`%${normalizeSearchTerm(query.search)}%`); filters.push(`(normalized_term LIKE $${params.length} OR display_term ILIKE $${params.length})`); }
     if (query.termType) { params.push(query.termType); filters.push(`term_type = $${params.length}`); }
     if (query.action) { params.push(query.action); filters.push(`action = $${params.length}`); }
@@ -130,11 +130,11 @@ export async function getSearchAnalyticsReport(query: SearchAnalyticsQuery) {
     const summary = { searches: Number(summaryRow.searches ?? 0), submissions: Number(summaryRow.submissions ?? 0), selections: Number(summaryRow.selections ?? 0), zeroResults: Number(summaryRow.zero_results ?? 0) };
     const suppressedResult = await connection.queryObject<{ total: number | string }>(`SELECT COUNT(*)::BIGINT AS total FROM (${groupedBase} HAVING SUM(search_count) FILTER (WHERE bucket_start >= ${currentStart} AND bucket_start < ${currentEnd}) BETWEEN 1 AND 2) suppressed`, groupedParams);
     const suppressedActivity = Number(suppressedResult.rows[0]?.total ?? 0);
-    const seriesResult = await connection.queryObject<Record<string, unknown>>(`WITH reportable AS (${grouped}) SELECT DATE_TRUNC('${window.bucket === "hour" ? "hour" : "day"}', bucket_start AT TIME ZONE '${REPORTING_TIMEZONE}') AT TIME ZONE '${REPORTING_TIMEZONE}' AS bucket, SUM(search_count) FILTER (WHERE action = 'submit')::BIGINT AS submissions, SUM(search_count) FILTER (WHERE action = 'suggestion_select')::BIGINT AS selections FROM search_activity_rollups WHERE bucket_start >= ${currentStart} AND bucket_start < ${currentEnd} AND normalized_term IN (SELECT normalized_term FROM reportable) GROUP BY bucket ORDER BY bucket`, groupedParams);
+    const seriesResult = await connection.queryObject<Record<string, unknown>>(`WITH reportable AS (${grouped}) SELECT DATE_TRUNC('${window.bucket === "hour" ? "hour" : "day"}', bucket_start AT TIME ZONE '${REPORTING_TIMEZONE}') AT TIME ZONE '${REPORTING_TIMEZONE}' AS bucket, SUM(search_count) FILTER (WHERE action = 'submit')::BIGINT AS submissions, SUM(search_count) FILTER (WHERE action = 'suggestion_select')::BIGINT AS selections FROM search_activity_rollups WHERE bucket_start >= ${currentStart} AND bucket_start < ${currentEnd} AND term_type <> 'agenda' AND normalized_term IN (SELECT normalized_term FROM reportable) GROUP BY bucket ORDER BY bucket`, groupedParams);
     const selectedKey = query.selected || rows[0]?.key;
     const selected = selectedKey ? rows.find((row) => row.key === selectedKey) ?? null : null;
     await connection.queryArray("COMMIT");
-    return { meta: { dataVersion: 1, generatedAt: new Date().toISOString(), timezone: REPORTING_TIMEZONE, range: { key: window.key, label: window.label, bucket: window.bucket, startInclusive: window.startInclusive?.toISOString() ?? null, endExclusive: window.endExclusive.toISOString() }, coverage: { warning: total ? null : "Search analytics are available after explicit visitor searches are recorded." } }, summary: { ...summary, uniqueTerms: total, selectionRate: summary.submissions ? summary.selections / summary.submissions : 0, suppressedActivity }, series: seriesResult.rows.map((row) => ({ bucket: String(row.bucket), submissions: Number(row.submissions ?? 0), selections: Number(row.selections ?? 0) })), pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) }, rows, selected, filters: { termTypes: ["work", "news", "author", "topic", "keyword", "agenda", "free_text"], actions: ["submit", "suggestion_select"], sources: ["home", "results"] } };
+    return { meta: { dataVersion: 1, generatedAt: new Date().toISOString(), timezone: REPORTING_TIMEZONE, range: { key: window.key, label: window.label, bucket: window.bucket, startInclusive: window.startInclusive?.toISOString() ?? null, endExclusive: window.endExclusive.toISOString() }, coverage: { warning: total ? null : "Search analytics are available after explicit visitor searches are recorded." } }, summary: { ...summary, uniqueTerms: total, selectionRate: summary.submissions ? summary.selections / summary.submissions : 0, suppressedActivity }, series: seriesResult.rows.map((row) => ({ bucket: String(row.bucket), submissions: Number(row.submissions ?? 0), selections: Number(row.selections ?? 0) })), pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) }, rows, selected, filters: { termTypes: ["work", "news", "author", "topic", "keyword", "free_text"], actions: ["submit", "suggestion_select"], sources: ["home", "results"] } };
   } catch (error) {
     await connection.queryArray("ROLLBACK").catch(() => undefined);
     throw error;

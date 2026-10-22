@@ -1,3 +1,4 @@
+import { formatPublicationDate } from "../../lib/formatters/date";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -423,7 +424,7 @@ function SavedRecordCard({ item, readBusy, onMarkAsRead, onRemove }: { item: Acc
         <div className="peas-account-record__labels"><span>{formatCategory(item.category || item.document_type)}</span>{item.record_type === "compiled" ? <small>{item.child_count} {item.child_count === 1 ? "work" : "works"}</small> : null}</div>
         {href ? <a className="peas-account-record__title" href={href}>{item.title || "Untitled record"}<ArrowUpRight aria-hidden="true" /></a> : <h2 className="peas-account-record__title">This record is no longer available</h2>}
         {!unavailable ? <p>{item.author_names?.length ? item.author_names.join(", ") : item.record_type === "compiled" ? "Compiled collection" : "Author information unavailable"}</p> : <p>It may have been archived or removed from the public repository.</p>}
-        <div className="peas-account-record__meta"><span><CalendarDays aria-hidden="true" /> {item.publication_date ? formatDate(item.publication_date) : "Publication date unavailable"}</span><span><Clock3 aria-hidden="true" /> Saved {formatDate(item.saved_at)}</span>{item.read_at ? <span><BookCheck aria-hidden="true" /> Read {formatDate(item.read_at)}</span> : null}</div>
+        <div className="peas-account-record__meta"><span><CalendarDays aria-hidden="true" /> {item.publication_date ? formatPublicationDate(String(item.publication_date), item.publication_date_precision) : "Publication date unavailable"}</span><span><Clock3 aria-hidden="true" /> Saved {formatDate(item.saved_at)}</span>{item.read_at ? <span><BookCheck aria-hidden="true" /> Read {formatDate(item.read_at)}</span> : null}</div>
       </div>
       <div className="peas-account-record__actions">
         {!unavailable ? <Button variant={item.read_at ? "actionGreen" : "outline"} size="sm" disabled={readBusy || Boolean(item.read_at)} aria-pressed={Boolean(item.read_at)} onClick={onMarkAsRead}>{readBusy ? <PeasInlineSpinner label="Marking as read" /> : item.read_at ? <><Check aria-hidden="true" /> Read</> : <><BookCheck aria-hidden="true" /> Mark as read</>}</Button> : null}

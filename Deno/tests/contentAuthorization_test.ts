@@ -3,6 +3,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { client } from "../db/denopost_conn.ts";
 import {
+  countPublicAuthors,
   canViewCompilation,
   canViewDocument,
 } from "../services/contentAuthorizationService.ts";
@@ -42,4 +43,26 @@ Deno.test("public compilation visibility requires a live approved compilation", 
   assertEquals(await withQueryRows([{ review_status: "pending_review", uploaded_by: null }], () => canViewCompilation(undefined, 2)), false);
   assertEquals(await withQueryRows([], () => canViewCompilation(undefined, 2)), false);
   assertEquals(await canViewCompilation(undefined, 0), false);
+});
+
+Deno.test("public author totals use the public document visibility contract", async () => {
+  const original = client.queryObject;
+  let queryText = "";
+  (client as any).queryObject = async (query: string) => {
+    queryText = query;
+    return { rows: [{ count: "7" }], rowCount: 1 };
+  };
+  try {
+    assertEquals(await countPublicAuthors(), 7);
+    for (const requiredClause of [
+      "d.deleted_at IS NULL",
+      "d.review_status = 'approved'",
+      "d.is_public = TRUE",
+      "parent.review_status = 'approved'",
+    ]) {
+      assertEquals(queryText.includes(requiredClause), true);
+    }
+  } finally {
+    (client as any).queryObject = original;
+  }
 });

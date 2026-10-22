@@ -1,14 +1,15 @@
 import { ApiError, apiFetch } from "./http";
-import type { AffiliationReference, AuthorRecord, AuthorReferenceData, AuthorWorkRecord, DepartmentReference } from "./types";
-
-export interface Author {
-  id: number | string;
-  full_name: string;
-  affiliation?: string;
-  department?: string;
-  email?: string;
-  orcid_id?: string;
-}
+import type {
+  AdminAuthorRecord,
+  AdminAuthorsResponse,
+  AdminDocumentAuthorsResponse,
+  AffiliationReference,
+  AuthorRecord,
+  AuthorReferenceData,
+  AuthorWorkRecord,
+  DepartmentReference,
+  PublicAuthorWorksResponse,
+} from "./types";
 
 export interface AuthorPreview {
   id: string;
@@ -84,6 +85,16 @@ export interface UpdateAuthorPayload {
   profilePicUrl: string;
 }
 
+export interface DeleteAuthorResponse {
+  deleted: { id: string; fullName: string };
+}
+
+export interface MergeAuthorsResponse {
+  author: AdminAuthorRecord;
+  mergedSource: { id: string; fullName: string };
+  transferred: { documents: number; newsPosts: number };
+}
+
 export type AuthorUpdateField = "fullName" | "spudId" | "department" | "affiliation" | "email" | "biography" | "profilePicture";
 
 export async function fetchAuthors(filters: { search?: string; department?: string; affiliation?: string } = {}): Promise<AuthorRecord[]> {
@@ -93,10 +104,8 @@ export async function fetchAuthors(filters: { search?: string; department?: stri
   if (filters.affiliation?.trim()) params.set("affiliation", filters.affiliation.trim());
   const query = params.toString();
   const endpoint = query ? `/api/authors/all?${query}` : "/api/authors/all";
-  const payload = await apiFetch<Array<Record<string, unknown>> | { authors?: Array<Record<string, unknown>> }>(endpoint);
-  const rows = Array.isArray(payload) ? payload : payload.authors ?? [];
-
-  return rows.map(normalizeAuthor);
+  const payload = await apiFetch<AdminAuthorsResponse>(endpoint);
+  return payload.authors.map(normalizeAuthor);
 }
 
 export async function fetchAuthorReferenceData() {
@@ -128,18 +137,17 @@ export function deleteAffiliation(id: number) {
 }
 
 export function fetchDocumentAuthors(documentId: number) {
-  return apiFetch<Author[]>(`/api/document-authors/${documentId}`);
+  return apiFetch<AdminDocumentAuthorsResponse>(`/api/document-authors/${documentId}`);
 }
 
 export async function fetchAuthorWorks(authorId: string | number): Promise<AuthorWorkRecord[]> {
-  const payload = await apiFetch<Array<Record<string, unknown>> | { works?: Array<Record<string, unknown>> }>(`/api/authors/${authorId}/works`);
-  const rows = Array.isArray(payload) ? payload : payload.works ?? [];
-  return rows.map((raw) => ({
-    id: Number(raw.id ?? raw.document_id),
-    title: String(raw.title ?? raw.document_title ?? "Untitled document"),
-    category: stringifyNullable(raw.document_type ?? raw.category),
-    publicationDate: stringifyNullable(raw.publication_date ?? raw.year ?? raw.created_at),
-    raw,
+  const payload = await apiFetch<PublicAuthorWorksResponse>(`/api/authors/${encodeURIComponent(String(authorId))}/works`);
+  return payload.works.map((work) => ({
+    id: work.id,
+    title: work.title,
+    category: stringifyNullable(work.category),
+    publicationDate: stringifyNullable(work.year),
+    raw: { ...work },
   }));
 }
 
@@ -147,6 +155,19 @@ export function updateAuthor(authorId: string | number, payload: UpdateAuthorPay
   return apiFetch<Record<string, unknown>>(`/api/authors/${authorId}`, {
     method: "PUT",
     json: payload,
+  });
+}
+
+export function deleteAuthor(authorId: string | number) {
+  return apiFetch<DeleteAuthorResponse>(`/authors/${encodeURIComponent(String(authorId))}`, {
+    method: "DELETE",
+  });
+}
+
+export function mergeAuthors(sourceAuthorId: string | number, targetAuthorId: string | number) {
+  return apiFetch<MergeAuthorsResponse>(`/authors/${encodeURIComponent(String(sourceAuthorId))}/merge`, {
+    method: "POST",
+    json: { targetAuthorId: String(targetAuthorId) },
   });
 }
 
@@ -184,23 +205,24 @@ export function restoreAuthor(authorId: string | number) {
   });
 }
 
-function normalizeAuthor(raw: Record<string, unknown>): AuthorRecord {
+function normalizeAuthor(raw: AdminAuthorRecord): AuthorRecord {
+  const legacyProfileComplete = (raw as AdminAuthorRecord & { profile_complete?: boolean }).profile_complete;
   return {
-    id: (raw.id ?? raw.author_id ?? "") as string | number,
-    fullName: String(raw.full_name ?? raw.name ?? "Unnamed author"),
+    id: raw.id,
+    fullName: raw.full_name,
     spudId: stringifyNullable(raw.spud_id),
     affiliation: stringifyNullable(raw.affiliation),
     department: stringifyNullable(raw.department),
     email: stringifyNullable(raw.email),
-    orcidId: stringifyNullable(raw.orcid_id ?? raw.orcidId),
-    profilePicture: stringifyNullable(raw.profile_picture ?? raw.profilePicture ?? raw.profile_pic ?? raw.profilePicUrl),
-    biography: stringifyNullable(raw.biography ?? raw.bio),
-    createdSource: stringifyNullable(raw.created_source ?? raw.createdSource),
-    profileComplete: typeof raw.profile_complete === "boolean"
-      ? raw.profile_complete
-      : typeof raw.profileComplete === "boolean" ? raw.profileComplete : undefined,
-    worksCount: Number(raw.works_count ?? raw.worksCount ?? 0),
-    raw,
+    orcidId: null,
+    profilePicture: stringifyNullable(raw.profilePicUrl),
+    biography: stringifyNullable(raw.bio),
+    createdSource: stringifyNullable(raw.createdSource),
+    profileComplete:
+      raw.profileComplete ?? (typeof legacyProfileComplete === "boolean" ? legacyProfileComplete : undefined),
+    worksCount: raw.worksCount,
+    newsPostsCount: raw.newsPostsCount ?? 0,
+    raw: { ...raw },
   };
 }
 

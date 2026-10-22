@@ -1,0 +1,1432 @@
+{
+  "assessed_on": "2026-09-22",
+  "repository_commit": "c3879dde98f4ed135fecc0ad045b53c1fd4c88f2",
+  "source_folder": "/Users/ghost/Downloads/theses-dissertation-samples",
+  "method": "Read-only source inspection and SHA-256 comparison; no sample import",
+  "counts": {
+    "available_records": 30,
+    "in_scope_body_present": 29,
+    "complete_pdf_candidates": 8,
+    "assemble_pdf": 11,
+    "word_preparation": 10,
+    "ignored_frontmatter_only": 1,
+    "source_files": 103,
+    "PDF": 56,
+    "DOCX": 43,
+    "DOC": 4,
+    "pdf_pages": 2523
+  },
+  "source_integrity": {
+    "matched": 103,
+    "total": 103
+  },
+  "works": [
+    {
+      "id": "R045",
+      "author": "Geraldine C. Ablay",
+      "title": "Parental Support in Relation to Grade 6 Pupils’ Scholastic Ratings",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Ablay, Geraldine C.",
+      "main_path": "THESES/Ablay, Geraldine C./ABLAY-GERALDINE-C-THESIS.docx",
+      "notes": "Surname corrected from Albay to Ablay using the title and approval pages; author folder renamed to match.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F045",
+          "path": "THESES/Ablay, Geraldine C./ABLAY-GERALDINE-C-THESIS.docx",
+          "format": "DOCX",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 1080120,
+          "sha256": "978bce98e14d143618ff206309e29cd8e66f30498c2fb084bf70cecd2a570f74"
+        },
+        {
+          "id": "F046",
+          "path": "THESES/Ablay, Geraldine C./ABLAY-LABELING-FOR-CD.docx",
+          "format": "DOCX",
+          "component": "CD labels",
+          "pages": null,
+          "bytes": 27076,
+          "sha256": "8062fe0f1b714c7dc13c1d94074af17c5d4761a740249b3a8bd5c4945b578026"
+        },
+        {
+          "id": "F047",
+          "path": "THESES/Ablay, Geraldine C./ABLAY-TABLE-OF-CONTENTS.docx",
+          "format": "DOCX",
+          "component": "Front matter",
+          "pages": null,
+          "bytes": 59308,
+          "sha256": "06c809e1d875973bd5ccb68a63d782b5b509aeb2ec3840f94f78bf4458d1605e"
+        },
+        {
+          "id": "F048",
+          "path": "THESES/Ablay, Geraldine C./ABLAY-THESIS-COVER.docx",
+          "format": "DOCX",
+          "component": "Hardbound cover",
+          "pages": null,
+          "bytes": 37238,
+          "sha256": "cccaf0d3532ab6fc0b86927b5289f05ed6d48869a0dd60207cde607709966992"
+        }
+      ]
+    },
+    {
+      "id": "R049",
+      "author": "Tessie Bello Calumpang",
+      "title": "The Impact of Religious Education on Students’ Lives",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Religious Education (MARE)",
+      "major": "",
+      "folder": "THESES/Calumpang, Tessie Bello",
+      "main_path": "THESES/Calumpang, Tessie Bello/THE IMPACT OF RELIGIOUS EDUCATION ON STUDENTS’ LIVES.docx",
+      "notes": "",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F049",
+          "path": "THESES/Calumpang, Tessie Bello/THE IMPACT OF RELIGIOUS EDUCATION ON STUDENTS’ LIVES.docx",
+          "format": "DOCX",
+          "component": "Manuscript",
+          "pages": null,
+          "bytes": 252267,
+          "sha256": "0f21b96c618d74a4655802a2616a959f29112ac8b99bdcc540408b6fa385d089"
+        }
+      ]
+    },
+    {
+      "id": "R050",
+      "author": "Jane A. Chan",
+      "title": "Living Through COVID-19: Exploring Filipino Nurses’ Transition",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Nursing (MAN)",
+      "major": "Nursing Administration",
+      "folder": "THESES/Chan, Jane A.",
+      "main_path": "THESES/Chan, Jane A./Chan-FINAL.pdf",
+      "notes": "Metadata title page is PDF page 2.",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F050",
+          "path": "THESES/Chan, Jane A./Chan-FINAL.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 122,
+          "bytes": 1621705,
+          "sha256": "882a7b770fd8d67529741bcb041824b7dd91da3c6b665cb38bd573ec76d031a8"
+        }
+      ]
+    },
+    {
+      "id": "R051",
+      "author": "Ma. Divina V. Cornelio",
+      "title": "New Normal, a Dismal: The Lived Experiences of Kindegarten Teachers in the New Normal Education",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "January",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Early Childhood Education",
+      "folder": "THESES/Cornelio, Divina V.",
+      "main_path": "THESES/Cornelio, Divina V./ENTIRE-RESEARCH-OUTPUT-CORNELIO (1).pdf",
+      "notes": "Title and date follow the cover, including the spelling “Kindegarten”. The approval sheet uses “Bigger Than Giants: The Lived Experience of Kindergarten Teachers in the New Normal Education”; the final title requires confirmation.",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F051",
+          "path": "THESES/Cornelio, Divina V./117 Super Final.pdf",
+          "format": "PDF",
+          "component": "Appendices",
+          "pages": 12,
+          "bytes": 697310,
+          "sha256": "4a4327e24217cc478f00b44ad9e3a191b2728547c7e62524c8163d67690746c7"
+        },
+        {
+          "id": "F052",
+          "path": "THESES/Cornelio, Divina V./CORNELIO-PRELIMINARY-PAGES.pdf",
+          "format": "PDF",
+          "component": "Front matter",
+          "pages": 10,
+          "bytes": 227656,
+          "sha256": "c12588faae5d442485dcd0ae5b8a064f82b585f2350189d04d7f86d614821c6b"
+        },
+        {
+          "id": "F053",
+          "path": "THESES/Cornelio, Divina V./ENTIRE-RESEARCH-OUTPUT-CORNELIO (1).pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 113,
+          "bytes": 1521036,
+          "sha256": "424acfa0b62f23f9d35cfeac5d430934329c8d9941cef819119c1279141ec53b"
+        }
+      ]
+    },
+    {
+      "id": "R001",
+      "author": "Irishlyn E. De Jesus",
+      "title": "Teachers’ Sense of Self-Efficacy in Two School Divisions",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/De Jesus, Irishlyn E.",
+      "main_path": "DISSERTATION/De Jesus, Irishlyn E./Teachers-Sense-of-Self-Efficacy-in-Two-School-Divisions-Fina.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F001",
+          "path": "DISSERTATION/De Jesus, Irishlyn E./Teachers-Sense-of-Self-Efficacy-in-Two-School-Divisions-Fina.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 177,
+          "bytes": 1652299,
+          "sha256": "f33755a2e64982172ac31a6a19bb056c6baf391435a1f057439f62edac654825"
+        }
+      ]
+    },
+    {
+      "id": "R054",
+      "author": "Jazzlyn O. Dia-una",
+      "title": "Parental Involvement Practices",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Early Childhood Education",
+      "folder": "THESES/Dia-una, Jazzlyn O.",
+      "main_path": "THESES/Dia-una, Jazzlyn O./The Body of the Research- FINAL DR. VELEZ.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F054",
+          "path": "THESES/Dia-una, Jazzlyn O./ABSTRACT.pdf",
+          "format": "PDF",
+          "component": "Abstract",
+          "pages": 1,
+          "bytes": 101547,
+          "sha256": "1d6d8977b0192c4dbabfb16547c79c3534d6f2cba21472954439a6cafdf968bf"
+        },
+        {
+          "id": "F055",
+          "path": "THESES/Dia-una, Jazzlyn O./ACKNOWLEDGMENT.pdf",
+          "format": "PDF",
+          "component": "Acknowledgment",
+          "pages": 1,
+          "bytes": 92999,
+          "sha256": "fd9a248cf1bbb0e8d9e70e2a00b3408397507e010f5e7511a3a0221c5508c2e5"
+        },
+        {
+          "id": "F056",
+          "path": "THESES/Dia-una, Jazzlyn O./APPROVAL SHEET.pdf",
+          "format": "PDF",
+          "component": "Approval sheet",
+          "pages": 1,
+          "bytes": 90611,
+          "sha256": "c932f0e2638dbb84061bf8f65e1e0231c47611910f64c9089d7db11847eb3660"
+        },
+        {
+          "id": "F057",
+          "path": "THESES/Dia-una, Jazzlyn O./DEDICATION.pdf",
+          "format": "PDF",
+          "component": "Dedication",
+          "pages": 1,
+          "bytes": 84268,
+          "sha256": "9c1b7b63bab3b18d3741f882b479a1374c6759cbacba2f9f0a2f84d1a98ae1fb"
+        },
+        {
+          "id": "F058",
+          "path": "THESES/Dia-una, Jazzlyn O./TITLE.pdf",
+          "format": "PDF",
+          "component": "Title page",
+          "pages": 1,
+          "bytes": 54949,
+          "sha256": "18a1c3b1ca1ec2019da1e490ffb82047ace6f12fc33ae911c590b0d328ba784e"
+        },
+        {
+          "id": "F059",
+          "path": "THESES/Dia-una, Jazzlyn O./Table of Contents- THE FINAL.pdf",
+          "format": "PDF",
+          "component": "Table of contents",
+          "pages": 5,
+          "bytes": 167582,
+          "sha256": "1d858222adf35fde9a05e3e4906530b7e2734ff86e8d461b4374e359bbcc6504"
+        },
+        {
+          "id": "F060",
+          "path": "THESES/Dia-una, Jazzlyn O./The Body of the Research- FINAL DR. VELEZ.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 89,
+          "bytes": 1050190,
+          "sha256": "0df046aba44022af0f92e866015d6aae8ea786cbc7147f5c4a0271c7bdcb210d"
+        }
+      ]
+    },
+    {
+      "id": "R061",
+      "author": "Kenneth Paul C. Duran",
+      "title": "Online Secondary Mathematics Learning and Teaching as Perceived by Students and Teachers of St. Paul University Dumaguete",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Duran, Kenneth Paul C.",
+      "main_path": "THESES/Duran, Kenneth Paul C./DURAN-Hardbound-1.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F061",
+          "path": "THESES/Duran, Kenneth Paul C./DURAN-Hardbound-1.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 95,
+          "bytes": 1973569,
+          "sha256": "df46370598c2258b6a8f0bf4777c8fcf729cb46a39bb1a82aae3cd3ebd631383"
+        },
+        {
+          "id": "F062",
+          "path": "THESES/Duran, Kenneth Paul C./DURAN-Hardbound-2.pdf",
+          "format": "PDF",
+          "component": "Activity plan",
+          "pages": 3,
+          "bytes": 492843,
+          "sha256": "ae7c6e37f9670cf619dc98d98f742f460164a2f1e63be2242898db7fc781d1a9"
+        },
+        {
+          "id": "F063",
+          "path": "THESES/Duran, Kenneth Paul C./DURAN-Hardbound-3.pdf",
+          "format": "PDF",
+          "component": "Appendices and instruments",
+          "pages": 15,
+          "bytes": 991319,
+          "sha256": "b535e2ad1ae80ab22e9f7dcb0070fbb8d198a8a3b1272e3e93c0753ed3d970e9"
+        },
+        {
+          "id": "F064",
+          "path": "THESES/Duran, Kenneth Paul C./DURAN-Preliminary Pages-Final.pdf",
+          "format": "PDF",
+          "component": "Front matter",
+          "pages": 12,
+          "bytes": 535545,
+          "sha256": "5878f27bf5ffe6ab568eb130989f1181e01d704ae4b4aabf0e3f26bd862e813e"
+        }
+      ]
+    },
+    {
+      "id": "R002",
+      "author": "Regina Clarina E. Empeso",
+      "title": "Public School Administrators’ Competency Level in Monitoring and Evaluation of Selected Programs",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/Empeso, Regina Clarina E",
+      "main_path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/Chapter 1 Final.docx",
+      "notes": "Chapters 1, 2 and 3 are separate files. The main-file link opens Chapter 1; see Files for the remaining parts.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F002",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/Chapter 1 Final.docx",
+          "format": "DOCX",
+          "component": "Chapter 1",
+          "pages": null,
+          "bytes": 155886,
+          "sha256": "0a1b773c9d9679dfa7e2717118139361cb1b7d4fde12ad311897c0b88143c260"
+        },
+        {
+          "id": "F003",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/Chapter 2 Final.docx",
+          "format": "DOCX",
+          "component": "Chapter 2",
+          "pages": null,
+          "bytes": 220294,
+          "sha256": "2aa5b9c35dcd0691fe42d6950789b5572d6a33e6e685a11c457df70b3cf5551c"
+        },
+        {
+          "id": "F004",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/Chapter 3 Final.docx",
+          "format": "DOCX",
+          "component": "Chapter 3 and training design",
+          "pages": null,
+          "bytes": 89417,
+          "sha256": "0baf11238ca13f7042a524d3802eef0e834de5167932067b592a94505edabdb8"
+        },
+        {
+          "id": "F005",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/EXECUTIVE SUMMARY.docx",
+          "format": "DOCX",
+          "component": "Executive summary",
+          "pages": null,
+          "bytes": 58769,
+          "sha256": "bd52a47578635bdcfb45d84410233d6a21868d8b24249e33c553f61409b64b7a"
+        },
+        {
+          "id": "F006",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/FINAL TABLE OF CONTENTS .docx",
+          "format": "DOCX",
+          "component": "Front matter and contents",
+          "pages": null,
+          "bytes": 88863,
+          "sha256": "601407b973ca60becdc9bd61952b33090eddf83af4d2fbde9c013e1c7107d2fc"
+        },
+        {
+          "id": "F007",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/Final annexes.docx",
+          "format": "DOCX",
+          "component": "Appendices",
+          "pages": null,
+          "bytes": 681840,
+          "sha256": "894143117728ea8541802b906ce4ae6df746ebe3a0e22d314402aabfba74451e"
+        },
+        {
+          "id": "F008",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/Final Manuscript Contents/MRS. EMPESO - Cover.docx",
+          "format": "DOCX",
+          "component": "Title page",
+          "pages": null,
+          "bytes": 15060,
+          "sha256": "e1ff9575ccd15a08042196db2ef4741503fe9442cf7dbfb7f25ff7cfa0322340"
+        },
+        {
+          "id": "F009",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/LABELING FOR CD.docx",
+          "format": "DOCX",
+          "component": "CD labels",
+          "pages": null,
+          "bytes": 21828,
+          "sha256": "6ee2baa2c2c7c0e8e936eb0f5eda1e83fdf368a30371616e7b0b48b2a33f8109"
+        },
+        {
+          "id": "F010",
+          "path": "DISSERTATION/Empeso, Regina Clarina E/book cover.docx",
+          "format": "DOCX",
+          "component": "Hardbound cover",
+          "pages": null,
+          "bytes": 26569,
+          "sha256": "09445f024b7b06a5e9664fb49868637b5f4f75f7f1d20c11494a746dbb767d8e"
+        }
+      ]
+    },
+    {
+      "id": "R011",
+      "author": "Floregene L. Epan",
+      "title": "Factors That Influence Senior High School Students Preferred Tracks and Strands",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/Epan, Floregene L.",
+      "main_path": "DISSERTATION/Epan, Floregene L./EPAN-Chapter-1-23-Final-Edited.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F011",
+          "path": "DISSERTATION/Epan, Floregene L./ACTION PLan -CAREER GUIDANCE ACTIVITIES.pdf",
+          "format": "PDF",
+          "component": "Career guidance action plan",
+          "pages": 5,
+          "bytes": 98949,
+          "sha256": "a8757dd3808013e06edbbe9ca4c55daddc2b2df9d73d4100d97006365842201b"
+        },
+        {
+          "id": "F012",
+          "path": "DISSERTATION/Epan, Floregene L./CSDD-O-2094 ANNEX A Grade 11 CAREER GUIDANCE LEARNING ACTIVITY PLAN.pdf",
+          "format": "PDF",
+          "component": "Grade 11 career guidance plan",
+          "pages": 5,
+          "bytes": 622357,
+          "sha256": "d865d1c6a84afd33b9fa8e6ae7a1846c8b21b239508868542b8a55eaee90ad77"
+        },
+        {
+          "id": "F013",
+          "path": "DISSERTATION/Epan, Floregene L./CSDD-O-2094 ANNEX A Grade 12 CAREER GUIDANCE LEARNING ACTIVITY PLAN.pdf",
+          "format": "PDF",
+          "component": "Grade 12 career guidance plan",
+          "pages": 5,
+          "bytes": 635779,
+          "sha256": "81c625c478ac3f02675d4c08c8e500708df674980bbc8e793ece090ce933e960"
+        },
+        {
+          "id": "F014",
+          "path": "DISSERTATION/Epan, Floregene L./EPAN-Chapter-1-23-Final-Edited.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 134,
+          "bytes": 1982691,
+          "sha256": "80820d24648c6461e65e3ef5513e4243353083acac2a0aac547abdaf8b723b1f"
+        },
+        {
+          "id": "F015",
+          "path": "DISSERTATION/Epan, Floregene L./PART 1 Acknowledgment- EDD.pdf",
+          "format": "PDF",
+          "component": "Front matter and executive summary",
+          "pages": 25,
+          "bytes": 415904,
+          "sha256": "da0811950ab9dbd4a42b76a007e9ef436b1de5e8b847f50a11a5e084ce2e4678"
+        },
+        {
+          "id": "F016",
+          "path": "DISSERTATION/Epan, Floregene L./Work-Immersion-CG.pdf",
+          "format": "PDF",
+          "component": "Work immersion curriculum guide",
+          "pages": 4,
+          "bytes": 274758,
+          "sha256": "0b2fe57f4c6f39da571611f5dfead0b93196a84d5d9ea21e3f283e9fb0760c82"
+        }
+      ]
+    },
+    {
+      "id": "R065",
+      "author": "Sr. Maria Cheryl M. Escobar, Carm. O.L.",
+      "title": "Students’ Perceived Level with Emphasis on English Oral Proficiency",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "English Language Teaching",
+      "folder": "THESES/Escobar, Sr. Maria Cheryl M., Carm O.",
+      "main_path": "THESES/Escobar, Sr. Maria Cheryl M., Carm O./Template 1 for printing - Copy.pdf",
+      "notes": "Title, author and program verified against the approval sheet. Month and year retained from original DataSheet.xlsx, Sheet3!F12; a dated title page was not supplied.",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F065",
+          "path": "THESES/Escobar, Sr. Maria Cheryl M., Carm O./Approval Sheet -SR. CHERYL ESCOBAR.pdf",
+          "format": "PDF",
+          "component": "Approval sheet and preliminaries",
+          "pages": 10,
+          "bytes": 510386,
+          "sha256": "af2daf1c298d0c6e122910161c6d38b500c4dcefa6503958810e3b326ea894f2"
+        },
+        {
+          "id": "F066",
+          "path": "THESES/Escobar, Sr. Maria Cheryl M., Carm O./Template 1 for printing - Copy.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 106,
+          "bytes": 2167670,
+          "sha256": "5238b6363cd5c01ddc2be7e4b620d1c25540348449950dbaa383a8e0381e3dc2"
+        }
+      ]
+    },
+    {
+      "id": "R067",
+      "author": "Nica Jean I. Gido",
+      "title": "Modular Distance Learning, Social and Emotional Well-being of Junior High School Students",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Gido, Nica Jean I.",
+      "main_path": "THESES/Gido, Nica Jean I./NICAGIDO_CHAPTER1-3.docxTBC-3.docx",
+      "notes": "",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F067",
+          "path": "THESES/Gido, Nica Jean I./MS.-GIDO-Cover1.docx",
+          "format": "DOCX",
+          "component": "Title page",
+          "pages": null,
+          "bytes": 16698,
+          "sha256": "c94e572772602ac305138513cfb5f824e286717a910338be215f3e8d231f68b2"
+        },
+        {
+          "id": "F068",
+          "path": "THESES/Gido, Nica Jean I./NICA-GIDO-TITLE-PAGE-TABLE-OF-CONTENTS-2.docx",
+          "format": "DOCX",
+          "component": "Preliminaries, contents and abstract",
+          "pages": null,
+          "bytes": 61299,
+          "sha256": "9fb4249c821d322c0ee81ee1c7c05157f32aafc8864d781dc8e50cdbd5919d83"
+        },
+        {
+          "id": "F069",
+          "path": "THESES/Gido, Nica Jean I./NICAGIDO_CHAPTER1-3.docxTBC-3.docx",
+          "format": "DOCX",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 317452,
+          "sha256": "877688def528ec0ab74b8795dc0162457cca9c3c447db97f5fe849508084d6dc"
+        }
+      ]
+    },
+    {
+      "id": "R070",
+      "author": "Leo-Nille N. Iñigo",
+      "title": "Retirement Preparedness Model of Government Employees",
+      "type": "Thesis",
+      "year": 2020,
+      "month": "December",
+      "program": "Master in Business Administration (MBA)",
+      "major": "",
+      "folder": "THESES/Inigo, Leo-Nille N.",
+      "main_path": "THESES/Inigo, Leo-Nille N./Retirement Preparedness Model of Government Employees - part 2.docx",
+      "notes": "Folder spelling Inigo retained; catalog preserves Iñigo from the manuscript.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F070",
+          "path": "THESES/Inigo, Leo-Nille N./Retirement Preparedness Model of Government Employees - part 2.docx",
+          "format": "DOCX",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 1544387,
+          "sha256": "7142ab5950fbe4555ca399812ab21db205062cba3dcd13730aa6e857c474ff23"
+        },
+        {
+          "id": "F071",
+          "path": "THESES/Inigo, Leo-Nille N./Retirement Preparedness Model of Government Employees - part I.docx",
+          "format": "DOCX",
+          "component": "Front matter",
+          "pages": null,
+          "bytes": 39482,
+          "sha256": "0e6929955f3b90ff586f34d48d1313c2f080ac6ab23409f27bec747a4daecc7a"
+        }
+      ]
+    },
+    {
+      "id": "R072",
+      "author": "Zecariah Chito A. Jumawan",
+      "title": "Social Media Platform and Influence: Basis for St. Paul University’s Online Marketing Strategies",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master in Business Administration (MBA)",
+      "major": "Hospitality and Tourism Management",
+      "folder": "THESES/Jumawan, Zecariah Chito A.",
+      "main_path": "THESES/Jumawan, Zecariah Chito A./3 Jumawan,ZCA MBA_HTM Final 5-25.doc",
+      "notes": "Source chapters and abstract are legacy .doc files; originals retained.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F072",
+          "path": "THESES/Jumawan, Zecariah Chito A./1 Title Page.docx",
+          "format": "DOCX",
+          "component": "Title page and cover",
+          "pages": null,
+          "bytes": 16345,
+          "sha256": "9f47b004628b2660b616891f4cb609f41f1dd96e89927e30ad79813fd8332945"
+        },
+        {
+          "id": "F073",
+          "path": "THESES/Jumawan, Zecariah Chito A./2 Abstract and Table of Contents.doc",
+          "format": "DOC",
+          "component": "Abstract and table of contents",
+          "pages": null,
+          "bytes": 80896,
+          "sha256": "e15c79d7ca58016008113f960522df4be835626c2d874cab7c332943163c6973"
+        },
+        {
+          "id": "F074",
+          "path": "THESES/Jumawan, Zecariah Chito A./3 Jumawan,ZCA MBA_HTM Final 5-25.doc",
+          "format": "DOC",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 2682880,
+          "sha256": "b19fee94122352a1d00aa3137141abe4dda297b4cdbf8f62d665170ed35475b1"
+        }
+      ]
+    },
+    {
+      "id": "R075",
+      "author": "Sami Gregg T. Managbanag",
+      "title": "Code-Switching: Analyzing Student-Teacher Interaction in a Paulinian Blended Learning Context",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "English Language Teaching",
+      "folder": "THESES/Managbanag, Sami Gregg T.",
+      "main_path": "THESES/Managbanag, Sami Gregg T./final research  CS in ST interaction .pdf",
+      "notes": "Both PDF and Word versions retained as separate files belonging to one research work; exact content equivalence is not assumed.",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F075",
+          "path": "THESES/Managbanag, Sami Gregg T./final research  CS in ST interaction .docx",
+          "format": "DOCX",
+          "component": "Manuscript in Word",
+          "pages": null,
+          "bytes": 3262857,
+          "sha256": "890e8b829b6954c829c98ba1ae91c4064dce3670c41c544add52ed2ff52b6588"
+        },
+        {
+          "id": "F076",
+          "path": "THESES/Managbanag, Sami Gregg T./final research  CS in ST interaction .pdf",
+          "format": "PDF",
+          "component": "Manuscript in PDF",
+          "pages": 216,
+          "bytes": 2334738,
+          "sha256": "55d7a21a6a743ddbe40ee9d1ef91b0a6226f4219e891f49c1f689ae1dec72973"
+        }
+      ]
+    },
+    {
+      "id": "R077",
+      "author": "Anne Janice O. Manga",
+      "title": "Awareness, Attitude and Practices on Testicular and Breast Self-Examination Among Tertiary School Students",
+      "type": "Thesis",
+      "year": 2020,
+      "month": "December",
+      "program": "Master of Arts in Nursing (MAN)",
+      "major": "Nursing Administration",
+      "folder": "THESES/Manga, Anne Janice O.",
+      "main_path": "THESES/Manga, Anne Janice O./2. FINAL-DEFENSE-REVISION-corrected-42521.docx",
+      "notes": "Title and date corrected from the cover. Major retained from original DataSheet.xlsx, Sheet3!E16; it is not specified on the cover.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F077",
+          "path": "THESES/Manga, Anne Janice O./1. COVERPAGE-final-research-may2021.docx",
+          "format": "DOCX",
+          "component": "Front matter",
+          "pages": null,
+          "bytes": 54451,
+          "sha256": "aefa5e71d3ac2f779537ed55f193330d885ae2279d2d35b7623b90714a9383f5"
+        },
+        {
+          "id": "F078",
+          "path": "THESES/Manga, Anne Janice O./2. FINAL-DEFENSE-REVISION-corrected-42521.docx",
+          "format": "DOCX",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 181775,
+          "sha256": "d6ab90966cac69db621e22db0f2f32fa6bc9e51f9e5956eb101aa6f110818288"
+        },
+        {
+          "id": "F079",
+          "path": "THESES/Manga, Anne Janice O./3. orca_share_media1619950594818_6794565259649037556.pdf",
+          "format": "PDF",
+          "component": "Breast self-examination brochure",
+          "pages": 2,
+          "bytes": 379551,
+          "sha256": "09089bec5c266a90766b3d051ca74ca53fd695e384ec1f40e0ca42d43261ef1b"
+        },
+        {
+          "id": "F080",
+          "path": "THESES/Manga, Anne Janice O./4. orca_share_media1619950595995_6794565264585648501.pdf",
+          "format": "PDF",
+          "component": "Testicular self-examination brochure",
+          "pages": 2,
+          "bytes": 1154816,
+          "sha256": "15b363ea362c525c637ccc321aead437fe79119eed847e56a903b3770682054d"
+        }
+      ]
+    },
+    {
+      "id": "R081",
+      "author": "Maria Christi Ann S. Masacayan",
+      "title": "Academic Self-Efficacy and Efficacy for Self-Regulated Learning Among Students with Hearing Impairment",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Special Education",
+      "folder": "THESES/Masacayan, Maria Christi Ann S.",
+      "main_path": "THESES/Masacayan, Maria Christi Ann S./MASACAYAN.docx",
+      "notes": "Author spelling retained from the original catalog and body CV. The cover uses “Mari Christie Ann S. Masacayan”; the preferred author spelling requires confirmation.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F081",
+          "path": "THESES/Masacayan, Maria Christi Ann S./MASACAYAN.docx",
+          "format": "DOCX",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 4691449,
+          "sha256": "12207734c1e488458c1e65bd8fa19b48cabc42353afc996d5bfed57832ee9418"
+        },
+        {
+          "id": "F082",
+          "path": "THESES/Masacayan, Maria Christi Ann S./Masacayan cover page.docx",
+          "format": "DOCX",
+          "component": "Front matter",
+          "pages": null,
+          "bytes": 44044,
+          "sha256": "1cf4f2c786611d599f6896ca74711c28b632be7446a9fbddf0ad65124e11791a"
+        }
+      ]
+    },
+    {
+      "id": "R017",
+      "author": "Mildred R. Monroy",
+      "title": "Master Teachers’ Role Performance in the New Normal",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/Monroy, Mildred R",
+      "main_path": "DISSERTATION/Monroy, Mildred R/Master Teachers_ Role Performance in the New Normal - Mildred.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F017",
+          "path": "DISSERTATION/Monroy, Mildred R/Master Teachers_ Role Performance in the New Normal - Mildred.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 138,
+          "bytes": 3130521,
+          "sha256": "fab3485cf22cf76aa9cfd477bb8c55770b06c0d7c020196f26d0e44cb7115eaf"
+        }
+      ]
+    },
+    {
+      "id": "R083",
+      "author": "Erven K. Noay",
+      "title": "PaulSync Effectiveness as an Alternative of Traditional Learning",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Curriculum and Instruction",
+      "folder": "THESES/Noay, Erven K",
+      "main_path": "THESES/Noay, Erven K/2 Introduction.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F083",
+          "path": "THESES/Noay, Erven K/1 Front Page.pdf",
+          "format": "PDF",
+          "component": "Front matter",
+          "pages": 9,
+          "bytes": 721176,
+          "sha256": "56c2df2e33f751e090e9b939026fbff533f613d581dedce939bbfc6474413b76"
+        },
+        {
+          "id": "F084",
+          "path": "THESES/Noay, Erven K/2 Introduction.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 91,
+          "bytes": 3576214,
+          "sha256": "9aa0eebcf667e8da815e28f7ae8a52eea8f9d6b1e78548462f282b696933aced"
+        },
+        {
+          "id": "F085",
+          "path": "THESES/Noay, Erven K/3 Action Plan.pdf",
+          "format": "PDF",
+          "component": "Action plan",
+          "pages": 4,
+          "bytes": 583986,
+          "sha256": "9074ac315711092f9935a23c165445a19dbb33740cca76f16e84ec6ac4212bd6"
+        },
+        {
+          "id": "F086",
+          "path": "THESES/Noay, Erven K/4 Curriculum Vitae.pdf",
+          "format": "PDF",
+          "component": "Curriculum vitae",
+          "pages": 3,
+          "bytes": 675174,
+          "sha256": "cb0090c620d77fce43a1111ff2638a65574a2ea2c067b20fa6f3d3411e856048"
+        },
+        {
+          "id": "F087",
+          "path": "THESES/Noay, Erven K/LABELING FOR CD.pdf",
+          "format": "PDF",
+          "component": "CD labels",
+          "pages": 1,
+          "bytes": 348482,
+          "sha256": "3c122a7cea053c4e2859378528ccd36bb115751f27e2d387e066992bf8c7eca5"
+        }
+      ]
+    },
+    {
+      "id": "R088",
+      "author": "Myla Gretchen A. Olivar",
+      "title": "Level of Financial Literacy of the Wives of the Overseas Filipino Workers (OFWs)",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master in Business Administration (MBA)",
+      "major": "",
+      "folder": "THESES/Olivar, Myla Gretchen A.",
+      "main_path": "THESES/Olivar, Myla Gretchen A./MYLA GRETCHEN THESIS 19-05-2022R.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F088",
+          "path": "THESES/Olivar, Myla Gretchen A./MYLA GRETCHEN THESIS 19-05-2022R.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 85,
+          "bytes": 1561182,
+          "sha256": "a31d3e66290883361bcf8c553dc3f6713c0f3b64007900671409490c708b9148"
+        }
+      ]
+    },
+    {
+      "id": "R089",
+      "author": "Jordan P. Ramirez",
+      "title": "Challenges Affecting Senior High School Students’ Preferred Tracks and Strands",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "December",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Ramirez, Jordan P.",
+      "main_path": "THESES/Ramirez, Jordan P./Chapter 1 to 3.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F089",
+          "path": "THESES/Ramirez, Jordan P./Approval Sheet to Table of Contents.pdf",
+          "format": "PDF",
+          "component": "Approval sheet and preliminaries",
+          "pages": 10,
+          "bytes": 171942,
+          "sha256": "9aeeae8550fc82633ed5b40a38a543852eb3ff2ae514d17147116acb034eb227"
+        },
+        {
+          "id": "F090",
+          "path": "THESES/Ramirez, Jordan P./Chapter 1 to 3.pdf",
+          "format": "PDF",
+          "component": "Chapters 1–3",
+          "pages": 85,
+          "bytes": 945611,
+          "sha256": "ec35a711b07523b9584360211ba65a3c92c80bb37587e3a997e97e8d2cb50136"
+        },
+        {
+          "id": "F091",
+          "path": "THESES/Ramirez, Jordan P./Title Page.pdf",
+          "format": "PDF",
+          "component": "Title page",
+          "pages": 1,
+          "bytes": 44700,
+          "sha256": "5d2984750571e1ab3d61f061b5e7b94fc5ba7fb99424ae87d0a7ae044d16745f"
+        }
+      ]
+    },
+    {
+      "id": "R092",
+      "author": "Joesan M. Ramos",
+      "title": "Work Performance and Job Satisfaction Perceived by Teachers of DepEd Dumaguete City",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Ramos, Joesan M.",
+      "main_path": "THESES/Ramos, Joesan M./THESIS FOR CD JOESAN RAMOS.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F092",
+          "path": "THESES/Ramos, Joesan M./THESIS FOR CD JOESAN RAMOS.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 79,
+          "bytes": 1651583,
+          "sha256": "fa9d16f72974aa4b864361404262bdd66a493e0047e5c5f8fe239008fac4ee71"
+        }
+      ]
+    },
+    {
+      "id": "R018",
+      "author": "Menchu T. Santos",
+      "title": "Alternative Learning System (ALS) Implementation in the Province of Negros Oriental",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/Santos, Menchu T.",
+      "main_path": "DISSERTATION/Santos, Menchu T./Chapter 1.docx",
+      "notes": "Chapter 1 and Chapters 2–3 are separate files. The main-file link opens Chapter 1; see Files for the remaining parts.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F018",
+          "path": "DISSERTATION/Santos, Menchu T./1.-Preliminaries.docx",
+          "format": "DOCX",
+          "component": "Preliminaries and abstract",
+          "pages": null,
+          "bytes": 24756,
+          "sha256": "ed8b03c80f251f28c2731d18ee1d818b63f984d759404d011b6cb154b663d0b6"
+        },
+        {
+          "id": "F019",
+          "path": "DISSERTATION/Santos, Menchu T./3.-Table-of-Contents.docx",
+          "format": "DOCX",
+          "component": "Table of contents",
+          "pages": null,
+          "bytes": 26736,
+          "sha256": "8a365ed103d15c182be543e4a7b4f482643d0e0da0a57e21328d300163118238"
+        },
+        {
+          "id": "F020",
+          "path": "DISSERTATION/Santos, Menchu T./Action Plan.docx",
+          "format": "DOCX",
+          "component": "Action plan",
+          "pages": null,
+          "bytes": 27643,
+          "sha256": "123710122226c15d71754b1588a76441d05124c230f25e042bcdf4531b342e39"
+        },
+        {
+          "id": "F021",
+          "path": "DISSERTATION/Santos, Menchu T./Approval Sheet.docx",
+          "format": "DOCX",
+          "component": "Approval sheet",
+          "pages": null,
+          "bytes": 31783,
+          "sha256": "a9d29f3d6db7c35721f2085a183d87ac0c1ba34d6a04a75aa8faec02ab9e03a4"
+        },
+        {
+          "id": "F022",
+          "path": "DISSERTATION/Santos, Menchu T./CURRICULUM VITAE.docx",
+          "format": "DOCX",
+          "component": "Curriculum vitae",
+          "pages": null,
+          "bytes": 60386,
+          "sha256": "10b6366cf0aa52883615a409609e6e47a67b075cdce54906cc7a487e6a8f2d34"
+        },
+        {
+          "id": "F023",
+          "path": "DISSERTATION/Santos, Menchu T./Chapter 1.docx",
+          "format": "DOCX",
+          "component": "Chapter 1",
+          "pages": null,
+          "bytes": 90826,
+          "sha256": "63704c032ed67a3dab7b7bee148f51cbe87c1a94636407e3e7aa5d813f5f3a4c"
+        },
+        {
+          "id": "F024",
+          "path": "DISSERTATION/Santos, Menchu T./Chapter 2 & 3.docx",
+          "format": "DOCX",
+          "component": "Chapters 2 and 3",
+          "pages": null,
+          "bytes": 121941,
+          "sha256": "9971da1b3c7efe32dcfa3799f018396208892fee42929de247f9117b03a41d3f"
+        },
+        {
+          "id": "F025",
+          "path": "DISSERTATION/Santos, Menchu T./Executive Summary.docx",
+          "format": "DOCX",
+          "component": "Executive summary",
+          "pages": null,
+          "bytes": 70651,
+          "sha256": "97a59d20cbb96f7296e9f26a5ae6068d205c0db67146c0344bf6618790360f4e"
+        },
+        {
+          "id": "F026",
+          "path": "DISSERTATION/Santos, Menchu T./Permission letter.docx",
+          "format": "DOCX",
+          "component": "Permission letters",
+          "pages": null,
+          "bytes": 125364,
+          "sha256": "b00e9b1bfe09fc908f64900e8f5c49ca07f78f787afa02d08d092337952c7e9b"
+        },
+        {
+          "id": "F027",
+          "path": "DISSERTATION/Santos, Menchu T./Questionnaire -ALS Coordinator.docx",
+          "format": "DOCX",
+          "component": "ALS coordinator questionnaire",
+          "pages": null,
+          "bytes": 35605,
+          "sha256": "d8e1eab6105c7561fc3d885fbc3c6a507533b5e21ca4335c6ca629ac105e78f4"
+        },
+        {
+          "id": "F028",
+          "path": "DISSERTATION/Santos, Menchu T./Questionnaire-Learner.docx",
+          "format": "DOCX",
+          "component": "Learner questionnaire",
+          "pages": null,
+          "bytes": 27331,
+          "sha256": "9a571552144603e8c5dbe34af8d3332792fe8b957f97933866c7b8c148866201"
+        },
+        {
+          "id": "F029",
+          "path": "DISSERTATION/Santos, Menchu T./Questionnaire-Mobile Teacher.docx",
+          "format": "DOCX",
+          "component": "Mobile teacher questionnaire",
+          "pages": null,
+          "bytes": 34948,
+          "sha256": "d0792de82647326ccdac51236cd8c1e7dd38910bed298c53e82fe8d01d2139e3"
+        },
+        {
+          "id": "F030",
+          "path": "DISSERTATION/Santos, Menchu T./Questionnaire-SH.docx",
+          "format": "DOCX",
+          "component": "School head questionnaire",
+          "pages": null,
+          "bytes": 32524,
+          "sha256": "ad4183b04991c9fba1fffe2e65f080a60433cbb53a164337e2c8e7866c52e21e"
+        },
+        {
+          "id": "F031",
+          "path": "DISSERTATION/Santos, Menchu T./References.docx",
+          "format": "DOCX",
+          "component": "References",
+          "pages": null,
+          "bytes": 23043,
+          "sha256": "89dabd25b39146d6a286fe8d96492d2130552411620c74e5e93221398cdfae80"
+        },
+        {
+          "id": "F032",
+          "path": "DISSERTATION/Santos, Menchu T./Reliability Letter.docx",
+          "format": "DOCX",
+          "component": "Reliability letters",
+          "pages": null,
+          "bytes": 133223,
+          "sha256": "61dd02f0474627485441bcf6120bb76ecf9916c9f1227b2ae64e9f41173190aa"
+        },
+        {
+          "id": "F033",
+          "path": "DISSERTATION/Santos, Menchu T./Title Page.docx",
+          "format": "DOCX",
+          "component": "Title page",
+          "pages": null,
+          "bytes": 16320,
+          "sha256": "ec21828f5b8136088cee71817e013fc6418f586a955e90e66248056ba6ba7dee"
+        },
+        {
+          "id": "F034",
+          "path": "DISSERTATION/Santos, Menchu T./Validation Survey.docx",
+          "format": "DOCX",
+          "component": "Survey validation",
+          "pages": null,
+          "bytes": 22033,
+          "sha256": "744d66e6b917014b8dbf192be545a1eaa61c5ad5c1c51899492eaac6b18da14a"
+        }
+      ]
+    },
+    {
+      "id": "R093",
+      "author": "Marecel T. Sayre",
+      "title": "Marketing and Recovery Strategies of Hotels in Dumaguete City During Pandemic Crisis",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "July",
+      "program": "Master in Business Administration (MBA)",
+      "major": "",
+      "folder": "THESES/Sayre, Marecel T.",
+      "main_path": "THESES/Sayre, Marecel T./1 Head Final Manuscript.docx",
+      "notes": "Only preliminary pages are available. Research body absent; no recovery requested. The file link opens the available front matter.",
+      "preparation": "ignored",
+      "files": [
+        {
+          "id": "F093",
+          "path": "THESES/Sayre, Marecel T./1 Head Final Manuscript.docx",
+          "format": "DOCX",
+          "component": "Preliminary pages only",
+          "pages": null,
+          "bytes": 52533,
+          "sha256": "05926fa135db0c54aa280f41448aa1a3ce822c7ae4131982bddb0b78308271d5"
+        }
+      ]
+    },
+    {
+      "id": "R094",
+      "author": "Sr. Marybelle Dominic M. Servando, Carm. O.L.",
+      "title": "Lived Experiences of Non-Catholic College Students at Catholic Institutions in Dumaguete City",
+      "type": "Thesis",
+      "year": 2021,
+      "month": "May",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Educational Management",
+      "folder": "THESES/Servando, Marybelle Dominic M.",
+      "main_path": "THESES/Servando, Marybelle Dominic M./LIVED EXPERIENCES FINAL PAPER 2021.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F094",
+          "path": "THESES/Servando, Marybelle Dominic M./FRONT PAGES.pdf",
+          "format": "PDF",
+          "component": "Front matter",
+          "pages": 10,
+          "bytes": 543906,
+          "sha256": "c489b9da06195aacdfb0b0fffcaab576ac4ae3a80ee877cb30a1a5e96b50b373"
+        },
+        {
+          "id": "F095",
+          "path": "THESES/Servando, Marybelle Dominic M./LIVED EXPERIENCES FINAL PAPER 2021.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 112,
+          "bytes": 3964037,
+          "sha256": "641fb803bb054e2c38c4a1869b57ca7b2f878eae0268ce761c4ffa798086953c"
+        }
+      ]
+    },
+    {
+      "id": "R096",
+      "author": "Ma. Lourdes M. Tagyamon",
+      "title": "Issues Encountered in Learning English Language Skills Using Blended Learning Modality",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "English Language Teaching",
+      "folder": "THESES/Tagyamon, Ma. Lourdes M.",
+      "main_path": "THESES/Tagyamon, Ma. Lourdes M./MRS. MA. LOURDES MIRAFLOR TAGYAMON THESIS.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F096",
+          "path": "THESES/Tagyamon, Ma. Lourdes M./MRS. MA. LOURDES MIRAFLOR TAGYAMON THESIS.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 158,
+          "bytes": 4583469,
+          "sha256": "aac7fa3ecc68b408ee7417374433289b7564aab0c525f183f6f8a958bec5a892"
+        }
+      ]
+    },
+    {
+      "id": "R035",
+      "author": "Junabeth Marie B. Tamparong",
+      "title": "The Consumer Behavior of Online Shoppers in Dumaguete City",
+      "type": "Thesis",
+      "year": 2020,
+      "month": "December",
+      "program": "Master in Business Administration (MBA)",
+      "major": "",
+      "folder": "THESES/Tamparong, Junabeth Marie B.",
+      "main_path": "THESES/Tamparong, Junabeth Marie B./3. Chapter 1-3 final.pdf",
+      "notes": "Classification verified from the title page. Moved from DISSERTATION to THESES.",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F035",
+          "path": "THESES/Tamparong, Junabeth Marie B./1. COVER (for the hardbound).pdf",
+          "format": "PDF",
+          "component": "Title page",
+          "pages": 1,
+          "bytes": 6027,
+          "sha256": "728cf87537743aaab3624e870bda592142b325b4e6d557c5538d40843bdd341b"
+        },
+        {
+          "id": "F036",
+          "path": "THESES/Tamparong, Junabeth Marie B./2. Acknowledgement, abstract, table of contents.pdf",
+          "format": "PDF",
+          "component": "Acknowledgment, abstract and contents",
+          "pages": 7,
+          "bytes": 344882,
+          "sha256": "50514fa88d3424c577802dc46453739ea0f6de2976ddfbb495cfdfd19b03c963"
+        },
+        {
+          "id": "F037",
+          "path": "THESES/Tamparong, Junabeth Marie B./3. Chapter 1-3 final.pdf",
+          "format": "PDF",
+          "component": "Chapters 1–3",
+          "pages": 58,
+          "bytes": 1196333,
+          "sha256": "8343ea3e721109ffea630b622928d9116175007e75b403616ab80874719f78a1"
+        },
+        {
+          "id": "F038",
+          "path": "THESES/Tamparong, Junabeth Marie B./4. references.pdf",
+          "format": "PDF",
+          "component": "References",
+          "pages": 11,
+          "bytes": 577702,
+          "sha256": "6c6e5a17d1c316ab927369cfa43db319971de8291818f833a1acb8112a97c93f"
+        },
+        {
+          "id": "F039",
+          "path": "THESES/Tamparong, Junabeth Marie B./5. Appendices - cover final.pdf",
+          "format": "PDF",
+          "component": "Appendices cover",
+          "pages": 1,
+          "bytes": 215184,
+          "sha256": "6413f727cc84059b93fd785604473fe63066bd639a3ae56b468d1c1d3a3f571f"
+        },
+        {
+          "id": "F040",
+          "path": "THESES/Tamparong, Junabeth Marie B./5. CV - final.pdf",
+          "format": "PDF",
+          "component": "Curriculum vitae",
+          "pages": 2,
+          "bytes": 343215,
+          "sha256": "62a2ffbe875f9046a9297ac2c99ba173e03736eb4c9c72cc9fbfa9e8c0c5628c"
+        },
+        {
+          "id": "F041",
+          "path": "THESES/Tamparong, Junabeth Marie B./5. appendices - questionnaire final.pdf",
+          "format": "PDF",
+          "component": "Questionnaire",
+          "pages": 4,
+          "bytes": 671899,
+          "sha256": "aeaa1d267d5c50bb49c6e7f8147a7945751f13d2f34f258c6c408705826acc61"
+        },
+        {
+          "id": "F042",
+          "path": "THESES/Tamparong, Junabeth Marie B./5. appendices - quletters final.pdf",
+          "format": "PDF",
+          "component": "Permission letters",
+          "pages": 4,
+          "bytes": 501240,
+          "sha256": "e914b31db89f3a98f1d6a5f51a5bcd015d6aec544c6c75dcfb4ae77a6f01c1ec"
+        }
+      ]
+    },
+    {
+      "id": "R097",
+      "author": "Cheska Pink V. Temones",
+      "title": "The Lived Experience of Registered Guidance Counselors Using Telebehavioral Health",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "Guidance and Counseling",
+      "folder": "THESES/Temones, Cheska Pink V.",
+      "main_path": "THESES/Temones, Cheska Pink V./3.Final Manuscript VTemones.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F097",
+          "path": "THESES/Temones, Cheska Pink V./1.First Page Title Page.pdf",
+          "format": "PDF",
+          "component": "Title page",
+          "pages": 1,
+          "bytes": 29029,
+          "sha256": "0580042d0f42277b3ca3ead765fd5437c90279438f30ee3037d185424d21f468"
+        },
+        {
+          "id": "F098",
+          "path": "THESES/Temones, Cheska Pink V./2.Table of Contents.pdf",
+          "format": "PDF",
+          "component": "Preliminaries and contents",
+          "pages": 10,
+          "bytes": 177163,
+          "sha256": "ffb34b324993f0b0ba1a91b953b4ae0156ded5b7e23c796489aa363e002a45e3"
+        },
+        {
+          "id": "F099",
+          "path": "THESES/Temones, Cheska Pink V./3.Final Manuscript VTemones.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 152,
+          "bytes": 1149661,
+          "sha256": "6aac6a19750e2dcf3671cad4d7a1f344311c23e1796c83f0bb0b43d8b309321e"
+        },
+        {
+          "id": "F100",
+          "path": "THESES/Temones, Cheska Pink V./4.CV Temones.pdf",
+          "format": "PDF",
+          "component": "Curriculum vitae",
+          "pages": 2,
+          "bytes": 114965,
+          "sha256": "76244bd19e6ae004cb4d5e1681dc3ed619ec7515340a96a41a4ef6ef38af88e4"
+        }
+      ]
+    },
+    {
+      "id": "R043",
+      "author": "Sarah Jane C. Torres",
+      "title": "The Implementation of the School Learning Continuity Plan: An Assessment",
+      "type": "Dissertation",
+      "year": 2021,
+      "month": "May",
+      "program": "Doctor of Education (Ed.D.)",
+      "major": "",
+      "folder": "DISSERTATION/Torres, Sarah Jane C.",
+      "main_path": "DISSERTATION/Torres, Sarah Jane C./THE-IMPLEMENTATION-OF-SCHOOL-LEARNING-CONTINUITY-PLAN-AN-ASSESSMENT-TORRES.FINAL VERSION.pdf",
+      "notes": "",
+      "preparation": "complete-pdf-candidate",
+      "files": [
+        {
+          "id": "F043",
+          "path": "DISSERTATION/Torres, Sarah Jane C./THE-IMPLEMENTATION-OF-SCHOOL-LEARNING-CONTINUITY-PLAN-AN-ASSESSMENT-TORRES.FINAL VERSION.pdf",
+          "format": "PDF",
+          "component": "Manuscript",
+          "pages": 185,
+          "bytes": 5411675,
+          "sha256": "8e7de3cc118ea36fc1ae3c37d14fb079f9132c32c309cdae35c2f9ba50821679"
+        }
+      ]
+    },
+    {
+      "id": "R101",
+      "author": "Bregette Tuballa",
+      "title": "English Language Needs of ABM Students Towards an ESP Approach to Teaching",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Arts in Education (MAED)",
+      "major": "English Language Teaching",
+      "folder": "THESES/Tuballa, Bregette",
+      "main_path": "THESES/Tuballa, Bregette/ESP_Final_Printing_April 15,2022.pdf",
+      "notes": "",
+      "preparation": "assemble-pdfs",
+      "files": [
+        {
+          "id": "F101",
+          "path": "THESES/Tuballa, Bregette/COVER PAGE_final.pdf",
+          "format": "PDF",
+          "component": "Front matter",
+          "pages": 10,
+          "bytes": 140626,
+          "sha256": "901ef005c97c1fbd68dc496f492c3c9bd1fc31b8d35af0f1f15b0b93494393f2"
+        },
+        {
+          "id": "F102",
+          "path": "THESES/Tuballa, Bregette/ESP_Final_Printing_April 15,2022.pdf",
+          "format": "PDF",
+          "component": "Research body",
+          "pages": 117,
+          "bytes": 5518120,
+          "sha256": "b9510ef9a308d9a82e4f8d10dd14d308b9af868ddaef8f43829d3a4920852405"
+        }
+      ]
+    },
+    {
+      "id": "R103",
+      "author": "Nena Mariquit Ybanez viuda de Zerna",
+      "title": "The Opportunities and Challenges of the Micro Small Medium Enterprises (MSMEs) and Eventually Their Contribution to the Local Economic Development of Tanjay City",
+      "type": "Thesis",
+      "year": 2022,
+      "month": "June",
+      "program": "Master of Business Administration (MBA)",
+      "major": "",
+      "folder": "THESES/Ybanez, Nena Z.",
+      "main_path": "THESES/Ybanez, Nena Z./REVIEWED     ALL CHAPTERS UP TO  APPENDICES Nina-Final.edited1.doc",
+      "notes": "Title and author transcribed from the title page. Month and year retained from original DataSheet.xlsx, Theses!H18:I18. Legacy .doc manuscript is readable using LibreOffice; no content was replaced.",
+      "preparation": "convert-word-and-review",
+      "files": [
+        {
+          "id": "F103",
+          "path": "THESES/Ybanez, Nena Z./REVIEWED     ALL CHAPTERS UP TO  APPENDICES Nina-Final.edited1.doc",
+          "format": "DOC",
+          "component": "Research body",
+          "pages": null,
+          "bytes": 12855265,
+          "sha256": "b1c5a68b46cc6964d7985d1ab5104c5cd10b85d80f606e9bbbdd4dbf3f89a729"
+        },
+        {
+          "id": "F104",
+          "path": "THESES/Ybanez, Nena Z./REVISED FINAL- Nena  Ybanez  Title-Page.edited1.doc",
+          "format": "DOC",
+          "component": "Front matter",
+          "pages": null,
+          "bytes": 141312,
+          "sha256": "9b6a16bd75dc5114972fc6e19a253c3283871b1d1547a9a28c310acd59b835f6"
+        }
+      ]
+    }
+  ]
+}

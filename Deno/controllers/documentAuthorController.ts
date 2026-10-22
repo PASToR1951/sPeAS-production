@@ -3,6 +3,10 @@
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { pool } from "../config/db.ts";
 import { authorNameKey, normalizeAuthorName } from "../../shared/authorName.ts";
+import {
+  type AdminAuthorRecord,
+  toAdminAuthorRecord,
+} from "../services/authorProjectionService.ts";
 
 export interface Author {
   id: string;
@@ -130,13 +134,18 @@ export async function createDocumentAuthors(documentId: string, authors: Documen
 }
 
 export async function getDocumentAuthors(documentId: string) {
-  const result = await client.queryObject<Author & { author_order: number }>(
-    `SELECT a.*, da.author_order
+  const result = await client.queryObject<AdminAuthorRecord & { author_order: number }>(
+    `SELECT a.id, a.spud_id, a.full_name, a.affiliation, a.department,
+            a.email, a.orcid_id, a.biography, a.profile_picture,
+            a.created_source, da.author_order
      FROM authors a
      JOIN document_authors da ON a.id = da.author_id
      WHERE da.document_id = $1
      ORDER BY da.author_order ASC`,
     [documentId],
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...toAdminAuthorRecord(row),
+    author_order: Number(row.author_order),
+  }));
 }

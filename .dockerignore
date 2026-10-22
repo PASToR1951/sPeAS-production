@@ -39,3 +39,6 @@ Deno/admin/experience-studio
 *.backup.sql
 *.sqlite
 *.sqlite3
+
+import-staging
+Deno/import-staging

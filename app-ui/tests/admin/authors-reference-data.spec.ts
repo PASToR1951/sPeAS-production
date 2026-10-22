@@ -259,3 +259,137 @@ test("department management submits normalized reference data", async ({ page })
   await dialog.getByRole("button", { name: "Save department" }).click();
   await expect.poll(() => created).toEqual({ name: "College of Nursing", code: "CON" });
 });
+
+test("an unlinked author can be permanently deleted from the action menu", async ({ page }) => {
+  let deleted = false;
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: {
+    count: deleted ? 0 : 1,
+    authors: deleted ? [] : [{ id: "author-1", full_name: "Anna Author", profile_complete: true, worksCount: 0, newsPostsCount: 0 }],
+  } }));
+  await page.route("**/authors/author-1", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deleted = true;
+    return route.fulfill({ json: { deleted: { id: "author-1", fullName: "Anna Author" } } });
+  });
+
+  await page.goto("/admin/Components/author-list.html");
+  await page.getByRole("button", { name: "More actions for Anna Author" }).click();
+  await page.getByRole("menuitem", { name: "Delete author" }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await expect(confirmation).toContainText("Delete “Anna Author”?");
+  await confirmation.getByRole("button", { name: "Delete author" }).click();
+  await expect(page.getByText("“Anna Author” was deleted.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Anna Author" })).toHaveCount(0);
+});
+
+test("linked authors are directed to merge without issuing a delete", async ({ page }) => {
+  let deleteRequests = 0;
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: { count: 1, authors: [{
+    id: "author-1", full_name: "Linked Author", profile_complete: true, worksCount: 2, newsPostsCount: 1,
+  }] } }));
+  await page.route("**/authors/author-1", async (route) => {
+    if (route.request().method() === "DELETE") deleteRequests += 1;
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/admin/Components/author-list.html");
+  await page.getByRole("button", { name: "More actions for Linked Author" }).click();
+  await page.getByRole("menuitem", { name: "Delete author" }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await expect(confirmation).toContainText("2 linked works and 1 tagged news post");
+  await confirmation.getByRole("button", { name: "Merge instead" }).click();
+  await expect(page.getByRole("dialog", { name: "Merge duplicate author" })).toBeVisible();
+  expect(deleteRequests).toBe(0);
+});
+
+test("a stale unlinked count keeps delete busy-safe and surfaces the server conflict", async ({ page }) => {
+  let deleteRequests = 0;
+  let releaseDelete: (() => void) | undefined;
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: { count: 1, authors: [{
+    id: "author-1", full_name: "Linked Elsewhere", profile_complete: true, worksCount: 0, newsPostsCount: 0,
+  }] } }));
+  await page.route("**/authors/author-1", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deleteRequests += 1;
+    await new Promise<void>((resolve) => { releaseDelete = resolve; });
+    return route.fulfill({
+      status: 409,
+      json: { error: "This author is still linked to repository content. Merge the profile into the correct author instead.", dependencies: { documents: 1, newsPosts: 0 } },
+    });
+  });
+
+  await page.goto("/admin/Components/author-list.html");
+  await page.getByRole("button", { name: "More actions for Linked Elsewhere" }).click();
+  await page.getByRole("menuitem", { name: "Delete author" }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await confirmation.getByRole("button", { name: "Delete author" }).click();
+  await expect(confirmation.getByRole("button", { name: "Deleting…" })).toBeDisabled();
+  expect(deleteRequests).toBe(1);
+  releaseDelete?.();
+  await expect(page.getByText("This author is still linked to repository content. Merge the profile into the correct author instead.")).toBeVisible();
+  await expect(confirmation).toContainText("Author is still linked");
+  await expect(confirmation.getByRole("button", { name: "Merge instead" })).toBeVisible();
+  await confirmation.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("heading", { name: "Linked Elsewhere" })).toBeVisible();
+});
+
+test("duplicate authors can be merged into a searched surviving profile", async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  let merged = false;
+  const source = { id: "author-source", full_name: "Erven Noay, MA", department: "", affiliation: "", email: "source@example.test", profile_complete: false, worksCount: 2, newsPostsCount: 1 };
+  const target = { id: "author-target", full_name: "Erven Noay", department: "College of Nursing", affiliation: "St. Paul University Dumaguete", email: "target@example.test", profile_complete: true, worksCount: 3, newsPostsCount: 0 };
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: { count: merged ? 1 : 2, authors: merged ? [target] : [source, target] } }));
+  await page.route("**/authors/author-source/merge", async (route) => {
+    submitted = route.request().postDataJSON();
+    merged = true;
+    return route.fulfill({ json: {
+      author: target,
+      mergedSource: { id: source.id, fullName: source.full_name },
+      transferred: { documents: 2, newsPosts: 1 },
+    } });
+  });
+
+  await page.goto("/admin/Components/author-list.html");
+  await page.getByRole("button", { name: "More actions for Erven Noay, MA" }).click();
+  await page.getByRole("menuitem", { name: "Merge duplicate" }).click();
+  const dialog = page.getByRole("dialog", { name: "Merge duplicate author" });
+  await dialog.getByRole("searchbox", { name: "Search merge target" }).fill("Erven Noay");
+  await dialog.getByRole("option", { name: /Erven Noay.*College of Nursing/ }).click();
+  await expect(dialog).toContainText("1 tagged news post will be transferred");
+  await dialog.getByRole("button", { name: "Merge into Erven Noay" }).click();
+  await expect.poll(() => submitted).toEqual({ targetAuthorId: "author-target" });
+  await expect(page.getByText("Merged “Erven Noay, MA” into “Erven Noay”.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Erven Noay, MA" })).toHaveCount(0);
+});
+
+test("author deletion and merge endpoints reject unauthenticated access", async ({ request, baseURL }) => {
+  const authorId = "00000000-0000-4000-8000-000000000001";
+  const deleteResponse = await request.delete(`${baseURL}/authors/${authorId}`);
+  expect(deleteResponse.status()).toBe(401);
+  const mergeResponse = await request.post(`${baseURL}/authors/${authorId}/merge`, {
+    data: { targetAuthorId: "00000000-0000-4000-8000-000000000002" },
+  });
+  expect(mergeResponse.status()).toBe(401);
+});
+
+test("author merge dialog remains accessible on a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: { count: 2, authors: [
+    { id: "author-1", full_name: "Anna Author", profile_complete: true, worksCount: 0, newsPostsCount: 0 },
+    { id: "author-2", full_name: "Ana Author", profile_complete: true, worksCount: 1, newsPostsCount: 0 },
+  ] } }));
+  await page.goto("/admin/Components/author-list.html");
+  await page.getByRole("button", { name: "More actions for Anna Author" }).click();
+  await page.getByRole("menuitem", { name: "Merge duplicate" }).click();
+  const dialog = page.getByRole("dialog", { name: "Merge duplicate author" });
+  await expect.poll(() => dialog.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+  const metrics = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, viewportWidth: window.innerWidth, scrollWidth: document.documentElement.scrollWidth };
+  });
+  expect(metrics.width).toBeLessThanOrEqual(metrics.viewportWidth);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+  await page.addScriptTag({ content: axeSource });
+  const violations = await page.evaluate(async () => (await (window as any).axe.run(document.querySelector('[role="dialog"]'))).violations.filter((item: any) => item.impact === "serious" || item.impact === "critical"));
+  expect(violations).toEqual([]);
+});

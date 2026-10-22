@@ -84,13 +84,7 @@ export async function fetchTrendingKeywords(): Promise<string[]> {
 }
 
 export async function fetchPublicStats(): Promise<DashboardStats> {
-  const [homeStats, authors] = await Promise.all([
-    apiFetch<Record<string, unknown>>("/api/page-visits/home-stats"),
-    apiFetch<Array<Record<string, unknown>> | { authors?: Array<Record<string, unknown>>; count?: number }>("/api/authors/all").catch(() => []),
-  ]);
-
-  const authorRows = Array.isArray(authors) ? authors : authors.authors ?? [];
-  const authorCount = Array.isArray(authors) ? authorRows.length : Number(authors.count ?? authorRows.length);
+  const homeStats = await apiFetch<Record<string, unknown>>("/api/page-visits/home-stats");
   const stats = homeStats.stats && typeof homeStats.stats === "object"
     ? homeStats.stats as Record<string, unknown>
     : homeStats;
@@ -103,17 +97,16 @@ export async function fetchPublicStats(): Promise<DashboardStats> {
     totalVisits,
     guestVisits,
     userVisits,
-    totalAuthors: authorCount,
+    totalAuthors: Number(stats.totalAuthors ?? stats.total_authors ?? 0),
     raw: homeStats,
   };
 }
 
-export function searchResultsUrl(query: string, category?: string, filters: { agenda?: string; topic?: string; year?: string; sort?: "latest" | "earliest" } = {}) {
+export function searchResultsUrl(query: string, category?: string, filters: { topic?: string; year?: string; sort?: "latest" | "earliest" } = {}) {
   const url = new URL("/pages/searchResultsPage.html", window.location.origin);
   const trimmed = query.trim();
   if (trimmed) url.searchParams.set("q", trimmed);
   if (category && category !== "All") url.searchParams.set("category", category);
-  if (filters.agenda?.trim()) url.searchParams.set("agenda", filters.agenda.trim());
   if (filters.topic?.trim()) url.searchParams.set("topic", filters.topic.trim());
   if (/^\d{4}$/u.test(filters.year?.trim() ?? "")) url.searchParams.set("year", filters.year!.trim());
   if (filters.sort === "earliest") url.searchParams.set("sort", "earliest");

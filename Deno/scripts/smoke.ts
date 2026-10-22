@@ -80,9 +80,8 @@ const endpoints: Endpoint[] = [
     name: "author-works",
     path: async () => {
       // deno-lint-ignore no-explicit-any
-      const id = await firstId("/api/authors/all", (j: any) =>
-        (Array.isArray(j) ? j : j?.authors ?? [])[0]?.author_id ??
-        (Array.isArray(j) ? j : j?.authors ?? [])[0]?.id);
+      const id = await firstId("/api/authors/search?q=a", (j: any) =>
+        (Array.isArray(j) ? j : [])[0]?.id);
       return id ? `/api/authors/${id}/works` : null;
     },
   },

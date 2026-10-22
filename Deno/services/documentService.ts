@@ -1,4 +1,4 @@
-import { client } from "../db/denopost_conn.ts";
+import { client, withTransaction } from "../db/denopost_conn.ts";
 import { getDocumentClassification, getDocumentClassifications, type DocumentClassification } from "./documentClassificationService.ts";
 
 // Define interfaces for our data structures
@@ -26,6 +26,7 @@ export interface Document {
   abstract?: string | null;
   abstract_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy';
   publication_date?: Date | null;
+  publication_date_precision?: import("../../shared/imports.ts").PublicationDatePrecision;
   document_type: string;
   volume?: string;
   issue?: string;
@@ -82,6 +83,10 @@ export interface CompiledDocument {
   department?: string;
   category?: string;
   foreword?: string;
+  cover_file_path?: string;
+  cover_page_count?: number;
+  front_cover_page?: number;
+  back_cover_page?: number;
   abstract_foreword?: string;
   abstract_foreword_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy' | null;
   created_at: string;
@@ -381,7 +386,7 @@ export async function fetchDocuments(
           d.id, 
             COALESCE(d.title, 'Untitled Document')::TEXT as title,
             COALESCE(d.description, '')::TEXT as description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           (d.document_type)::TEXT as document_type,
             COALESCE(d.volume, '')::TEXT as volume,
             COALESCE(d.issue, '')::TEXT as issue,
@@ -444,7 +449,7 @@ export async function fetchDocuments(
             END
           )::TEXT as title,
           ''::TEXT as description,
-          NULL as publication_date,
+          NULL as publication_date, 'legacy'::text AS publication_date_precision,
           (COALESCE(cd.category, 'CONFLUENCE'))::TEXT as document_type,
           COALESCE(CAST(cd.volume AS TEXT), '')::TEXT as volume,
           COALESCE(CAST(cd.issue_number AS TEXT), '')::TEXT as issue,
@@ -587,6 +592,7 @@ export async function fetchDocuments(
         title: row.title || 'Untitled Document',
         description: row.description || '',
         publication_date: row.publication_date ? new Date(row.publication_date) : null,
+        publication_date_precision: row.publication_date_precision ?? "legacy",
         document_type: row.document_type || '',
         volume: row.volume || '',
         issue: row.issue || '',
@@ -747,7 +753,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -769,7 +775,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -792,7 +798,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -834,6 +840,7 @@ async function processChildDocuments(rows: any[]): Promise<Document[]> {
       title: row.title || '',
       description: row.description || '',
       publication_date: row.publication_date ? new Date(row.publication_date) : null,
+        publication_date_precision: row.publication_date_precision ?? "legacy",
       document_type: row.document_type || '',
       volume: row.volume || '',
       issue: row.issue || '',
@@ -896,6 +903,10 @@ export async function createCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     abstract_foreword_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy';
     uploaded_by?: string;
@@ -907,10 +918,7 @@ export async function createCompiledDocument(
 ): Promise<number> {
   try {
         
-    // Start a transaction
-    await client.queryArray("BEGIN");
-    
-    try {
+    return await withTransaction(async (connection) => {
       // Generate a title for logging purposes
       const documentTitle = `${compiledDoc.category || 'Compiled Document'} Vol. ${compiledDoc.volume || '1'}${compiledDoc.start_year ? ` (${compiledDoc.start_year})` : ''}`;
       
@@ -924,6 +932,10 @@ export async function createCompiledDocument(
           department, 
           category,
           foreword,
+          cover_file_path,
+          cover_page_count,
+          front_cover_page,
+          back_cover_page,
           abstract_foreword,
           abstract_foreword_source,
           uploaded_by,
@@ -932,7 +944,7 @@ export async function createCompiledDocument(
           reviewed_at,
           created_at
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP)
         RETURNING id
       `;
       
@@ -944,6 +956,10 @@ export async function createCompiledDocument(
         compiledDoc.department || null,
         compiledDoc.category || 'CONFLUENCE',
         compiledDoc.foreword || null,
+        compiledDoc.cover_file_path || null,
+        compiledDoc.cover_page_count || null,
+        compiledDoc.front_cover_page || null,
+        compiledDoc.back_cover_page || null,
         compiledDoc.abstract_foreword || null,
         compiledDoc.abstract_foreword_source || (compiledDoc.abstract_foreword ? 'legacy' : 'none'),
         compiledDoc.uploaded_by || null,
@@ -952,7 +968,7 @@ export async function createCompiledDocument(
         compiledDoc.reviewed_at || null,
       ];
       
-      const compiledResult = await client.queryObject(compiledQuery, compiledParams);
+      const compiledResult = await connection.queryObject(compiledQuery, compiledParams);
       
       if (!compiledResult.rows || compiledResult.rows.length === 0) {
         throw new Error("Failed to create compiled document entry");
@@ -962,43 +978,11 @@ export async function createCompiledDocument(
       const compiledDocId = typeof row.id === 'bigint' ? Number(row.id) : Number(row.id);
       
             
-      // Associate document IDs with the compiled document if provided
-      if (documentIds.length > 0) {
-                let successCount = 0;
-        let failCount = 0;
-        
-        for (const docId of documentIds) {
-          try {
-            // Update the compiled_parent_id in the documents table
-            const updateQuery = `
-              UPDATE documents 
-              SET compiled_parent_id = $1
-              WHERE id = $2
-            `;
-            
-            await client.queryObject(updateQuery, [compiledDocId, docId]);
-            
-            // Also add to the junction table for backward compatibility
-            await addDocumentToCompilation(compiledDocId, docId);
-            
-            successCount++;
-          } catch (error) {
-            failCount++;
-          }
-        }
-        
-                                                      } else {
-              }
-      
-      // Commit the transaction
-      await client.queryArray("COMMIT");
-      
+      for (const docId of documentIds) {
+        await connection.queryArray("INSERT INTO compiled_document_items(compiled_document_id,document_id) VALUES($1,$2)", [compiledDocId,docId]);
+      }
       return compiledDocId;
-    } catch (error) {
-      // Rollback in case of any error
-      await client.queryArray("ROLLBACK");
-      throw error;
-    }
+    });
   } catch (error) {
     throw error;
   }
@@ -1112,6 +1096,10 @@ export async function getCompiledDocument(compiledDocId: number): Promise<Compil
       department: row.department as string | undefined,
       category: row.category as string | undefined,
       foreword: row.foreword as string | undefined,
+      cover_file_path: row.cover_file_path as string | undefined,
+      cover_page_count: row.cover_page_count as number | undefined,
+      front_cover_page: row.front_cover_page as number | undefined,
+      back_cover_page: row.back_cover_page as number | undefined,
       abstract_foreword: row.abstract_foreword as string | undefined,
       created_at: row.created_at as string,
       updated_at: row.updated_at as string | undefined,
@@ -1307,6 +1295,10 @@ export async function updateCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     title?: string;
     authors?: any[];
@@ -1364,6 +1356,30 @@ export async function updateCompiledDocument(
     if (compiledDoc.foreword !== undefined) {
       updateQuery += `, foreword = $${paramIndex}`;
       params.push(compiledDoc.foreword);
+      paramIndex++;
+    }
+
+    if (compiledDoc.cover_file_path !== undefined) {
+      updateQuery += `, cover_file_path = $${paramIndex}`;
+      params.push(compiledDoc.cover_file_path);
+      paramIndex++;
+    }
+
+    if (compiledDoc.cover_page_count !== undefined) {
+      updateQuery += `, cover_page_count = $${paramIndex}`;
+      params.push(compiledDoc.cover_page_count);
+      paramIndex++;
+    }
+
+    if (compiledDoc.front_cover_page !== undefined) {
+      updateQuery += `, front_cover_page = $${paramIndex}`;
+      params.push(compiledDoc.front_cover_page);
+      paramIndex++;
+    }
+
+    if (compiledDoc.back_cover_page !== undefined) {
+      updateQuery += `, back_cover_page = $${paramIndex}`;
+      params.push(compiledDoc.back_cover_page);
       paramIndex++;
     }
     

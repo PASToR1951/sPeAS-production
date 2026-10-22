@@ -33,6 +33,17 @@ function actorFromContext(ctx: any) {
   return { id: String(ctx.state.user.id), role: String(ctx.state.user.role) };
 }
 
+async function createImmediateTopic(ctx: any) {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const topic = await createTopic(String(body?.name ?? ""), actorFromContext(ctx), "approved");
+    ctx.response.status = 201;
+    ctx.response.body = topic;
+  } catch (error) {
+    validationResponse(ctx, error);
+  }
+}
+
 function validationResponse(ctx: any, error: unknown) {
   if (error instanceof ClassificationValidationError) {
     ctx.response.status = 422;
@@ -131,6 +142,8 @@ router.get("/api/topics", async (ctx) => {
   }
 });
 
+router.post("/api/topics", isAuthenticated, requireUpload, createImmediateTopic);
+
 router.get("/api/topics/:id", async (ctx) => {
   try {
     const topic = await getPublicTopic(Number(ctx.params.id));
@@ -190,8 +203,7 @@ router.get("/api/admin/classification/summary", isAuthenticated, isAdmin, async 
       SELECT
         (SELECT COUNT(*) FROM documents d
          WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE
-           AND (NOT EXISTS (SELECT 1 FROM document_research_agenda dra JOIN research_agenda ra ON ra.id = dra.research_agenda_id WHERE dra.document_id = d.id AND ra.is_official = TRUE)
-             OR NOT EXISTS (SELECT 1 FROM document_topics dt JOIN topics t ON t.id = dt.topic_id WHERE dt.document_id = d.id AND t.status = 'approved'))) AS missing_documents,
+           AND NOT EXISTS (SELECT 1 FROM document_topics dt JOIN topics t ON t.id = dt.topic_id WHERE dt.document_id = d.id AND t.status = 'approved')) AS missing_documents,
         (SELECT COUNT(*) FROM classification_migration_review WHERE status = 'pending') AS pending_migration
     `);
     const row = result.rows[0];
@@ -272,14 +284,9 @@ router.get("/api/keywords", async (ctx, next) => {
 });
 
 router.post("/api/topics/proposals", isAuthenticated, requireUpload, async (ctx) => {
-  try {
-    const body = await ctx.request.body({ type: "json" }).value;
-    const topic = await createTopic(String(body?.name ?? ""), actorFromContext(ctx), "pending");
-    ctx.response.status = 201;
-    ctx.response.body = topic;
-  } catch (error) {
-    validationResponse(ctx, error);
-  }
+  ctx.response.headers.set("Deprecation", "true");
+  ctx.response.headers.set("Sunset", "2026-12-31");
+  await createImmediateTopic(ctx);
 });
 
 router.post("/api/admin/topics", isAuthenticated, isAdmin, async (ctx) => {
@@ -349,10 +356,7 @@ router.put("/api/documents/:id/classification", isAuthenticated, requireUpload, 
       [id],
     );
     const pendingDocument = statusResult.rows[0]?.review_status === "pending_review";
-    const classification = await replaceDocumentClassification(id, input, actorFromContext(ctx), {
-      allowPendingTopics: pendingDocument,
-      allowIncomplete: pendingDocument,
-    });
+    const classification = await replaceDocumentClassification(id, input, actorFromContext(ctx), { allowIncomplete: pendingDocument });
     ctx.response.body = { classification };
   } catch (error) {
     validationResponse(ctx, error);

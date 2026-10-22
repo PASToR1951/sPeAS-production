@@ -23,3 +23,6 @@ scope.onmessage = async (event) => {
     });
   }
 };
+// Imports can finish after the runtime starts dispatching worker messages.
+// Tell the parent when this handler is installed before accepting a request.
+scope.postMessage({ ready: true });

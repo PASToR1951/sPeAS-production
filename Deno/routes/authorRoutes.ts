@@ -5,20 +5,24 @@ import {
   createAuthor,
   createAuthors,
   deleteAuthor,
+  mergeAuthor,
   restoreAuthor,
   getAuthorPreview,
   getAuthorProfile,
 } from "../controllers/authorController.ts";
-import { isAuthenticated, isAdmin } from "../middleware/authMiddleware.ts";
+import { isAuthenticated, isAdmin, requireCapability } from "../middleware/authMiddleware.ts";
 
 // Create a router for author-related routes
 const router = new Router();
 
-// Author search route (public read)
-router.get("/authors/search", searchAuthors);
+const requireDocumentUpload = requireCapability("documents:upload");
 
-// Author API test route
-router.get("/api/authors/test", testAuthorApi);
+// Legacy administrator picker route. Public search uses the safe, bounded
+// /api/authors/search projection registered in server.ts.
+router.get("/authors/search", isAuthenticated, requireDocumentUpload, searchAuthors);
+
+// Diagnostic endpoint is administrator-only.
+router.get("/api/authors/test", isAuthenticated, isAdmin, testAuthorApi);
 router.get("/api/authors/:id/preview", getAuthorPreview);
 router.get("/api/authors/:id/profile", getAuthorProfile);
 
@@ -30,6 +34,9 @@ router.post("/authors/batch", isAuthenticated, isAdmin, createAuthors);
 
 // Author deletion route (admin only)
 router.delete("/authors/:id", isAuthenticated, isAdmin, deleteAuthor);
+
+// Duplicate consolidation route (admin only)
+router.post("/authors/:id/merge", isAuthenticated, isAdmin, mergeAuthor);
 
 // Author restoration route (admin only)
 router.post("/authors/:id/restore", isAuthenticated, isAdmin, restoreAuthor);

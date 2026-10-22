@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { AlertTriangle, BookOpenText, CheckCircle2, ChevronDown, ChevronRight, Edit3, ImagePlus, Plus, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, BookOpenText, CheckCircle2, ChevronDown, ChevronRight, Edit3, GitMerge, ImagePlus, Plus, Search, Trash2 } from "lucide-react";
 import { AuthorImage } from "../../components/authors/AuthorImage";
 import { AdminPageHeader } from "../../components/layout/AdminPageHeader";
 import { PeasEmptyState, PeasErrorState, PeasLoadingState } from "../../components/feedback/PeasStates";
@@ -9,6 +9,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../components/ui/alert-dialog";
 import { PeasSearchInput } from "../../components/forms/PeasSearchInput";
+import { PeasActionMenu } from "../../components/navigation/PeasActionMenu";
 import { PeasToaster, toast } from "../../components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -16,6 +17,7 @@ import {
   createAffiliation,
   createAuthor,
   createDepartment,
+  deleteAuthor,
   deleteAffiliation,
   deleteDepartment,
   fetchAuthorReferenceData,
@@ -25,9 +27,10 @@ import {
   updateAuthor,
   updateDepartment,
   getAuthorUpdateFieldErrors,
+  mergeAuthors,
 } from "../../lib/api/authors";
 import type { AffiliationReference, AuthorRecord, AuthorWorkRecord, DepartmentReference } from "../../lib/api/types";
-import { getErrorMessage } from "../../lib/api/http";
+import { ApiError, getErrorMessage } from "../../lib/api/http";
 import { uploadAuthorProfilePicture } from "../../lib/api/upload";
 
 const NONE = "__none__";
@@ -49,6 +52,8 @@ export function AuthorsAdminPage() {
   const [works, setWorks] = useState<Record<string, AuthorWorkRecord[]>>({});
   const [loadingWorks, setLoadingWorks] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<AuthorRecord | null>(null);
+  const [deleteAuthorTarget, setDeleteAuthorTarget] = useState<AuthorRecord | null>(null);
+  const [mergeSource, setMergeSource] = useState<AuthorRecord | null>(null);
   const [departmentDraft, setDepartmentDraft] = useState<DepartmentReference | { id: null; name: string; code: string } | null>(null);
   const [affiliationDraft, setAffiliationDraft] = useState<AffiliationReference | { id: null; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ kind: "department" | "affiliation"; id: number; name: string } | null>(null);
@@ -99,6 +104,12 @@ export function AuthorsAdminPage() {
     await load();
   };
 
+  const refreshAfterAuthorMutation = async () => {
+    setExpanded(new Set());
+    setWorks({});
+    await Promise.all([load(), loadReferences()]);
+  };
+
   const incompleteAuthors = authors.filter((author) => author.profileComplete === false);
   const visibleAuthors = attentionOnly ? incompleteAuthors : authors;
 
@@ -142,9 +153,18 @@ export function AuthorsAdminPage() {
                   <article className="peas-author-admin-card" key={id}>
                     <div className="peas-author-admin-card__summary">
                       <span className="peas-author-admin-avatar"><AuthorImage src={author.profilePicture} name={author.fullName} alt="" /></span>
-                      <div><h2>{author.fullName}{author.profileComplete === false ? <span className="peas-author-incomplete-badge">Needs attention</span> : null}</h2><p>{author.profileComplete === false ? `Missing: ${missingAuthorFields(author).join(", ")}` : [author.department, author.affiliation].filter(Boolean).join(" · ") || "No department or affiliation"}</p><small>{author.worksCount} linked {author.worksCount === 1 ? "work" : "works"}</small></div>
-                      <Button variant="outline" size="sm" onClick={() => setEditing(author)}><Edit3 aria-hidden="true" /> Edit</Button>
-                      <Button variant="ghost" size="sm" aria-expanded={isExpanded} onClick={() => void toggle(author)}>{isExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />} Works</Button>
+                      <div><h2>{author.fullName}{author.profileComplete === false ? <span className="peas-author-incomplete-badge">Needs attention</span> : null}</h2><p>{author.profileComplete === false ? `Missing: ${missingAuthorFields(author).join(", ")}` : [author.department, author.affiliation].filter(Boolean).join(" · ") || "No department or affiliation"}</p><small>{author.worksCount} linked {author.worksCount === 1 ? "work" : "works"}{author.newsPostsCount ? ` · ${author.newsPostsCount} tagged news ${author.newsPostsCount === 1 ? "post" : "posts"}` : ""}</small></div>
+                      <div className="peas-author-admin-card__actions">
+                        <Button variant="outline" size="sm" onClick={() => setEditing(author)}><Edit3 aria-hidden="true" /> Edit</Button>
+                        <Button variant="ghost" size="sm" aria-expanded={isExpanded} onClick={() => void toggle(author)}>{isExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />} Works</Button>
+                        <PeasActionMenu
+                          label={`More actions for ${author.fullName}`}
+                          items={[
+                            { label: "Merge duplicate", icon: <GitMerge aria-hidden="true" />, onSelect: () => setMergeSource(author) },
+                            { label: "Delete author", icon: <Trash2 aria-hidden="true" />, destructive: true, onSelect: () => setDeleteAuthorTarget(author) },
+                          ]}
+                        />
+                      </div>
                     </div>
                     {isExpanded ? <AuthorWorks rows={works[id]} loading={loadingWorks.has(id)} /> : null}
                   </article>
@@ -163,11 +183,181 @@ export function AuthorsAdminPage() {
         </TabsContent>
       </Tabs>
       <AuthorEditDialog author={editing} references={referenceData} referenceError={referenceError} referenceLoading={referenceLoading} onRetryReferences={() => void loadReferences()} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />
+      <AuthorDeleteDialog
+        target={deleteAuthorTarget}
+        onClose={() => setDeleteAuthorTarget(null)}
+        onDeleted={() => { setDeleteAuthorTarget(null); void refreshAfterAuthorMutation(); }}
+        onMerge={(author) => { setDeleteAuthorTarget(null); setMergeSource(author); }}
+      />
+      <AuthorMergeDialog
+        source={mergeSource}
+        onClose={() => setMergeSource(null)}
+        onMerged={() => { setMergeSource(null); void refreshAfterAuthorMutation(); }}
+      />
       <DepartmentDialog draft={departmentDraft} onClose={() => setDepartmentDraft(null)} onSaved={() => { setDepartmentDraft(null); void refreshAfterReferenceChange(); }} />
       <AffiliationDialog draft={affiliationDraft} onClose={() => setAffiliationDraft(null)} onSaved={() => { setAffiliationDraft(null); void refreshAfterReferenceChange(); }} />
       <ReferenceDeleteDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => { setDeleteTarget(null); void refreshAfterReferenceChange(); }} />
     </main>
   );
+}
+
+function AuthorDeleteDialog({ target, onClose, onDeleted, onMerge }: { target: AuthorRecord | null; onClose: () => void; onDeleted: () => void; onMerge: (author: AuthorRecord) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [dependencyConflict, setDependencyConflict] = useState<{ documents: number; newsPosts: number } | null>(null);
+  useEffect(() => { if (target) { setBusy(false); setDependencyConflict(null); } }, [target]);
+  const worksCount = dependencyConflict?.documents ?? target?.worksCount ?? 0;
+  const newsPostsCount = dependencyConflict?.newsPosts ?? target?.newsPostsCount ?? 0;
+  const blocked = worksCount > 0 || newsPostsCount > 0;
+  const remove = async () => {
+    if (!target || blocked) return;
+    setBusy(true);
+    try {
+      await deleteAuthor(target.id);
+      toast.success(`“${target.fullName}” was deleted.`);
+      onDeleted();
+    } catch (caughtError) {
+      if (caughtError instanceof ApiError && caughtError.status === 409 && caughtError.payload && typeof caughtError.payload === "object") {
+        const dependencies = (caughtError.payload as { dependencies?: Record<string, unknown> }).dependencies;
+        if (dependencies) {
+          setDependencyConflict({
+            documents: Math.max(0, Number(dependencies.documents) || 0),
+            newsPosts: Math.max(0, Number(dependencies.newsPosts) || 0),
+          });
+        }
+      }
+      toast.error(getErrorMessage(caughtError));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <AlertDialog open={Boolean(target)} onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{blocked ? "Author is still linked" : `Delete “${target?.fullName}”?`}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {blocked
+              ? `This author has ${worksCount} linked ${worksCount === 1 ? "work" : "works"} and ${newsPostsCount} tagged news ${newsPostsCount === 1 ? "post" : "posts"}. Merge the duplicate instead so those references are preserved.`
+              : "This permanently removes the directory profile and its analytics. This action cannot be undone."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>{blocked ? "Close" : "Cancel"}</AlertDialogCancel>
+          {blocked && target
+            ? <AlertDialogAction onClick={(event) => { event.preventDefault(); onMerge(target); }}><GitMerge aria-hidden="true" /> Merge instead</AlertDialogAction>
+            : <AlertDialogAction disabled={busy} onClick={(event) => { event.preventDefault(); void remove(); }}>{busy ? "Deleting…" : "Delete author"}</AlertDialogAction>}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function AuthorMergeDialog({ source, onClose, onMerged }: { source: AuthorRecord | null; onClose: () => void; onMerged: () => void }) {
+  const [search, setSearch] = useState("");
+  const [candidates, setCandidates] = useState<AuthorRecord[]>([]);
+  const [target, setTarget] = useState<AuthorRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSearch("");
+    setCandidates([]);
+    setTarget(null);
+    setError("");
+    setBusy(false);
+  }, [source]);
+
+  useEffect(() => {
+    if (!source) return;
+    let current = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const result = await fetchAuthors({ search });
+        if (current) setCandidates(result.filter((author) => String(author.id) !== String(source.id)));
+      } catch (caughtError) {
+        if (current) setError(getErrorMessage(caughtError));
+      } finally {
+        if (current) setLoading(false);
+      }
+    }, 200);
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [search, source]);
+
+  const submit = async () => {
+    if (!source || !target) return;
+    setBusy(true);
+    try {
+      const result = await mergeAuthors(source.id, target.id);
+      toast.success(`Merged “${source.fullName}” into “${result.author.full_name}”.`);
+      onMerged();
+    } catch (caughtError) {
+      toast.error(getErrorMessage(caughtError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copiedFields = source && target ? mergeCopiedFieldLabels(source, target) : [];
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <DialogContent className="peas-author-merge-dialog" onInteractOutside={(event) => event.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>Merge duplicate author</DialogTitle>
+          <DialogDescription>Choose the author profile to keep. Repository links and analytics will be combined into that profile.</DialogDescription>
+        </DialogHeader>
+        <div className="peas-author-merge-dialog__body">
+          {source ? <AuthorMergeSummary label="Duplicate to remove" author={source} /> : null}
+          <section className="peas-author-merge-picker" aria-labelledby="author-merge-target-heading">
+            <div><h3 id="author-merge-target-heading">Choose the profile to keep</h3><p>Search the complete author directory, including names hidden by the current page filters.</p></div>
+            <PeasSearchInput disabled={busy} value={search} placeholder="Search author name, department, or affiliation…" aria-label="Search merge target" onChange={(event) => setSearch(event.currentTarget.value)} onClear={() => setSearch("")} />
+            <div className="peas-author-merge-candidates" role="listbox" aria-label="Author profiles available to keep">
+              {loading ? <p role="status">Loading authors…</p> : error ? <p role="alert">{error}</p> : candidates.length ? candidates.map((candidate) => (
+                <button type="button" role="option" aria-selected={String(target?.id) === String(candidate.id)} className={String(target?.id) === String(candidate.id) ? "is-selected" : ""} disabled={busy} key={String(candidate.id)} onClick={() => setTarget(candidate)}>
+                  <AuthorImage src={candidate.profilePicture} name={candidate.fullName} alt="" />
+                  <span><strong>{candidate.fullName}</strong><small>{[candidate.department, candidate.affiliation].filter(Boolean).join(" · ") || "No department or affiliation"}</small></span>
+                  <small>{authorRelationshipSummary(candidate)}</small>
+                </button>
+              )) : <p>No other authors match this search.</p>}
+            </div>
+          </section>
+          {target ? (
+            <section className="peas-author-merge-result" aria-labelledby="author-merge-result-heading">
+              <h3 id="author-merge-result-heading">Result after merge</h3>
+              <AuthorMergeSummary label="Surviving profile" author={target} />
+              <p><strong>{target.fullName}</strong> keeps its current details. {copiedFields.length ? `Blank fields filled from the duplicate: ${copiedFields.join(", ")}.` : "No blank visible profile fields need to be filled."}</p>
+              <p>{source?.worksCount ?? 0} linked {(source?.worksCount ?? 0) === 1 ? "work" : "works"} and {source?.newsPostsCount ?? 0} tagged news {(source?.newsPostsCount ?? 0) === 1 ? "post" : "posts"} will be transferred. This cannot be undone.</p>
+            </section>
+          ) : null}
+        </div>
+        <DialogFooter><Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !target} onClick={() => void submit()}>{busy ? "Merging…" : target ? `Merge into ${target.fullName}` : "Choose an author"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AuthorMergeSummary({ label, author }: { label: string; author: AuthorRecord }) {
+  return <section className="peas-author-merge-summary"><span>{label}</span><div><AuthorImage src={author.profilePicture} name={author.fullName} alt="" /><div><strong>{author.fullName}</strong><small>{[author.department, author.affiliation].filter(Boolean).join(" · ") || "No department or affiliation"}</small><small>{authorRelationshipSummary(author)}</small></div></div></section>;
+}
+
+function authorRelationshipSummary(author: AuthorRecord) {
+  const worksCount = author.worksCount ?? 0;
+  const newsPostsCount = author.newsPostsCount ?? 0;
+  return `${worksCount} ${worksCount === 1 ? "work" : "works"} · ${newsPostsCount} news ${newsPostsCount === 1 ? "post" : "posts"}`;
+}
+
+function mergeCopiedFieldLabels(source: AuthorRecord, target: AuthorRecord) {
+  const fields: Array<[string, string | null | undefined, string | null | undefined]> = [
+    ["SPUD ID", source.spudId, target.spudId],
+    ["department", source.department, target.department],
+    ["affiliation", source.affiliation, target.affiliation],
+    ["email", source.email, target.email],
+    ["biography", source.biography, target.biography],
+    ["profile picture", source.profilePicture, target.profilePicture],
+  ];
+  return fields.filter(([, sourceValue, targetValue]) => Boolean(sourceValue?.trim()) && !targetValue?.trim()).map(([label]) => label);
 }
 
 function AuthorWorks({ rows, loading }: { rows?: AuthorWorkRecord[]; loading: boolean }) {

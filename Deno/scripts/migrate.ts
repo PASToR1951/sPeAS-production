@@ -68,6 +68,9 @@ async function applyMigration(connection: Awaited<ReturnType<typeof pool.connect
 
   await connection.queryArray("BEGIN");
   try {
+    // pg_dump's baseline clears search_path for its connection. Each incremental
+    // migration must restore a transaction-local path before unqualified DDL.
+    await connection.queryArray("SET LOCAL search_path = public, pg_catalog");
     if (Deno.env.get("PEAS_DESTRUCTIVE_MIGRATION_CONFIRMATION") === "RESTORABLE_BACKUP_VERIFIED") {
       await connection.queryArray("SELECT set_config('peas.backup_verified', 'on', true)");
     }
@@ -101,7 +104,15 @@ async function apply() {
     const baselineApplied = await applyMigration(connection, baselineMigration);
     if (baselineApplied) console.log("Applied production-schema.sql");
 
+    const logBootstrap = await Deno.readTextFile(new URL("../db/bootstrap-system-logs.sql", import.meta.url));
+    if (await applyMigration(connection, { id: "0000-runtime-logs", filename: "bootstrap-system-logs.sql", sql: logBootstrap, checksum: await sha256(logBootstrap) })) {
+      console.log("Applied bootstrap-system-logs.sql");
+    }
+
+    const through = Deno.args.find((argument) => argument.startsWith("--through="))?.slice("--through=".length);
+    if (through && !/^\d{4}$/.test(through)) throw new Error("--through must be a four-digit migration ID");
     for (const migration of await readMigrations()) {
+      if (through && Number(migration.id) > Number(through)) break;
       if (await applyMigration(connection, migration)) console.log(`Applied ${migration.filename}`);
     }
     console.log("Database migrations are current.");

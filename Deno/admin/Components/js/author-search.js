@@ -176,8 +176,7 @@ function initAuthorSearch(inputElement, options = {}) {
         
         try {
                         
-            // Updated to handle potential errors and ensure the UI reflects the current state
-            const response = await fetch(`/authors/search?q=${encodeURIComponent(query)}`);
+            const response = await fetch(`/api/authors/all?q=${encodeURIComponent(query)}`);
             
                         
             // Check if search is still relevant (user hasn't started a new search)
@@ -192,7 +191,8 @@ function initAuthorSearch(inputElement, options = {}) {
                         
             let authors = [];
             try {
-                authors = JSON.parse(responseText);
+                const payload = JSON.parse(responseText);
+                authors = Array.isArray(payload?.authors) ? payload.authors : [];
             } catch (parseError) {
                 throw new Error("Invalid response format from server");
             }

@@ -11,7 +11,7 @@ import { client, withTransaction } from "../db/denopost_conn.ts"; // Import the 
 import { isAuthenticated, isAdmin, requireCapability } from "../middleware/authMiddleware.ts";
 import { getSessionFromHeaders } from "../utils/sessionUtils.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
-import { canViewCompilation } from "../services/contentAuthorizationService.ts";
+import { canViewCompilation, canViewDocument } from "../services/contentAuthorizationService.ts";
 import { getDocumentClassification, getDocumentClassifications, type DocumentClassification } from "../services/documentClassificationService.ts";
 import { compilationAbstractsResolved, forceCompilationPrivateForAbstract, listUnresolvedAbstractTargets } from "../services/abstractWorkflowService.ts";
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
@@ -63,6 +63,9 @@ function removeCompiledFileFields(value: any): any {
     delete sanitized.foreword_path;
     delete sanitized.foreword_file_path;
     delete sanitized.foreword_attachment;
+    delete sanitized.cover_file_path;
+    delete sanitized.cover_path;
+    delete sanitized.cover_attachment;
     delete sanitized.attachment;
     delete sanitized.file_path;
     delete sanitized.file_url;
@@ -199,7 +202,11 @@ const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
         await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "view" }).catch(() => undefined);
     }
     const publicResponse = isLimitedRoute
-        ? { ...responseBody, foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword) }
+        ? {
+            ...responseBody,
+            foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword),
+            cover_download_available: await isStoredPdfAvailable(responseBody?.cover_file_path),
+        }
         : responseBody;
     ctx.response.body = isLimitedRoute ? removeCompiledFileFields(publicResponse) : publicResponse;
 };
@@ -212,8 +219,8 @@ const downloadPublicCompiledForeword = async (ctx: RouterContext<any, any, any>)
         return;
     }
 
-    const result = await client.queryObject<{ title: string | null; category: string | null; foreword: string | null }>(`
-        SELECT title, category, foreword
+    const result = await client.queryObject<{ category: string | null; foreword: string | null }>(`
+        SELECT category, foreword
         FROM compiled_documents
         WHERE id = $1 AND deleted_at IS NULL
     `, [numericId]);
@@ -225,11 +232,61 @@ const downloadPublicCompiledForeword = async (ctx: RouterContext<any, any, any>)
         return;
     }
 
-    const label = compiled.title || `${compiled.category || "compiled-publication"}-foreword`;
+    const label = `${compiled.category || "compiled-publication"}-foreword`;
     applyPublicPdfHeaders(ctx.response.headers, publicPdfFileName(label, `compiled-${numericId}-foreword`), pdf.size);
     ctx.response.status = 200;
     ctx.response.body = pdf.bytes;
     await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+};
+
+const deliverCompiledCover = async (ctx: RouterContext<any, any, any>, publicDownload: boolean) => {
+    const numericId = Number(ctx.params.id);
+    const actor = publicDownload ? undefined : ctx.state.user;
+    if (!Number.isSafeInteger(numericId) || numericId <= 0 || !await canViewCompilation(actor, numericId)) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled document not found" };
+        return;
+    }
+
+    const result = await client.queryObject<{
+        category: string | null;
+        cover_file_path: string | null;
+    }>(`
+        SELECT category, cover_file_path
+        FROM compiled_documents
+        WHERE id = $1 AND deleted_at IS NULL
+    `, [numericId]);
+    const compiled = result.rows[0];
+    const pdf = await readStoredPdf(compiled?.cover_file_path);
+    if (!compiled || !pdf) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Compiled publication cover not found" };
+        return;
+    }
+
+    const fileName = publicPdfFileName(
+        `${compiled.category || "compiled-publication"}-cover`,
+        `compiled-${numericId}-cover`,
+    );
+    applyPublicPdfHeaders(ctx.response.headers, fileName, pdf.size);
+    const disposition = publicDownload
+        ? "attachment"
+        : ctx.request.url.searchParams.get("disposition") === "attachment" ? "attachment" : "inline";
+    ctx.response.headers.set("Content-Disposition", `${disposition}; filename="${fileName}"`);
+    ctx.response.headers.set("Cache-Control", publicDownload ? "no-store" : "private, no-store");
+    ctx.response.status = 200;
+    ctx.response.body = pdf.bytes;
+    if (publicDownload) {
+        await recordRepositoryActivity({ recordType: "compiled", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+    }
+};
+
+const getCompiledCover = async (ctx: RouterContext<any, any, any>) => {
+    await deliverCompiledCover(ctx, false);
+};
+
+const downloadPublicCompiledCover = async (ctx: RouterContext<any, any, any>) => {
+    await deliverCompiledCover(ctx, true);
 };
 
 const addDocumentsToCompilation = async (ctx: RouterContext<any, any, any>) => {
@@ -282,6 +339,16 @@ const reviewCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
 
     const reviewerId = String(ctx.state.user.id);
     const publish = decision === "approved" && body.publish === true;
+    if (decision === "approved") {
+        const importWorkspace = await client.queryObject<{ id: string }>(
+            "SELECT b.id FROM import_batches b WHERE b.compiled_document_id=$1 AND b.status='draft' LIMIT 1", [id]);
+        if (importWorkspace.rows.length) {
+            ctx.response.status = 409;
+            ctx.response.body = { error: "Approve this import in its preparation workspace so all intended papers and reviews are checked together", importBatchId: importWorkspace.rows[0].id };
+            return;
+        }
+    }
+
     if (decision === "approved") {
         if (!await compilationAbstractsResolved(id)) {
             ctx.response.status = 422;
@@ -532,22 +599,24 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
     try {
         // Query to get documents associated with this compiled document
         const result = await client.queryObject(`
-            SELECT d.* 
+            SELECT d.*, d.publication_date::text AS publication_date_text
             FROM documents d
             JOIN compiled_document_items cdi ON d.id = cdi.document_id
             WHERE cdi.compiled_document_id = $1
-              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
-            ORDER BY cdi.id ASC
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE AND d.compiled_parent_id=$1
+                AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
+            ORDER BY cdi.position ASC
         `, [compiledDocId, administratorPreview]);
         
         let childRows = result.rows as Record<string, unknown>[];
         if (childRows.length === 0) {
             // Try alternative method
             const altResult = await client.queryObject(`
-                SELECT d.* 
+                SELECT d.*, d.publication_date::text AS publication_date_text
                 FROM documents d
                 WHERE d.compiled_parent_id = $1
-                  AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
+                  AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE
+                    AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
                 ORDER BY d.id ASC
             `, [compiledDocId, administratorPreview]);
             
@@ -585,7 +654,7 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
             });
             authorsByDocument.set(documentId, authors);
         }
-        const enrichedRows = childRows.map((row) => {
+        const enrichedRows = await Promise.all(childRows.map(async (row) => {
             const documentId = Number(row.id);
             const classification = classifications.get(documentId) ?? { researchAgendas: [], topics: [], keywords: [], complete: false, source: "document" };
             return {
@@ -595,12 +664,19 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
                 topics: classification.topics,
                 keywords: classification.keywords.map((keyword) => keyword.name),
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
+                download_available: await isStoredPdfAvailable(row.file_path),
             };
-        });
+        }));
 
         ctx.response.body = administratorPreview
             ? enrichedRows
-            : removeCompiledFileFields(enrichedRows);
+            : (await Promise.all(enrichedRows.map(async (row: Record<string, any>) => await canViewDocument(undefined, row.id) ? {
+                id: row.id, title: row.title, abstract: row.abstract, publication_date: row.publication_date_text,
+                publication_date_precision: row.publication_date_precision, document_type: row.document_type,
+                pages: row.pages, classification: row.classification, topics: row.topics, keywords: row.keywords,
+                download_available: row.download_available,
+                authors: row.authors.map((author: Record<string, unknown>) => ({ id: String(author.id), full_name: String(author.full_name) })),
+              } : null))).filter(Boolean);
     } catch (error) {
         ctx.response.status = 500;
         ctx.response.body = { 
@@ -640,8 +716,9 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
             FROM compiled_document_items cdi
             JOIN documents d ON cdi.document_id = d.id
             WHERE cdi.compiled_document_id = $1
-              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE))
-            ORDER BY cdi.id ASC
+              AND ($2::boolean OR (d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public = TRUE AND d.compiled_parent_id=$1
+                AND NOT EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=$1 AND p.contents_needs_resolution)))
+            ORDER BY cdi.position ASC
         `, [compiledDocId, administratorPreview]);
         
         if (result.rows.length === 0) {
@@ -651,10 +728,12 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
         }
         
         // Return the found items
-        ctx.response.body = { 
-            items: result.rows,
-            success: true
-        };
+        const visibleItems = administratorPreview ? result.rows : (await Promise.all(result.rows.map(async (row: Record<string, any>) =>
+            await canViewDocument(undefined, row.document_id) ? {
+                document_id: row.document_id, title: row.title, abstract: row.abstract,
+                publication_date: row.publication_date,
+            } : null))).filter(Boolean).map((row, index) => ({ ...row, position: index + 1 }));
+        ctx.response.body = { items: visibleItems, success: true };
     } catch (error) {
         ctx.response.status = 500;
         ctx.response.body = { 
@@ -668,6 +747,7 @@ const getCompiledDocumentItems = async (ctx: RouterContext<any, any, any>) => {
 export const compiledDocumentRoutes: Route[] = [
     { method: "POST", path: "/compiled-documents", handler: createCompiledDocument, middleware: [isAuthenticated, requireDocumentUpload] },
     { method: "GET", path: "/compiled-documents/:id/preview-manifest", handler: getCompiledPreviewManifestRoute, middleware: [isAuthenticated, isAdmin] },
+    { method: "GET", path: "/compiled-documents/:id/cover", handler: getCompiledCover, middleware: [isAuthenticated, isAdmin] },
     { method: "GET", path: "/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/compiled-documents/:id/items", handler: getCompiledDocumentItems },
@@ -681,6 +761,7 @@ export const compiledDocumentRoutes: Route[] = [
     { method: "GET", path: "/guest/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/public/compiled-documents/:id", handler: getCompiledDocument },
     { method: "GET", path: "/public/compiled-documents/:id/foreword/download", handler: downloadPublicCompiledForeword },
+    { method: "GET", path: "/public/compiled-documents/:id/cover/download", handler: downloadPublicCompiledCover },
     { method: "GET", path: "/guest/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/public/compiled-documents/:id/children", handler: getCompiledDocumentChildren },
     { method: "GET", path: "/guest/compiled-documents/:id/items", handler: getCompiledDocumentItems },

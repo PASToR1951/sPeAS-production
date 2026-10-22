@@ -132,6 +132,7 @@ function normalizeDocumentRecord(raw: Record<string, unknown>): DocumentRecord {
     category,
     rawCategory,
     publicationDate,
+    datePrecision: ["year", "month", "day"].includes(String(raw.publication_date_precision)) ? raw.publication_date_precision as "year" | "month" | "day" : "legacy",
     authors,
     authorsText: authors.map((author) => author.full_name ?? author.name).filter(Boolean).join(", ") || "Unknown author",
     topics,
@@ -264,4 +265,14 @@ function numericNullable(value: unknown) {
 function normalizeReviewStatus(value: unknown): DocumentRecord["reviewStatus"] {
   if (value === "pending_review" || value === "rejected") return value;
   return "approved";
+}
+
+export interface ExtractionDiagnostics {
+  workerAvailable: boolean;
+  extractionReady: boolean;
+  errorCode: string | null;
+  checkedAt: string | null;
+}
+export function fetchExtractionDiagnostics() {
+  return apiFetch<ExtractionDiagnostics>("/api/admin/abstract-reviews/diagnostics");
 }

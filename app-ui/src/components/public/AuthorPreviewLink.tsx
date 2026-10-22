@@ -4,12 +4,11 @@ import { AuthorImage } from "../authors/AuthorImage";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { fetchAuthorPreview, type AuthorPreview } from "../../lib/api/authors";
 
-type AuthorReference = Record<string, unknown>;
+type AuthorReference = { id?: string; full_name: string };
 
 export function AuthorPreviewLink({ author, refreshKey = 0 }: { author: AuthorReference; refreshKey?: number }) {
-  const id = String(author.id ?? author.author_id ?? "").trim();
-  const name = String(author.full_name ?? author.name ?? author.author_name ?? "Unknown author");
-  const image = author.profile_picture ?? author.profilePicture ?? author.profilePicUrl;
+  const id = String(author.id ?? "").trim();
+  const name = author.full_name || "Unknown author";
   const profileHref = id ? `/pages/authorprofile.html?id=${encodeURIComponent(id)}` : null;
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<AuthorPreview | null>(null);
@@ -41,7 +40,7 @@ export function AuthorPreviewLink({ author, refreshKey = 0 }: { author: AuthorRe
   }, [id, loadedRefreshKey, open, preview, refreshKey]);
 
   if (!profileHref) {
-    return <span className="peas-document-author-chip is-static"><AuthorImage src={image} name={name} alt="" />{name}</span>;
+    return <span className="peas-document-author-chip is-static"><AuthorImage name={name} alt="" />{name}</span>;
   }
 
   return (
@@ -49,7 +48,7 @@ export function AuthorPreviewLink({ author, refreshKey = 0 }: { author: AuthorRe
       <Tooltip open={open} onOpenChange={setOpen}>
         <TooltipTrigger asChild>
           <a className="peas-document-author-chip" href={profileHref}>
-            <AuthorImage src={image} name={name} alt="" />
+            <AuthorImage src={preview?.profilePicture} name={preview?.fullName ?? name} alt="" />
             <span>{name}</span>
           </a>
         </TooltipTrigger>
@@ -60,13 +59,12 @@ export function AuthorPreviewLink({ author, refreshKey = 0 }: { author: AuthorRe
     </TooltipProvider>
   );
 }
-
 function AuthorPreviewContent({ fallback, profileHref, preview, loading, error }: { fallback: AuthorReference; profileHref: string; preview: AuthorPreview | null; loading: boolean; error: boolean }) {
   const name = preview?.fullName ?? String(fallback.full_name ?? "Author");
-  const image = preview?.profilePicture ?? fallback.profile_picture ?? fallback.profilePicture;
-  const affiliation = preview?.affiliation ?? nullable(fallback.affiliation);
-  const department = preview?.department ?? nullable(fallback.department);
-  const biography = preview?.biography ?? nullable(fallback.biography ?? fallback.bio);
+  const image = preview?.profilePicture;
+  const affiliation = preview?.affiliation ?? null;
+  const department = preview?.department ?? null;
+  const biography = preview?.biography ?? null;
   const categories = preview?.researchCategories ?? [];
   const activity = preview?.viewerActivity;
   const hasActivity = Boolean(activity && (activity.savedWorksCount || activity.viewedWorksCount));
@@ -86,8 +84,4 @@ function AuthorPreviewContent({ fallback, profileHref, preview, loading, error }
     <a className="peas-author-preview-card__profile" href={profileHref}>View profile <ArrowUpRight aria-hidden="true" /></a>
   </div>;
 }
-
-function nullable(value: unknown) {
-  const text = String(value ?? "").trim();
-  return text || null;
-}
+// Public attribution deliberately carries no directory-only fallback fields.

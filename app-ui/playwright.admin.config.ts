@@ -12,6 +12,7 @@ export default defineConfig({
       grep: /@reporting/,
       use: { ...devices["Pixel 7"] },
     },
+    { name: "upload-webkit", testMatch: /(?:upload-document|documents-catalog)\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
     {
       name: "author-modal-webkit",
       testMatch: /authors-reference-data\.spec\.ts/,

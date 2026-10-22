@@ -40,7 +40,7 @@ const addResearchAgendaItems = async (ctx: any) => {
                 primaryResearchAgendaId: body.agenda_ids[0],
                 topicIds: current.topics.map((item) => item.id),
                 keywords: current.keywords.map((item) => item.name),
-            }, actor, { allowPendingTopics: true, allowIncomplete: true });
+            }, actor, { allowIncomplete: true });
         } else {
             classification = await replaceDocumentKeywords(documentId, body.agenda_items, actor);
         }

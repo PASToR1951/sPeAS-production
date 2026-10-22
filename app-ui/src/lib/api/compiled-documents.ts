@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { apiFetch } from "./http";
 import type { DocumentClassification, DocumentRecord } from "./types";
 import { fetchChildDocuments } from "./documents";
@@ -10,6 +11,10 @@ export interface CompiledDocumentRecord {
   issue_number?: string | number;
   start_year?: number;
   end_year?: number;
+  cover_page_count?: number;
+  front_cover_page?: number;
+  back_cover_page?: number;
+  cover_download_available?: boolean;
   document_count?: number;
   [key: string]: unknown;
 }
@@ -21,6 +26,7 @@ export interface CompiledPreviewStudy {
   authors: Array<{ id?: string; fullName: string }>;
   category: string;
   publicationDate: string | null;
+  datePrecision?: PublicationDatePrecision;
   pages: number | null;
   abstract: string | null;
   hasPdf: boolean;
@@ -39,6 +45,10 @@ export interface CompiledPreviewManifest {
     overview: string | null;
     childCount: number;
     hasForeword: boolean;
+    hasCover: boolean;
+    coverPageCount: number | null;
+    frontCoverPage: number | null;
+    backCoverPage: number | null;
     classification: DocumentClassification;
   };
   studies: CompiledPreviewStudy[];
@@ -103,6 +113,10 @@ export function normalizeCompiledPreviewManifest(raw: unknown): CompiledPreviewM
       overview: nullableText(collection.overview),
       childCount: Math.max(0, Math.floor(nullableNumber(collection.childCount) ?? studies.length)),
       hasForeword: Boolean(collection.hasForeword),
+      hasCover: Boolean(collection.hasCover),
+      coverPageCount: nullableNumber(collection.coverPageCount),
+      frontCoverPage: nullableNumber(collection.frontCoverPage),
+      backCoverPage: nullableNumber(collection.backCoverPage),
       classification: normalizeClassification(collection.classification),
     },
     studies: studies.map((entry, index) => {
@@ -118,6 +132,7 @@ export function normalizeCompiledPreviewManifest(raw: unknown): CompiledPreviewM
         authors: authors.length ? authors : [{ fullName: "Unknown author" }],
         category: String(row.category ?? "Research study"),
       publicationDate: nullableIsoDate(row.publicationDate),
+      datePrecision: ["year", "month", "day"].includes(String(row.datePrecision)) ? row.datePrecision as PublicationDatePrecision : "legacy",
         pages: nullableNumber(row.pages),
         abstract: nullableText(row.abstract),
         hasPdf: Boolean(row.hasPdf),
@@ -133,6 +148,10 @@ export async function fetchCompiledPreviewManifest(id: number): Promise<Compiled
 
 export function compiledForewordUrl(id: number, disposition: "inline" | "attachment" = "inline") {
   return `/api/compiled-documents/${encodeURIComponent(String(id))}/foreword?disposition=${disposition}`;
+}
+
+export function compiledCoverUrl(id: number, disposition: "inline" | "attachment" = "inline") {
+  return `/api/compiled-documents/${encodeURIComponent(String(id))}/cover?disposition=${disposition}`;
 }
 
 export function compiledStudyPdfUrl(id: number, disposition: "inline" | "attachment" = "inline") {

@@ -63,11 +63,6 @@ const routes: Record<string, AdminRoute> = {
     allowedRoles: ADMIN_ROLES,
     Component: lazyNamed(() => import("./features/news/AdminNewsPage"), "AdminNewsPage"),
   },
-  "/admin/Components/newsletter.html": {
-    title: "Newsletter | PeAS Admin",
-    allowedRoles: ADMIN_ROLES,
-    Component: lazyNamed(() => import("./features/newsletter/NewsletterAdminPage"), "NewsletterAdminPage"),
-  },
   "/admin/Components/role-management.html": {
     title: "Role Management | PeAS Admin",
     Component: lazyNamed(() => import("./features/roles/RoleManagementPage"), "RoleManagementPage"),

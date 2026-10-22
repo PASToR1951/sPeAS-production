@@ -1,7 +1,8 @@
 import { createCompiledDocument as createCompiledDocumentService, getCompiledDocument as getCompiledDocumentService, addDocumentToCompilation as addDocumentToCompilationService, removeDocumentFromCompilation as removeDocumentFromCompilationService, softDeleteCompiledDocument as softDeleteCompiledDocumentService, updateCompiledDocument as updateCompiledDocumentService } from "../services/documentService.ts";
 import { getDocumentClassification } from "../services/documentClassificationService.ts";
-import { validateCompiledVolume, validateCompiledYearRange } from "../services/documentMetadataValidationService.ts";
+import { validateCompiledCoverSelection, validateCompiledVolume, validateCompiledYearRange } from "../services/documentMetadataValidationService.ts";
 import { isAbstractTooLong, normalizeManualAbstract, queueCompiledForewordAbstract } from "../services/abstractWorkflowService.ts";
+import { inspectPdfFile, resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
 
 /**
  * Creates a new compiled document
@@ -18,6 +19,10 @@ export async function createCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     abstract_foreword_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy';
     uploaded_by?: string;
@@ -117,6 +122,42 @@ export async function handleCreateCompiledDocument(request: Request): Promise<Re
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    const coverPath = typeof body.compiledDoc.cover_file_path === "string"
+      ? body.compiledDoc.cover_file_path.trim()
+      : "";
+    const resolvedCoverPath = coverPath ? resolveStoredPdfPath(coverPath) : null;
+    let coverPageCount: number | null = null;
+    let coverInspectionError: string | null = null;
+    if (coverPath && !resolvedCoverPath) {
+      coverInspectionError = "The cover PDF is not available in repository storage.";
+    } else if (resolvedCoverPath) {
+      const inspection = await inspectPdfFile(resolvedCoverPath);
+      if (!inspection) coverInspectionError = "The cover PDF could not be inspected.";
+      else if (inspection.encrypted) coverInspectionError = "Password-protected cover PDFs are not supported.";
+      else coverPageCount = inspection.pageCount;
+    }
+
+    const coverErrors = validateCompiledCoverSelection(
+      coverPath,
+      coverPageCount,
+      body.compiledDoc.front_cover_page,
+      body.compiledDoc.back_cover_page,
+    );
+    if (coverInspectionError) coverErrors["compiledDoc.cover_file_path"] = coverInspectionError;
+    if (Object.keys(coverErrors).length) {
+      return new Response(JSON.stringify({
+        error: "A valid front and back cover mapping is required.",
+        fields: coverErrors,
+      }), {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    body.compiledDoc.cover_file_path = coverPath;
+    body.compiledDoc.cover_page_count = coverPageCount;
+    body.compiledDoc.front_cover_page = Number(body.compiledDoc.front_cover_page);
+    body.compiledDoc.back_cover_page = Number(body.compiledDoc.back_cover_page);
 
     // Default to empty array if documentIds not provided
     const documentIds = Array.isArray(body.documentIds) ? body.documentIds : [];
@@ -345,6 +386,10 @@ export async function updateCompiledDocument(
     department?: string;
     category?: string;
     foreword?: string;
+    cover_file_path?: string;
+    cover_page_count?: number;
+    front_cover_page?: number;
+    back_cover_page?: number;
     abstract_foreword?: string;
     title?: string;
     authors?: any[];

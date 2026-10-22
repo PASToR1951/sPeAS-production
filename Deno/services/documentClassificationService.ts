@@ -1,5 +1,5 @@
 import { client, withTransaction } from "../db/denopost_conn.ts";
-import { CLASSIFICATION_LIMITS, isClassificationComplete, normalizeClassificationTerm } from "../../shared/classification.ts";
+import { CLASSIFICATION_LIMITS, normalizeClassificationTerm } from "../../shared/classification.ts";
 import type { ClassificationTerm, DocumentClassification } from "../../shared/classification.ts";
 export { CLASSIFICATION_LIMITS, normalizeClassificationTerm } from "../../shared/classification.ts";
 export type { ClassificationTerm, DocumentClassification } from "../../shared/classification.ts";
@@ -424,7 +424,7 @@ export async function updateKeyword(keywordId: number, value: unknown): Promise<
 export async function createTopic(
   name: string,
   actor: ClassificationActor,
-  status: TopicStatus = actor.role === "admin" ? "approved" : "pending",
+  status: TopicStatus = "approved",
 ): Promise<ClassificationTerm> {
   const displayName = name.trim().replace(/[\s]+/gu, " ");
   if (displayName.length < 2 || displayName.length > CLASSIFICATION_LIMITS.topicMaxLength) {
@@ -436,7 +436,21 @@ export async function createTopic(
   const result = await client.queryObject(`
     INSERT INTO topics (name, normalized_name, status, proposed_by, reviewed_by, reviewed_at)
     VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (normalized_name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+    ON CONFLICT (normalized_name) DO UPDATE SET
+      status = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN 'approved'
+        ELSE topics.status
+      END,
+      reviewed_by = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN EXCLUDED.reviewed_by
+        ELSE topics.reviewed_by
+      END,
+      reviewed_at = CASE
+        WHEN topics.status = 'pending' AND EXCLUDED.status = 'approved' THEN EXCLUDED.reviewed_at
+        ELSE topics.reviewed_at
+      END,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE topics.status <> 'retired'
     RETURNING id, name, status
   `, [
     displayName,
@@ -446,6 +460,10 @@ export async function createTopic(
     status === "approved" ? actor.id : null,
     status === "approved" ? new Date() : null,
   ]);
+  if (!result.rows[0] && status === "approved") {
+    throw new ClassificationValidationError("This topic has been retired", { name: "Choose another topic or reactivate it in Classification Management" });
+  }
+  if (!result.rows[0]) throw new ClassificationValidationError("Topic could not be created", { name: "Choose another topic" });
   return toTerm(result.rows[0] as Record<string, unknown>);
 }
 
@@ -619,7 +637,10 @@ export async function getDocumentClassifications(
     const researchAgendas = agendaById.get(id) ?? [];
     const topics = topicById.get(id) ?? [];
     const keywords = keywordById.get(id) ?? [];
-    const complete = isClassificationComplete(researchAgendas, topics, source);
+    const complete = source === "aggregated_children"
+      ? Boolean(scopePairs.some(([requestedId]) => requestedId === id)) && topics.length > 0 && topics.every((term) => term.status === "approved")
+      : topics.length >= CLASSIFICATION_LIMITS.topicsMin && topics.length <= CLASSIFICATION_LIMITS.topicsMax
+        && topics.every((term) => term.status === "approved");
     result.set(id, { researchAgendas, topics, keywords, complete, source });
   }
   return result;
@@ -667,7 +688,10 @@ export async function getDocumentClassification(
   const agendaTerms = (agendas.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const topicTerms = (topics.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const keywordTerms = (keywords.rows as Record<string, unknown>[]).map((row) => toTerm(row, "term"));
-  const complete = isClassificationComplete(agendaTerms, topicTerms, scope.source);
+  const complete = scope.source === "aggregated_children"
+    ? ids.length > 0 && topicTerms.length > 0 && topicTerms.every((term) => term.status === "approved")
+    : topicTerms.length >= CLASSIFICATION_LIMITS.topicsMin && topicTerms.length <= CLASSIFICATION_LIMITS.topicsMax
+      && topicTerms.every((term) => term.status === "approved");
 
   return {
     researchAgendas: agendaTerms,
@@ -682,24 +706,27 @@ export async function replaceDocumentClassification(
   documentId: number,
   input: ClassificationInput,
   actor: ClassificationActor,
-  options: { allowPendingTopics?: boolean; allowIncomplete?: boolean } = {},
+  options: { allowIncomplete?: boolean } = {},
 ): Promise<DocumentClassification> {
-  const agendaIds = uniquePositiveIds(input.researchAgendaIds, "researchAgendaIds");
-  const primaryAgendaId = input.primaryResearchAgendaId === undefined || input.primaryResearchAgendaId === null
-    ? agendaIds[0]
-    : Number(input.primaryResearchAgendaId);
+  const managesAgendas = Object.prototype.hasOwnProperty.call(input, "researchAgendaIds")
+    || Object.prototype.hasOwnProperty.call(input, "primaryResearchAgendaId");
+  const agendaIds = managesAgendas ? uniquePositiveIds(input.researchAgendaIds, "researchAgendaIds") : [];
+  const primaryAgendaId = managesAgendas
+    ? input.primaryResearchAgendaId === undefined || input.primaryResearchAgendaId === null
+      ? agendaIds[0]
+      : Number(input.primaryResearchAgendaId)
+    : undefined;
   const topicIds = uniquePositiveIds(input.topicIds, "topicIds");
   const keywordTerms = normalizedKeywords(input.keywords);
-  const allowPendingTopics = options.allowPendingTopics === true;
   const allowIncomplete = options.allowIncomplete === true;
 
-  if (agendaIds.length > CLASSIFICATION_LIMITS.agendasMax) {
+  if (managesAgendas && agendaIds.length > CLASSIFICATION_LIMITS.agendasMax) {
     throw new ClassificationValidationError("A document can have at most three research agendas", { researchAgendaIds: "Select no more than three agendas" });
   }
   if (topicIds.length > CLASSIFICATION_LIMITS.topicsMax) {
     throw new ClassificationValidationError("A document can have at most five topics", { topicIds: "Select no more than five topics" });
   }
-  if (agendaIds.length && !agendaIds.includes(primaryAgendaId)) {
+  if (managesAgendas && agendaIds.length && !agendaIds.includes(Number(primaryAgendaId))) {
     throw new ClassificationValidationError("The primary agenda must be selected", { primaryResearchAgendaId: "Choose one of the selected agendas" });
   }
   if (!allowIncomplete && topicIds.length < CLASSIFICATION_LIMITS.topicsMin) {
@@ -733,9 +760,9 @@ export async function replaceDocumentClassification(
   if (topicRows.rows.length !== topicIds.length) {
     throw new ClassificationValidationError("One or more topics do not exist", { topicIds: "Choose existing topics" });
   }
-  const invalidTopics = (topicRows.rows as Record<string, unknown>[]).some((row) => row.status !== "approved" && !(allowPendingTopics && row.status === "pending"));
+  const invalidTopics = (topicRows.rows as Record<string, unknown>[]).some((row) => row.status !== "approved");
   if (invalidTopics) {
-    throw new ClassificationValidationError("Choose approved topics before publication", { topicIds: "Remove pending or retired topics before publication" });
+    throw new ClassificationValidationError("Choose active topics", { topicIds: "Remove retired or unavailable topics" });
   }
 
   const normalizedSet = new Set<string>();
@@ -755,15 +782,19 @@ export async function replaceDocumentClassification(
     const document = await connection.queryObject(`SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL`, [documentId]);
     if (!document.rows.length) throw new ClassificationValidationError("Document not found");
 
-    await connection.queryArray(`DELETE FROM document_research_agenda WHERE document_id = $1`, [documentId]);
+    if (managesAgendas) {
+      await connection.queryArray(`DELETE FROM document_research_agenda WHERE document_id = $1`, [documentId]);
+    }
     await connection.queryArray(`DELETE FROM document_topics WHERE document_id = $1`, [documentId]);
     await connection.queryArray(`DELETE FROM document_keywords WHERE document_id = $1`, [documentId]);
 
-    for (const id of agendaIds) {
-      await connection.queryArray(`
-        INSERT INTO document_research_agenda (document_id, research_agenda_id, is_primary, assigned_by)
-        VALUES ($1, $2, $3, $4)
-      `, [documentId, id, id === primaryAgendaId, actor.id]);
+    if (managesAgendas) {
+      for (const id of agendaIds) {
+        await connection.queryArray(`
+          INSERT INTO document_research_agenda (document_id, research_agenda_id, is_primary, assigned_by)
+          VALUES ($1, $2, $3, $4)
+        `, [documentId, id, id === primaryAgendaId, actor.id]);
+      }
     }
     for (const [index, id] of topicIds.entries()) {
       await connection.queryArray(`
@@ -788,7 +819,7 @@ export async function replaceDocumentClassification(
     await connection.queryArray(`UPDATE documents SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [documentId]);
   });
 
-  const current = await getDocumentClassification(documentId, allowPendingTopics);
+  const current = await getDocumentClassification(documentId, false);
   await import("../models/systemLogsModel.ts").then(({ SystemLogsModel }) => SystemLogsModel.createLog({
     log_type: "document_classification",
     user_id: actor.id,
@@ -827,5 +858,5 @@ export async function replaceDocumentKeywords(
     primaryResearchAgendaId: current.researchAgendas.find((item) => item.primary)?.id ?? current.researchAgendas[0]?.id,
     topicIds: current.topics.map((item) => item.id),
     keywords,
-  }, actor, { allowPendingTopics: true, allowIncomplete: true });
+  }, actor, { allowIncomplete: true });
 }

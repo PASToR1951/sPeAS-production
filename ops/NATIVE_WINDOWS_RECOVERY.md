@@ -27,7 +27,8 @@ media, key escrow, an elevated change window, and operator review.
    Administrators.
 4. Copy [`backup-policy.example.json`](backup-policy.example.json) to
    `C:\ProgramData\PeAS\config\backup-policy.json`. Verify PostgreSQL paths,
-   password-file handling, free-space threshold, and repository definitions.
+   password-file handling, free-space threshold, repository definitions, the
+   public monitoring URL/document/CSP mode, and the operations SMTP recipient.
 5. Install the boot supervisor as SYSTEM and verify it starts before logon:
 
    ```powershell
@@ -62,9 +63,12 @@ startup-before-logon, RPO, and RTO.
 ## Routine operation
 
 `Install` registers hourly backup, 15-minute health, daily structural verify,
-and daily archive-reconciliation tasks under SYSTEM. Rotate USB media daily:
-connect and unlock the incoming drive, run a `Rotation` backup, verify status,
-safely eject the outgoing drive, and store it off-site.
+daily archive reconciliation, and a 05:00 sanitized CSP-summary task under
+SYSTEM. Keep `PEAS-BACKUP-A` connected for hourly recovery points. Once per
+week, safely eject A, connect and unlock `PEAS-BACKUP-B`, run and verify a
+`Rotation` backup, eject B to its separate storage location, then reconnect A.
+The example policy alerts after 48 hours for A and 168 hours for B; a repository
+without `maximumAgeHours` uses the global fallback for compatibility.
 
 ```powershell
 & $Recovery -Action Backup -Reason Rotation -PolicyPath $Policy
@@ -76,6 +80,17 @@ The maintenance request expires after ten minutes. Mutation requests receive
 `503` plus `Retry-After`; the supervisor stops web and worker children,
 acknowledges quiescence, and restarts them after the VSS consistency point.
 Backup fails if acknowledgement exceeds 60 seconds or the pause exceeds 120.
+
+The 15-minute status task also runs `Test-PeasPublicEdge.ps1`. It verifies the
+TLS edge, required headers, database readiness, administrative-author denial,
+the public author DTO, and a stable public PDF. Alert state is stored below
+`state\monitoring`; messages are sent only when health changes or the
+certificate enters the 30-, 14-, or 7-day bucket. A recovery or renewal sends
+one recovery message, then duplicate messages remain suppressed. An off-site
+USB drive is not treated as failed merely because it is disconnected; its last
+successful receipt must remain within its configured maximum age, while any
+connected drive must pass health and BitLocker checks. Per-repository
+`maximumAgeHours` takes precedence over the global fallback.
 
 ## Retention and legal holds
 
@@ -119,6 +134,13 @@ is not an off-site copy.
 
 - Validate VSS and Restic integration on the target Windows build.
 - Audit BitLocker state and external key escrow.
-- Connect structured backup events to institutional alerting and test delivery.
+- Test institutional SMTP delivery for failure, certificate, and recovery
+  transitions using the scheduled SYSTEM identity.
 - Automate isolated PostgreSQL/application provisioning for `Drill`.
 - Add an approved metadata/rights/provenance interface for permanent archives.
+
+Record every completed production gate in
+[`RELEASE_READINESS_AUDIT.md`](RELEASE_READINESS_AUDIT.md). Until both encrypted
+repositories, the isolated `PEAS_RECOVERY_MODE=true` application drill, two
+administrator sign-ins, functional checks, and measured RPO/RTO are accepted,
+the release decision remains pending.

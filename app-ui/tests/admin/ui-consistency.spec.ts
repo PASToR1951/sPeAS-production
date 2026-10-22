@@ -8,7 +8,6 @@ const ADMIN_LINKS = [
   "Archived Documents",
   "Authors",
   "Department News",
-  "Newsletter",
   "Contact Inquiries",
 ];
 
@@ -31,6 +30,11 @@ test.beforeEach(async ({ page }) => {
   } }));
   await page.route("**/api/author-visits/stats", (route) => route.fulfill({ json: { success: true, topAuthors: [] } }));
   await page.route("**/api/admin/notifications", (route) => route.fulfill({ json: { notifications: [{ id: 1, type: "author_profile_incomplete", entityType: "author", entityId: "author-1", severity: "urgent", title: "Complete author profile", message: "Incomplete Author is missing directory information.", actionPath: "/admin/Components/author-list.html?author=author-1&action=complete", isRead: false, resolved: false, createdAt: "2026-08-01T00:00:00.000Z" }], summary: { total: 1, unread: 1, urgent: 1 } } }));
+});
+
+test("retired newsletter workspace is absent from administrator navigation", async ({ page }) => {
+  await page.goto("/admin/dashboard.html");
+  await expect(page.getByRole("link", { name: "Newsletter" })).toHaveCount(0);
 });
 
 test("admin notification bell exposes urgent author action", async ({ page }) => {

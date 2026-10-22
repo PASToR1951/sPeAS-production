@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../shared/imports.ts";
 import { client } from "../db/denopost_conn.ts";
 import { getDocumentClassification, type DocumentClassification } from "./documentClassificationService.ts";
 
@@ -8,6 +9,7 @@ export interface CompiledPreviewStudy {
   authors: Array<{ id?: string; fullName: string }>;
   category: string;
   publicationDate: string | null;
+  datePrecision?: PublicationDatePrecision;
   pages: number | null;
   abstract: string | null;
   hasPdf: boolean;
@@ -26,6 +28,10 @@ export interface CompiledPreviewManifest {
     overview: string | null;
     childCount: number;
     hasForeword: boolean;
+    hasCover: boolean;
+    coverPageCount: number | null;
+    frontCoverPage: number | null;
+    backCoverPage: number | null;
     classification: DocumentClassification;
   };
   studies: CompiledPreviewStudy[];
@@ -60,7 +66,8 @@ export function buildCompiledPreviewTitle(category: unknown, volume: unknown, st
 export async function getCompiledPreviewManifest(compiledDocumentId: number): Promise<CompiledPreviewManifest | null> {
   const parentResult = await client.queryObject<Record<string, unknown>>(`
     SELECT id, category, volume, issue_number, department, start_year, end_year,
-           abstract_foreword, foreword
+           abstract_foreword, foreword, cover_file_path, cover_page_count,
+           front_cover_page, back_cover_page
     FROM compiled_documents
     WHERE id = $1 AND deleted_at IS NULL
   `, [compiledDocumentId]);
@@ -69,7 +76,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
 
   const studiesResult = await client.queryObject<Record<string, unknown>>(`
     WITH explicitly_linked AS (
-      SELECT d.id, MIN(cdi.id)::INTEGER AS sort_order
+      SELECT d.id, MIN(cdi.position)::INTEGER AS sort_order
       FROM compiled_document_items cdi
       JOIN documents d ON d.id = cdi.document_id
       WHERE cdi.compiled_document_id = $1
@@ -88,7 +95,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       SELECT id, sort_order FROM fallback_children
     )
     SELECT c.id, c.sort_order, d.title, d.document_type::TEXT AS category,
-           d.publication_date, d.pages, d.abstract, d.file_path
+           d.publication_date, d.publication_date_precision, d.pages, d.abstract, d.file_path
     FROM candidates c
     JOIN documents d ON d.id = c.id
     ORDER BY c.sort_order, c.id
@@ -124,6 +131,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       authors,
       category: String(row.category ?? "Research study"),
       publicationDate: row.publication_date ? new Date(String(row.publication_date)).toISOString() : null,
+      datePrecision: row.publication_date_precision as PublicationDatePrecision ?? "legacy",
       pages: numberOrNull(row.pages),
       abstract: stringOrNull(row.abstract),
       hasPdf: Boolean(stringOrNull(row.file_path)),
@@ -148,6 +156,10 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       overview: stringOrNull(parent.abstract_foreword),
       childCount: studies.length,
       hasForeword: Boolean(stringOrNull(parent.foreword)),
+      hasCover: Boolean(stringOrNull(parent.cover_file_path)),
+      coverPageCount: numberOrNull(parent.cover_page_count),
+      frontCoverPage: numberOrNull(parent.front_cover_page),
+      backCoverPage: numberOrNull(parent.back_cover_page),
       classification,
     },
     studies,

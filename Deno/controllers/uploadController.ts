@@ -141,6 +141,12 @@ export async function handleFileUpload(
           "foreword",
         )) ||
       data.fields.is_foreword === "true";
+    const isCoverUpload = data.fields.is_cover === "true";
+    if (isForewordUpload && isCoverUpload) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "A PDF cannot be uploaded as both a foreword and a cover" };
+      return;
+    }
 
     // Extract storage path from original path if available
     if (originalPath && originalPath.includes("/")) {
@@ -157,7 +163,7 @@ export async function handleFileUpload(
     storagePath = storagePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 
     // Handle foreword files specially - ensure they go to a forewords subfolder
-    if (isForewordUpload) {
+    if (isForewordUpload || isCoverUpload) {
       // Extract document type from path or from form data
       const pathParts = storagePath.split("/");
       let docType = "hello"; // Default
@@ -184,19 +190,20 @@ export async function handleFileUpload(
         docType = "hello";
       }
 
-      // Ensure the path correctly includes the document type and forewords subfolder
-      if (storagePath.includes("forewords")) {
-        // Path already includes forewords subfolder, verify its structure
-        const forewordDirIndex = storagePath.indexOf("forewords");
-        const beforeForewordDir = storagePath.substring(0, forewordDirIndex);
+      const assetDirectory = isCoverUpload ? "covers" : "forewords";
 
-        if (!beforeForewordDir.includes(docType)) {
+      // Ensure the path correctly includes the document type and asset subfolder
+      if (storagePath.includes(assetDirectory)) {
+        // Path already includes the subfolder, verify its structure
+        const assetDirIndex = storagePath.indexOf(assetDirectory);
+        const beforeAssetDir = storagePath.substring(0, assetDirIndex);
+
+        if (!beforeAssetDir.includes(docType)) {
           // Needs correcting - rebuild the path
-          storagePath = `storage/${docType}/forewords`;
+          storagePath = `storage/${docType}/${assetDirectory}`;
         }
       } else {
-        // Build the proper foreword path
-        storagePath = `storage/${docType}/forewords`;
+        storagePath = `storage/${docType}/${assetDirectory}`;
       }
     }
 

@@ -1,6 +1,6 @@
 import { pool } from "../config/db.ts";
 
-export type SuggestionType = "work" | "news" | "author" | "topic" | "keyword" | "agenda";
+export type SuggestionType = "work" | "news" | "author" | "topic" | "keyword";
 export interface SearchSuggestion {
   key: string;
   type: SuggestionType;
@@ -48,8 +48,7 @@ export async function getSearchSuggestions(query: string, category = "All", limi
           COALESCE(string_agg(DISTINCT a.full_name, ', ' ORDER BY a.full_name), '') AS authors,
           CONCAT_WS(' ', d.title, d.description, d.abstract,
             string_agg(DISTINCT a.full_name, ' '),
-            string_agg(DISTINCT t.name, ' '), string_agg(DISTINCT k.term, ' '),
-            string_agg(DISTINCT ra.name, ' ')) AS search_text
+            string_agg(DISTINCT t.name, ' '), string_agg(DISTINCT k.term, ' ')) AS search_text
         FROM documents d
         LEFT JOIN document_authors da ON da.document_id = d.id
         LEFT JOIN authors a ON a.id = da.author_id
@@ -57,15 +56,13 @@ export async function getSearchSuggestions(query: string, category = "All", limi
         LEFT JOIN topics t ON t.id = dt.topic_id AND t.status = 'approved'
         LEFT JOIN document_keywords dk ON dk.document_id = d.id
         LEFT JOIN keywords k ON k.id = dk.keyword_id
-        LEFT JOIN document_research_agenda dra ON dra.document_id = d.id
-        LEFT JOIN research_agenda ra ON ra.id = dra.research_agenda_id AND ra.is_official = TRUE
         WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND d.compiled_parent_id IS NULL
         GROUP BY d.id
         UNION ALL
         SELECT c.id::TEXT, 'compiled'::TEXT, CONCAT_WS(' ', c.category, 'Vol. ' || c.volume, '(' || c.start_year || '-' || c.end_year || ')'),
           COALESCE(c.category, 'CONFLUENCE')::TEXT, NULL::TEXT,
           COALESCE(string_agg(DISTINCT a.full_name, ', ' ORDER BY a.full_name), ''),
-          CONCAT_WS(' ', c.category, c.volume, c.start_year, c.end_year, string_agg(DISTINCT child.title, ' '), string_agg(DISTINCT a.full_name, ' '), string_agg(DISTINCT t.name, ' '), string_agg(DISTINCT k.term, ' '), string_agg(DISTINCT ra.name, ' '))
+          CONCAT_WS(' ', c.category, c.volume, c.start_year, c.end_year, string_agg(DISTINCT child.title, ' '), string_agg(DISTINCT a.full_name, ' '), string_agg(DISTINCT t.name, ' '), string_agg(DISTINCT k.term, ' '))
         FROM compiled_documents c
         JOIN compiled_document_items cdi ON cdi.compiled_document_id = c.id
         JOIN documents child ON child.id = cdi.document_id
@@ -75,8 +72,6 @@ export async function getSearchSuggestions(query: string, category = "All", limi
         LEFT JOIN topics t ON t.id = dt.topic_id AND t.status = 'approved'
         LEFT JOIN document_keywords dk ON dk.document_id = child.id
         LEFT JOIN keywords k ON k.id = dk.keyword_id
-        LEFT JOIN document_research_agenda dra ON dra.document_id = child.id
-        LEFT JOIN research_agenda ra ON ra.id = dra.research_agenda_id AND ra.is_official = TRUE
         WHERE c.deleted_at IS NULL AND c.review_status = 'approved' AND child.deleted_at IS NULL AND child.review_status = 'approved' AND child.is_public IS TRUE
         GROUP BY c.id
       ), matched AS (
@@ -123,13 +118,6 @@ export async function getSearchSuggestions(query: string, category = "All", limi
       WHERE d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND LOWER(k.term) LIKE $1 ${classificationCategory.sql}
       GROUP BY k.id ORDER BY match_rank, public_work_count DESC, LOWER(k.term) LIMIT $${classificationCategory.params.length + 3}
     `, [like, prefix, ...classificationCategory.params, safeLimit]);
-    const agendaRows = await connection.queryObject<Record<string, unknown>>(`
-      SELECT ra.id::TEXT, ra.name, ra.is_active, COUNT(DISTINCT d.id)::BIGINT AS public_work_count,
-        CASE WHEN LOWER(ra.name) LIKE $2 THEN 0 WHEN LOWER(ra.name) LIKE '% ' || $2 THEN 1 ELSE 2 END AS match_rank
-      FROM research_agenda ra JOIN document_research_agenda dra ON dra.research_agenda_id = ra.id JOIN documents d ON d.id = dra.document_id
-      WHERE ra.is_official = TRUE AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE AND LOWER(ra.name) LIKE $1 ${classificationCategory.sql}
-      GROUP BY ra.id ORDER BY match_rank, public_work_count DESC, LOWER(ra.name) LIMIT $${classificationCategory.params.length + 3}
-    `, [like, prefix, ...classificationCategory.params, safeLimit]);
     await connection.queryArray("COMMIT");
 
     const suggestions: Record<SuggestionType, SearchSuggestion[]> = {
@@ -138,17 +126,16 @@ export async function getSearchSuggestions(query: string, category = "All", limi
       author: authorRows.rows.map((row) => ({ key: `author:${row.id}`, type: "author", label: String(row.full_name), description: `${String(row.department || row.affiliation || "Author")} · ${Number(row.public_work_count || 0)} public works`, href: `/pages/authorprofile.html?id=${encodeURIComponent(String(row.id))}` })),
       topic: topicRows.rows.map((row) => ({ key: `topic:${row.id}`, type: "topic", label: String(row.name), description: `Approved topic · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?topic=${encodeURIComponent(String(row.id))}` })),
       keyword: keywordRows.rows.map((row) => ({ key: `keyword:${row.id}`, type: "keyword", label: String(row.term), description: `Keyword · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?keyword=${encodeURIComponent(String(row.term))}` })),
-      agenda: agendaRows.rows.map((row) => ({ key: `agenda:${row.id}`, type: "agenda", label: String(row.name), description: `Research agenda · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?agenda=${encodeURIComponent(String(row.id))}`, historical: row.is_active === false })),
     };
-    const caps: Record<SuggestionType, number> = { work: 3, news: 2, author: 2, topic: 1, keyword: 1, agenda: 1 };
+    const caps: Record<SuggestionType, number> = { work: 3, news: 2, author: 2, topic: 1, keyword: 1 };
     let remaining = safeLimit;
     const trimmed = {} as Record<SuggestionType, SearchSuggestion[]>;
-    for (const type of ["work", "news", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
+    for (const type of ["work", "news", "author", "topic", "keyword"] as SuggestionType[]) {
       trimmed[type] = suggestions[type].slice(0, Math.min(caps[type], remaining));
       remaining -= trimmed[type].length;
     }
     if (remaining > 0) {
-      for (const type of ["work", "news", "author", "topic", "keyword", "agenda"] as SuggestionType[]) {
+      for (const type of ["work", "news", "author", "topic", "keyword"] as SuggestionType[]) {
         const extra = suggestions[type].slice(trimmed[type].length, trimmed[type].length + remaining);
         trimmed[type] = [...trimmed[type], ...extra];
         remaining -= extra.length;

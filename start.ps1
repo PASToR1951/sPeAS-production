@@ -13,7 +13,7 @@ Set-Location -LiteralPath $repoRoot
 if (-not $Native -and (Get-Command docker -ErrorAction SilentlyContinue)) {
     docker compose version *> $null
     if ($LASTEXITCODE -eq 0) {
-        & docker compose up --build
+        & docker compose up --build --remove-orphans
         exit $LASTEXITCODE
     }
 }

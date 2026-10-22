@@ -10,7 +10,6 @@ import {
   LogOut,
   Menu,
   Newspaper,
-  Mail,
   MailQuestion,
   PanelLeftClose,
   PanelLeftOpen,
@@ -60,6 +59,7 @@ interface WorkspaceBootstrap {
 }
 
 interface AdminIdentity {
+  userId: string;
   userName: string;
   role: WorkspaceRole;
   roleLabel: "Administrator";
@@ -76,7 +76,6 @@ const navItems: AdminNavigationItem[] = [
   { label: "Archived Documents", href: "/admin/Components/archive-documents.html", icon: Archive, roles: ["admin"] as WorkspaceRole[] },
   { label: "Authors", href: "/admin/Components/author-list.html", icon: UsersRound, roles: ["admin"] as WorkspaceRole[] },
   { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin"] as WorkspaceRole[] },
-  { label: "Newsletter", href: "/admin/Components/newsletter.html", icon: Mail, roles: ["admin"] as WorkspaceRole[] },
   { label: "Contact Inquiries", href: "/admin/Components/contact-inquiries.html", icon: MailQuestion, roles: ["admin"] as WorkspaceRole[] },
 ];
 
@@ -176,6 +175,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
       .filter(Boolean);
     return names.join(" ") || String(session?.user?.name ?? session?.username ?? session?.userId ?? "Administrator");
   }, [profile, session]);
+  const userId = String(session?.userId ?? session?.user?.id ?? profile?.id ?? session?.username ?? userName);
 
   const role = "Administrator";
   const sidebarToggleLabel = isMobileViewport
@@ -206,7 +206,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
   }
 
   return (
-    <AdminIdentityContext.Provider value={{ userName, role: workspaceRole, roleLabel: role, profile, updateProfile }}>
+    <AdminIdentityContext.Provider value={{ userId, userName, role: workspaceRole, roleLabel: role, profile, updateProfile }}>
     <div className={`peas-admin-shell${collapsed ? " is-collapsed" : ""}`}>
       <AdminSidebar
         collapsed={collapsed}
@@ -282,7 +282,6 @@ function notificationActionLabel(type: string) {
   if (type === "contact_inquiry_new") return "Open inquiry";
   if (type === "contact_delivery_failed") return "Review delivery";
   if (type === "document_review_pending" || type === "compilation_review_pending") return "Review upload";
-  if (type === "topic_proposal_pending") return "Review topic";
   if (type === "classification_migration_pending") return "Review classification";
   return "Open";
 }

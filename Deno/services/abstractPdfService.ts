@@ -53,8 +53,12 @@ async function runPdfWorker<T>(
         timeoutMs,
       );
       worker.onmessage = (
-        event: MessageEvent<{ ok: boolean; result?: T; error?: string }>,
+        event: MessageEvent<{ ready?: boolean; ok?: boolean; result?: T; error?: string }>,
       ) => {
+        if (event.data.ready) {
+          worker.postMessage({ ...request, tempDirectory });
+          return;
+        }
         finish(() =>
           event.data.ok ? resolve(event.data.result as T) : reject(
             new Error(event.data.error || "ABSTRACT_PROCESSING_FAILED"),
@@ -65,7 +69,6 @@ async function runPdfWorker<T>(
         event.preventDefault();
         finish(() => reject(new Error("ABSTRACT_ENGINE_UNAVAILABLE")));
       };
-      worker.postMessage({ ...request, tempDirectory });
     });
   } finally {
     // The parent owns cleanup even when a worker is forcibly terminated.

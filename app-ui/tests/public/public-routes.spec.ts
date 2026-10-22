@@ -19,6 +19,32 @@ for (const route of routes) {
   });
 }
 
+test("retired newsletter pages and APIs return a sanitized gone response", async ({ page }) => {
+  for (const path of ["/newsletter.html#confirm=secret-token", "/admin/Components/newsletter.html"]) {
+    const response = await page.goto(path);
+    expect(response?.status()).toBe(410);
+    await expect(page.getByRole("heading", { name: "Repository updates discontinued" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("secret-token");
+  }
+
+  const apiResponse = await page.request.post("/api/newsletter/subscriptions", {
+    data: { email: "person@example.test", token: "secret-token" },
+  });
+  expect(apiResponse.status()).toBe(410);
+  expect(await apiResponse.json()).toEqual({
+    error: "newsletter_retired",
+    message: "PeAS Repository Updates has been discontinued. No further newsletter messages will be sent.",
+    successor_url: "/news.html",
+  });
+});
+
+test("public news and footer no longer expose newsletter controls", async ({ page }) => {
+  await page.goto("/news.html");
+  await expect(page.getByRole("heading", { name: "Repository updates" })).toHaveCount(0);
+  await expect(page.getByLabel("Newsletter email address")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Subscribe" })).toHaveCount(0);
+});
+
 test("administrator password recovery sends the account email and accepts the magic-link token", async ({ page }) => {
   let resetRequest: Record<string, unknown> | null = null;
   let passwordUpdate: Record<string, unknown> | null = null;
@@ -83,10 +109,11 @@ test("FAQ page supports searchable, categorized, accessible answers", async ({ p
   await page.goto("/faq.html");
 
   await expect(page).toHaveTitle("Frequently Asked Questions | PeAS");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", "Get quick answers about browsing, searching, downloading, and requesting support in the PeAS research repository.");
   await expect(page.getByRole("heading", { name: "Frequently asked questions", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "All topics", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Getting started", exact: true })).toBeVisible();
-  await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
+  await expect(page.getByText("What is PeAS and what can I find here?", { exact: true })).toBeVisible();
 
   const search = page.getByRole("searchbox", { name: "Search frequently asked questions" });
   await search.fill("download a full paper");
@@ -100,15 +127,15 @@ test("FAQ page supports searchable, categorized, accessible answers", async ({ p
   await expect(page.getByText(/choose Download PDF/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear FAQ search" }).click();
-  await page.getByRole("button", { name: "Accounts and access", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Accounts and access", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Downloads and access", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Downloads and access", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".peas-faq-group")).toHaveCount(1);
-  await expect(page.locator(".peas-faq-item")).toHaveCount(3);
+  await expect(page.locator(".peas-faq-item")).toHaveCount(1);
 
   await search.fill("not a real FAQ question");
   await expect(page.getByRole("status")).toContainText("No questions match");
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.getByText("What is PeAS?", { exact: true })).toBeVisible();
+  await expect(page.getByText("What is PeAS and what can I find here?", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Still have a question?").getByRole("link", { name: "Contact the office" })).toHaveAttribute("href", "/contact.html");
 
   await page.setViewportSize({ width: 375, height: 667 });
@@ -205,6 +232,9 @@ test("guest compiled records render the collection overview and child works", as
         end_year: 2012,
         abstract: "A public collection overview.",
         foreword_download_available: true,
+        cover_download_available: true,
+        front_cover_page: 1,
+        back_cover_page: 4,
         child_count: 1,
         classification: { researchAgendas: [], topics: [], keywords: [] },
       }),
@@ -219,8 +249,9 @@ test("guest compiled records render the collection overview and child works", as
       document_type: "THESIS",
       publication_date: "2020-05-01",
       pages: 18,
+      download_available: true,
       abstract: "This study examines a practical research problem through a structured review and analysis of the available evidence. The findings provide a useful reference for future researchers, institutional planning, and related community applications across the university.",
-      authors: [{ full_name: "Ana Reyes" }],
+      authors: [{ id: "author-1", full_name: "Ana Reyes" }],
       classification: {
         researchAgendas: [{ id: 1, name: "Environmental Discipline and Stewardship" }],
         topics: [{ id: 2, name: "Sustainable construction" }],
@@ -236,17 +267,22 @@ test("guest compiled records render the collection overview and child works", as
   await expect(page.getByText("A public collection overview.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Documents in this collection" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Study One" })).toBeVisible();
-  await expect(page.getByText("Ana Reyes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ana Reyes" })).toHaveAttribute("href", "/pages/authorprofile.html?id=author-1");
   await expect(page.getByText("Publication date", { exact: true })).toBeVisible();
-  await expect(page.getByText("Environmental Discipline and Stewardship", { exact: true })).toBeVisible();
+  await expect(page.getByText("Environmental Discipline and Stewardship", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sustainable construction" })).toHaveAttribute("href", "/pages/searchResultsPage.html?topic=2");
+  await expect(page.getByRole("link", { name: "rice hull" })).toHaveAttribute("href", "/pages/searchResultsPage.html?keyword=3");
   await expect(page.getByRole("link", { name: "View details for Study One" })).toHaveText("View");
   await expect(page.getByRole("link", { name: "View details for Study One" })).toHaveAttribute("href", "/pages/guest-single.html?id=31");
+  await expect(page.getByRole("link", { name: "Download PDF for Study One" })).toHaveAttribute("href", "/api/public/documents/31/download");
   const abstractToggle = page.getByRole("button", { name: "Show full abstract" });
   await expect(abstractToggle).toHaveAttribute("aria-expanded", "false");
   await abstractToggle.click();
   await expect(page.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
-  await expect(page.getByText("This PDF is publicly available and can be downloaded immediately.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download foreword" })).toHaveAttribute("href", "/api/public/compiled-documents/53/foreword/download");
+  await expect(page.getByText("The foreword PDF is publicly available and can be downloaded immediately.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download cover PDF" })).toHaveAttribute("href", "/api/public/compiled-documents/53/cover/download");
+  await expect(page.getByText("Page 1 is the front cover and page 4 is the back cover.", { exact: true })).toBeVisible();
   await expect(page.getByText(/request access/i)).toHaveCount(0);
   await expect(page.locator(".peas-error-page")).toHaveCount(0);
   expect(requestedUrls).toContain("/api/guest/compiled-documents/53");
@@ -266,9 +302,11 @@ test("compiled records omit unavailable foreword downloads while retaining child
   }));
 
   await page.goto("/pages/guest-compiled.html?id=54");
-  await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
-  await expect(page.getByText("The PDF file is currently unavailable. The reviewed repository record remains accessible.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download foreword" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download cover PDF" })).toHaveCount(0);
+  await expect(page.getByText("The foreword PDF is currently unavailable. The reviewed collection and its studies remain accessible.")).toBeVisible();
   await expect(page.getByRole("link", { name: "View details for Available child record" })).toHaveAttribute("href", "/pages/guest-single.html?id=32");
+  await expect(page.getByRole("link", { name: "Download PDF for Available child record" })).toHaveCount(0);
 });
 
 test("public author profiles render publication analytics and filterable works", async ({ page }) => {
@@ -1085,6 +1123,38 @@ test("repository search presents focused filters and scannable results", async (
   expect(critical).toEqual([]);
 });
 
+test("repository search reports represented public authors", async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "null",
+  }));
+  await page.route("**/api/categories*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([
+      { name: "THESIS", count: 1 },
+      { name: "DISSERTATION", count: 0 },
+      { name: "CONFLUENCE", count: 0 },
+      { name: "SYNERGY", count: 0 },
+    ]),
+  }));
+  await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/documents/years", (route) => route.fulfill({ json: { years: [] } }));
+  await page.route("**/api/page-visits/home-stats", (route) => route.fulfill({ json: { totalAuthors: 3 } }));
+  await page.route("**/api/documents?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ documents: [], totalCount: 1, totalPages: 1, currentPage: 1 }),
+  }));
+
+  await page.goto("/pages/searchResultsPage.html");
+
+  const representedAuthors = page.locator(".peas-public-search-hero__summary > div").filter({ hasText: "authors represented" });
+  await expect(representedAuthors.locator("strong")).toHaveText("3");
+  await expect(representedAuthors.locator("small")).toHaveText("authors represented");
+});
+
 test("repository search refreshes catalog data when the visitor returns to the page", async ({ page }) => {
   let requestCount = 0;
   await page.route("**/api/categories*", (route) => route.fulfill({ json: [
@@ -1260,15 +1330,20 @@ test("repository topic filters display the topic name instead of its ID", async 
   await expect(page.getByRole("heading", { name: "Topic 2" })).toHaveCount(0);
 });
 
-test("repository agenda filters display the agenda name instead of its ID", async ({ page }) => {
+test("legacy agenda query parameters are ignored by repository search", async ({ page }) => {
+  let agendaForwarded = false;
   await page.route("**/api/categories*", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [{ id: 4, name: "Environmental Discipline and Stewardship" }] }));
-  await page.route("**/api/documents?*", (route) => route.fulfill({ json: { documents: [], totalCount: 0, totalPages: 0, currentPage: 1 } }));
+  await page.route("**/api/documents?*", (route) => {
+    agendaForwarded = new URL(route.request().url()).searchParams.has("agenda");
+    return route.fulfill({ json: { documents: [], totalCount: 0, totalPages: 0, currentPage: 1 } });
+  });
 
   await page.goto("/pages/searchResultsPage.html?agenda=4");
 
-  await expect(page.getByRole("heading", { name: "Research agenda “Environmental Discipline and Stewardship”" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Research agenda 4" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "All repository entries" })).toBeVisible();
+  await expect(page.getByLabel("Filter by research agenda")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/agenda=/u);
+  expect(agendaForwarded).toBe(false);
 });
 
 test("repository keyword filters display the keyword name", async ({ page }) => {

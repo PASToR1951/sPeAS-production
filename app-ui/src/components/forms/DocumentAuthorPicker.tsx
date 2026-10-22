@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { normalizeAuthorName, authorNameKey } from "../../../../shared/authorName";
 import type { AuthorRecord } from "../../lib/api/types";
@@ -19,9 +19,7 @@ interface DocumentAuthorPickerProps {
 
 export function DocumentAuthorPicker({ id, authors, value, disabled = false, onChange, onAuthorCreated }: DocumentAuthorPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchWrapRef = useRef<HTMLDivElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [openDirection, setOpenDirection] = useState<"down" | "up">("down");
   const [search, setSearch] = useState("");
   const [newAuthorMode, setNewAuthorMode] = useState(false);
   const [newAuthorName, setNewAuthorName] = useState("");
@@ -44,25 +42,6 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [pickerOpen]);
 
-  useLayoutEffect(() => {
-    if (!pickerOpen) return;
-    const updateDirection = () => {
-      const bounds = searchWrapRef.current?.getBoundingClientRect();
-      if (!bounds) return;
-      const menuHeight = Math.min(300, Math.max(180, availableAuthors.length * 44 + 58));
-      const spaceBelow = window.innerHeight - bounds.bottom - 16;
-      const spaceAbove = bounds.top - 16;
-      setOpenDirection(spaceBelow >= menuHeight || spaceBelow >= spaceAbove ? "down" : "up");
-    };
-    updateDirection();
-    window.addEventListener("resize", updateDirection);
-    window.addEventListener("scroll", updateDirection, true);
-    return () => {
-      window.removeEventListener("resize", updateDirection);
-      window.removeEventListener("scroll", updateDirection, true);
-    };
-  }, [availableAuthors.length, pickerOpen]);
-
   function selectAuthor(author: AuthorRecord) {
     onChange([...value, { id: author.id, fullName: author.fullName, source: "existing" }]);
     setSearch("");
@@ -81,7 +60,6 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
     setNewAuthorMode(false);
     setNewAuthorName("");
     setDialogError(null);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function useNewAuthor() {
@@ -145,7 +123,7 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
         </div>
       ) : null}
 
-      <div ref={searchWrapRef} className={`peas-document-author-picker__search-wrap is-${openDirection}`}>
+      <div className="peas-document-author-picker__search-wrap">
         <Search aria-hidden="true" />
         <Input
           ref={inputRef}
@@ -173,7 +151,7 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
       <p className="peas-document-author-picker__hint">Select authors in publication order.</p>
 
       <Dialog open={newAuthorMode} onOpenChange={(open) => { if (open) setNewAuthorMode(true); else closeDialog(); }}>
-        <DialogContent>
+        {newAuthorMode ? <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}>
           <DialogHeader>
             <DialogTitle>Add author</DialogTitle>
             <DialogDescription>Enter the author’s name to add to this document.</DialogDescription>
@@ -189,7 +167,7 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
             <Button variant="outline" type="button" onClick={closeDialog}>Cancel</Button>
             <Button type="button" disabled={creating || !newAuthorName.trim()} onClick={() => void useNewAuthor()}>{creating ? "Adding…" : "Add author"}</Button>
           </DialogFooter>
-        </DialogContent>
+        </DialogContent> : null}
       </Dialog>
     </div>
   );

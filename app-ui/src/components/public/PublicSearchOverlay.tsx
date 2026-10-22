@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, Dna, FileText, Flame, Folder, Layers, LoaderCircle, Newspaper, Search, Sparkles, Tag, Users, X } from "lucide-react";
+import { ArrowRight, FileText, Flame, Folder, Layers, LoaderCircle, Newspaper, Search, Sparkles, Tag, Users, X } from "lucide-react";
 import { Button } from "../ui/button";
-import { fetchPublicResearchAgendas, fetchPublicTopics, fetchTrendingKeywords, searchResultsUrl, type PublicResearchAgenda, type PublicTopic } from "../../lib/api/public";
+import { fetchPublicTopics, fetchTrendingKeywords, searchResultsUrl, type PublicTopic } from "../../lib/api/public";
 import { CATEGORY_ORDER, getCategoryMeta, type DocumentCategory } from "../../lib/constants/categories";
 import { fetchSearchSuggestions, markPendingSearch, recordSearchEvent, type SearchSuggestion, type SearchSuggestionType } from "../../lib/api/search";
 import { fetchAvailablePublicationYears } from "../../lib/api/documents";
@@ -11,21 +11,19 @@ interface Props {
   onClose: () => void;
 }
 
-type SearchScope = "trending" | "category" | "agenda" | "all" | "work" | "news" | "author" | "classification";
+type SearchScope = "trending" | "category" | "all" | "work" | "news" | "author" | "classification";
 
-const GROUPS: Array<{ type: SearchSuggestionType; label: string; scope: Exclude<SearchScope, "trending" | "category" | "agenda" | "all"> }> = [
+const GROUPS: Array<{ type: SearchSuggestionType; label: string; scope: Exclude<SearchScope, "trending" | "category" | "all"> }> = [
   { type: "work", label: "Research works", scope: "work" },
   { type: "news", label: "News articles", scope: "news" },
   { type: "author", label: "Authors", scope: "author" },
   { type: "topic", label: "Topics", scope: "classification" },
   { type: "keyword", label: "Keywords", scope: "classification" },
-  { type: "agenda", label: "Research agendas", scope: "classification" },
 ];
 
 const SIDEBAR_TABS: Array<{ value: SearchScope; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { value: "trending", label: "Trending", Icon: Flame },
   { value: "category", label: "By Category", Icon: Folder },
-  { value: "agenda", label: "By Agenda", Icon: Dna },
   { value: "all", label: "Everything", Icon: Sparkles },
   { value: "work", label: "Research works", Icon: FileText },
   { value: "news", label: "News articles", Icon: Newspaper },
@@ -34,7 +32,7 @@ const SIDEBAR_TABS: Array<{ value: SearchScope; label: string; Icon: ComponentTy
 ];
 
 function emptySuggestions(): Record<SearchSuggestionType, SearchSuggestion[]> {
-  return { work: [], news: [], author: [], topic: [], keyword: [], agenda: [] };
+  return { work: [], news: [], author: [], topic: [], keyword: [] };
 }
 
 function normalizeSuggestions(value: Partial<Record<SearchSuggestionType, SearchSuggestion[]>> | undefined) {
@@ -52,13 +50,11 @@ export function PublicSearchOverlay({ onClose }: Props) {
   const [isClosing, setIsClosing] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("All");
-  const [agenda, setAgenda] = useState("");
   const [year, setYear] = useState("");
   const [sort, setSort] = useState<"latest" | "earliest">("latest");
   const [topicQuery, setTopicQuery] = useState("");
   const [topic, setTopic] = useState("");
   const [topics, setTopics] = useState<PublicTopic[]>([]);
-  const [agendas, setAgendas] = useState<PublicResearchAgenda[]>([]);
   const [years, setYears] = useState<string[]>([]);
   const [trending, setTrending] = useState<string[]>([]);
   const [scope, setScope] = useState<SearchScope>("trending");
@@ -84,11 +80,9 @@ export function PublicSearchOverlay({ onClose }: Props) {
     page.style.overflow = "hidden";
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
     void Promise.all([
-      fetchPublicResearchAgendas(true).catch(() => []),
       fetchTrendingKeywords().catch(() => []),
       fetchAvailablePublicationYears().catch(() => []),
-    ]).then(([nextAgendas, nextTrending, nextYears]) => {
-      setAgendas(nextAgendas);
+    ]).then(([nextTrending, nextYears]) => {
       setTrending(nextTrending);
       setYears(nextYears);
     });
@@ -136,7 +130,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
       return;
     }
 
-    if (scope === "trending" || scope === "category" || scope === "agenda") {
+    if (scope === "trending" || scope === "category") {
       setScope("all");
     }
 
@@ -160,11 +154,10 @@ export function PublicSearchOverlay({ onClose }: Props) {
 
   useEffect(() => { setActiveIndex(-1); }, [scope]);
 
-  function submit(overrideCategory?: DocumentCategory, overrideAgenda?: string) {
+  function submit(overrideCategory?: DocumentCategory) {
     const selectedCategory = overrideCategory ?? category;
-    const selectedAgenda = overrideAgenda ?? agenda;
     markPendingSearch(query, "results");
-    const href = searchResultsUrl(query, selectedCategory, { agenda: selectedAgenda, topic, year, sort });
+    const href = searchResultsUrl(query, selectedCategory, { topic, year, sort });
     onClose();
     window.location.href = href;
   }
@@ -190,11 +183,11 @@ export function PublicSearchOverlay({ onClose }: Props) {
   }
 
   function clearAll() {
-    setQuery(""); setCategory("All"); setAgenda(""); setYear(""); setSort("latest"); setTopic(""); setTopicQuery(""); setScope("trending");
+    setQuery(""); setCategory("All"); setYear(""); setSort("latest"); setTopic(""); setTopicQuery(""); setScope("trending");
     inputRef.current?.focus();
   }
 
-  const hasSelection = Boolean(query || category !== "All" || agenda || year || topic || topicQuery || sort !== "latest" || scope !== "trending");
+  const hasSelection = Boolean(query || category !== "All" || year || topic || topicQuery || sort !== "latest" || scope !== "trending");
   const normalizedQuery = query.trim();
   const activeId = activeIndex >= 0 && flattened[activeIndex] ? `${resultsId}-${flattened[activeIndex].key.replace(/[^a-zA-Z0-9_-]/gu, "-")}` : undefined;
 
@@ -205,7 +198,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
           <div>
             <span className="peas-public-search-overlay__eyebrow">PeAS repository</span>
             <h2 id="peas-global-search-title">Search & Filter Archive</h2>
-            <p>Explore theses, dissertations, research agendas, authors, and published articles.</p>
+            <p>Explore theses, dissertations, authors, topics, keywords, and published articles.</p>
           </div>
           <div className="peas-public-search-overlay__header-actions">
             <Button type="button" variant="outline" size="sm" disabled={!hasSelection} onClick={clearAll}>Clear all</Button>
@@ -237,7 +230,6 @@ export function PublicSearchOverlay({ onClose }: Props) {
 
           <div className="peas-public-search-overlay__filters" aria-label="Repository filters">
             <label><span>Collection</span><select value={category} aria-label="Filter by collection" onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)}>{CATEGORY_ORDER.map((item) => <option value={item} key={item}>{getCategoryMeta(item).label}</option>)}</select></label>
-            <label><span>Research agenda</span><select value={agenda} aria-label="Filter by research agenda" onChange={(event) => setAgenda(event.currentTarget.value)}><option value="">All research agendas</option>{agendas.map((item) => <option value={String(item.id)} key={item.id}>{item.name}{item.historical ? " · Historical" : ""}</option>)}</select></label>
             <label className="peas-public-search-overlay__topic"><span>Topic</span><input value={topicQuery} aria-label="Filter by topic" placeholder="Type a topic" onChange={(event) => { setTopicQuery(event.currentTarget.value); setTopic(""); }} />{topics.length ? <div className="peas-public-search-overlay__topic-options" role="listbox">{topics.slice(0, 6).map((item) => <button type="button" role="option" key={item.id} onClick={() => { setTopic(String(item.id)); setTopicQuery(item.name); setTopics([]); }}>{item.name}</button>)}</div> : null}</label>
             <label><span>Publication year</span><select value={year} aria-label="Filter by publication year" onChange={(event) => setYear(event.currentTarget.value)}><option value="">Any year</option>{years.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
             <label><span>Sort</span><select value={sort} aria-label="Sort search results" onChange={(event) => setSort(event.currentTarget.value as "latest" | "earliest")}><option value="latest">Newest first</option><option value="earliest">Oldest first</option></select></label>
@@ -322,37 +314,6 @@ export function PublicSearchOverlay({ onClose }: Props) {
                       </button>
                     );
                   })}
-                </div>
-              </div>
-            ) : normalizedQuery.length < 2 && scope === "agenda" ? (
-              <div className="peas-public-search-overlay__explore">
-                <div className="peas-public-search-overlay__results-heading">
-                  <div>
-                    <Dna aria-hidden="true" />
-                    <div>
-                      <h3>Institutional Research Agendas</h3>
-                      <p>Browse publications aligned with institutional agendas.</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="peas-public-search-overlay__agenda-grid">
-                  {agendas.map((item) => (
-                    <button
-                      type="button"
-                      key={item.id}
-                      className="peas-public-search-overlay__agenda-card"
-                      onClick={() => {
-                        setAgenda(String(item.id));
-                        submit(undefined, String(item.id));
-                      }}
-                    >
-                      <div>
-                        <strong>{item.name}</strong>
-                        {item.historical ? <span className="peas-public-search-overlay__badge">Historical</span> : null}
-                      </div>
-                      <ArrowRight aria-hidden="true" />
-                    </button>
-                  ))}
                 </div>
               </div>
             ) : normalizedQuery.length < 2 ? (

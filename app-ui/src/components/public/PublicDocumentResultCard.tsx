@@ -1,9 +1,9 @@
+import { formatPublicationDate } from "../../lib/formatters/date";
 import { ArrowUpRight, BookOpen, CalendarDays, Files, UserRound } from "lucide-react";
 import { CategoryIcon } from "../documents/CategoryIcon";
 import type { SessionResponse } from "../../lib/api/auth";
 import type { DocumentRecord } from "../../lib/api/types";
 import { getCategoryMeta } from "../../lib/constants/categories";
-import { formatDate } from "../../lib/formatters/date";
 
 interface PublicDocumentResultCardProps {
   document: DocumentRecord;
@@ -48,7 +48,7 @@ export function PublicDocumentResultCard({
           {showDescription && document.description ? <em>{document.description}</em> : null}
           <div className="peas-public-search-result-card__meta">
             <span><UserRound aria-hidden="true" /> {document.authorsText}</span>
-            <span><CalendarDays aria-hidden="true" /> {formatDate(document.publicationDate)}</span>
+            <span><CalendarDays aria-hidden="true" /> {formatPublicationDate(document.publicationDate, document.datePrecision)}</span>
           </div>
         </div>
 
@@ -82,7 +82,7 @@ export function PublicDocumentResultCard({
 
         <div className="peas-public-recent-card__meta">
           <span><UserRound aria-hidden="true" /> {document.authorsText}</span>
-          <span><CalendarDays aria-hidden="true" /> {formatDate(document.publicationDate)}</span>
+          <span><CalendarDays aria-hidden="true" /> {formatPublicationDate(document.publicationDate, document.datePrecision)}</span>
           {document.isCompiled && document.childCount > 0 ? (
             <span><Files aria-hidden="true" /> {document.childCount} {document.childCount === 1 ? "work" : "works"}</span>
           ) : null}
@@ -104,7 +104,7 @@ export function PublicDocumentResultCard({
       <span className="peas-public-document-card__copy">
         <strong>{document.title}</strong>
         <small>
-          {document.authorsText} · {formatDate(document.publicationDate)}
+          {document.authorsText} · {formatPublicationDate(document.publicationDate, document.datePrecision)}
         </small>
         {showDescription && document.description ? <em>{document.description}</em> : null}
       </span>

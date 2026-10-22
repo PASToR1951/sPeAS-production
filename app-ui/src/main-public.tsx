@@ -8,7 +8,6 @@ import "./styles/globals.css";
 const routes: Array<{ paths: string[]; component: ComponentType }> = [
   { paths: ["/", "/index.html"], component: lazy(() => import("./features/public/PublicHomePage").then(({ PublicHomePage }) => ({ default: PublicHomePage }))) },
   { paths: ["/news.html"], component: lazy(() => import("./features/public/PublicNewsPage").then(({ PublicNewsPage }) => ({ default: PublicNewsPage }))) },
-  { paths: ["/newsletter.html"], component: lazy(() => import("./features/public/PublicNewsletterPage").then(({ PublicNewsletterPage }) => ({ default: PublicNewsletterPage }))) },
   { paths: ["/faq.html"], component: lazy(() => import("./features/public/PublicFaqPage").then(({ PublicFaqPage }) => ({ default: PublicFaqPage }))) },
   { paths: ["/pages/searchResultsPage.html"], component: lazy(() => import("./features/public/PublicSearchPage").then(({ PublicSearchPage }) => ({ default: PublicSearchPage }))) },
   { paths: ["/contact", "/contact.html"], component: lazy(() => import("./features/public/PublicContactPage").then(({ PublicContactPage }) => ({ default: PublicContactPage }))) },

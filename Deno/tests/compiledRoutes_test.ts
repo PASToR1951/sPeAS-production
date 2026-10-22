@@ -18,4 +18,10 @@ Deno.test("compiled guest and public routes are exposed under the API prefixes",
   if (!paths.has("/api/public/compiled-documents/:id/foreword/download")) {
     throw new Error("Missing public compiled foreword download route");
   }
+  if (!paths.has("/api/public/compiled-documents/:id/cover/download")) {
+    throw new Error("Missing public compiled cover download route");
+  }
+  if (!paths.has("/api/compiled-documents/:id/cover")) {
+    throw new Error("Missing administrator compiled cover preview route");
+  }
 });
