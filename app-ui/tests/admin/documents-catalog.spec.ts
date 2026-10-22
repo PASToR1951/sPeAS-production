@@ -1,4 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { source as axeSource } from "axe-core";
+import type { AbstractReviewItem } from "../../src/lib/api/documents";
+
+const abstractReview: AbstractReviewItem = {
+  targetType: "document", targetId: 2, title: "Pending publisher submission", documentType: "THESIS",
+  status: "needs_review", currentAbstract: null, candidate: "Machine extracted candidate", method: "pdf_text",
+  confidence: 0.8, qualityFlags: [], pageStart: 2, pageEnd: 2, attemptCount: 1, errorCode: null,
+  sourceVerified: true, nextAttemptAt: null, processingStartedAt: null, updatedAt: "2026-08-04T00:00:00.000Z",
+};
 
 function createSinglePagePdf() {
   const contentStream = "BT /F1 18 Tf 45 90 Td (Compiled preview test) Tj ET";
@@ -45,6 +54,8 @@ function createEmptyPdf(pageCount: number) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/admin/abstract-reviews?*", (route) => route.fulfill({ json: { items: [abstractReview] } }));
+  await page.route("**/api/admin/abstract-reviews/diagnostics", (route) => route.fulfill({ json: { workerAvailable: true, extractionReady: true } }));
   await page.route("**/api/features/document-preparation", (route) => route.fulfill({ json: { imports: false, volumeReader: false } }));
   await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: {
     session: { id: "session-admin" },
@@ -216,33 +227,168 @@ test("review status filter updates the request and URL", async ({ page }) => {
 test("abstract review editor keeps typing stable when the current abstract is empty", async ({ page }) => {
   const pageErrors: Error[] = [];
   page.on("pageerror", (error) => pageErrors.push(error));
-  await page.route("**/api/admin/abstract-reviews?*", (route) => route.fulfill({ json: {
-    items: [{
-      targetType: "document",
-      targetId: 2,
-      title: "Pending publisher submission",
-      documentType: "THESIS",
-      status: "needs_review",
-      currentAbstract: null,
-      candidate: "Machine extracted candidate",
-      method: "pdf_text",
-      confidence: 0.8,
-      qualityFlags: [],
-      pageStart: 2,
-      pageEnd: 2,
-      attemptCount: 1,
-      errorCode: null,
-      updatedAt: "2026-08-04T00:00:00.000Z",
-    }],
-  } }));
-
   await page.goto("/admin/Components/documents_list.html?status=pending_review");
   await page.getByRole("button", { name: "Review abstracts" }).click();
-  const editor = page.getByLabel("Current / edited abstract");
+  const editor = page.getByRole("textbox", { name: "Abstract to confirm" });
+  await expect(page.getByRole("heading", { name: "Review abstracts", exact: true })).toBeFocused();
+  await expect(editor).toHaveValue(abstractReview.candidate!);
+  await editor.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Close dialog", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(editor).toBeFocused();
   await editor.fill("Administrator-confirmed abstract");
-
+  await expect(editor).toHaveValue("Administrator-confirmed abstract");
+  await page.getByRole("button", { name: "Use extracted text" }).click();
+  await expect(editor).toHaveValue(abstractReview.candidate!);
+  await editor.fill("Administrator-confirmed abstract");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Review abstracts" })).toBeFocused();
+  await page.getByRole("button", { name: "Review abstracts" }).click();
   await expect(editor).toHaveValue("Administrator-confirmed abstract");
   expect(pageErrors).toEqual([]);
+});
+
+test("abstract review confirms the displayed text with the correct action", async ({ page }) => {
+  const requests: Array<{ action: string; abstract?: string }> = [];
+  await page.route("**/api/admin/abstract-reviews/document/2", async (route) => {
+    const payload = route.request().postDataJSON();
+    requests.push(payload);
+    if (requests.length === 1) return route.fulfill({ status: 500, json: { error: "Review could not be saved" } });
+    return route.fulfill({ json: { ...abstractReview, status: "accepted", currentAbstract: payload.abstract } });
+  });
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  await dialog.getByRole("button", { name: "Confirm abstract" }).click();
+  await expect(page.getByText("Review could not be saved", { exact: true })).toBeVisible();
+  expect(requests[0]).toEqual({ action: "accept_candidate" });
+  const editor = dialog.getByRole("textbox", { name: "Abstract to confirm" });
+  await editor.fill("The corrected abstract that the administrator has reviewed.");
+  await dialog.getByRole("button", { name: "Confirm abstract" }).click();
+  expect(requests[1]).toEqual({ action: "save_manual", abstract: "The corrected abstract that the administrator has reviewed." });
+  await expect(dialog.getByRole("textbox", { name: "Confirmed abstract" })).toHaveValue(requests[1].abstract!);
+  await expect(dialog.getByText("Abstract confirmed.", { exact: false })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Confirm abstract" })).toHaveCount(0);
+});
+
+test("abstract review keeps long text and actions usable on desktop and small screens", async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const candidate = "The study examines the role performance of master teachers and the support provided by school administrators. ".repeat(70);
+  await page.route("**/api/admin/abstract-reviews?*", (route) => route.fulfill({ json: { items: [{ ...abstractReview, candidate, qualityFlags: ["non_text_characters_removed"] }] } }));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  await expect(dialog.getByRole("textbox", { name: "Abstract to confirm" })).toHaveValue(candidate);
+  await expect(dialog).toHaveCSS("opacity", "1");
+  await expect(dialog.getByText("Some non-text characters were removed.", { exact: false })).toBeVisible();
+  await expect(dialog.locator(".peas-abstract-review-reference").first()).not.toHaveAttribute("open", "");
+  await page.addScriptTag({ content: axeSource });
+  const violations = await page.evaluate(async () => (await (window as any).axe.run(document.querySelector('[role="dialog"]'))).violations.filter((entry: any) => entry.impact === "serious" || entry.impact === "critical"));
+  expect(violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("abstract-review-desktop.png"), animations: "disabled" });
+  await dialog.getByText("View original extracted text", { exact: true }).click();
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 568 }, { width: 640, height: 400 }]) {
+    await page.setViewportSize(viewport);
+    await dialog.locator(".peas-abstract-review-body").evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    const title = await dialog.getByRole("heading", { name: "Review abstracts", exact: true }).boundingBox();
+    const confirm = await dialog.getByRole("button", { name: "Confirm abstract" }).boundingBox();
+    expect(title!.y).toBeGreaterThanOrEqual(0);
+    expect(confirm!.y + confirm!.height).toBeLessThanOrEqual(viewport.height);
+    expect(confirm!.height).toBeGreaterThanOrEqual(44);
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    if (viewport.width === 390) {
+      await dialog.locator(".peas-abstract-review-body").evaluate((element) => { element.scrollTop = 0; });
+      await page.screenshot({ path: testInfo.outputPath("abstract-review-mobile.png"), animations: "disabled" });
+    }
+  }
+});
+
+test("abstract review validates length without truncating text and uses Unicode character counts", async ({ page }) => {
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  const editor = dialog.getByRole("textbox", { name: "Abstract to confirm" });
+  await editor.fill("a".repeat(10001));
+  await expect(editor).toHaveValue("a".repeat(10001));
+  await expect(editor).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByRole("button", { name: "Confirm abstract" })).toBeDisabled();
+  await editor.fill("𐐀".repeat(10000));
+  await expect(dialog.locator("#abstract-review-count")).toHaveText("10,000 / 10,000 characters");
+  await expect(dialog.getByRole("button", { name: "Confirm abstract" })).toBeEnabled();
+  await editor.fill("  \n  ");
+  await expect(dialog.getByRole("button", { name: "Confirm abstract" })).toBeDisabled();
+});
+
+test("abstract review separates load failures from empty reviews and can retry", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/api/admin/abstract-reviews?*", (route) => {
+    attempts += 1;
+    return attempts === 1 ? route.fulfill({ status: 500, json: { error: "Review service unavailable" } }) : route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  await expect(dialog.getByText("Unable to load abstract review", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("No abstracts to review", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(dialog.getByText("No abstracts to review", { exact: true })).toBeVisible();
+});
+
+test("abstract review preserves individual collection drafts while extraction finishes", async ({ page }) => {
+  let extracted = false;
+  const queued = { ...abstractReview, candidate: null, status: "queued" };
+  const foreword = { ...abstractReview, targetType: "compiled_foreword", targetId: 7, title: "Collection foreword", candidate: "Foreword summary" };
+  await page.route("**/api/admin/abstract-reviews?*", (route) => route.fulfill({ json: { items: [extracted ? abstractReview : queued, foreword] } }));
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  const editor = dialog.getByRole("textbox", { name: "Abstract to confirm" });
+  await expect(editor).toHaveValue("");
+  extracted = true;
+  await expect(editor).toHaveValue(abstractReview.candidate!, { timeout: 6000 });
+  await editor.fill("My document draft");
+  await dialog.getByRole("combobox", { name: "Abstract to review" }).click();
+  await page.getByRole("option", { name: /2\. Collection foreword/ }).click();
+  await expect(editor).toHaveValue("Foreword summary");
+  await editor.fill("My foreword draft");
+  await dialog.getByRole("combobox", { name: "Abstract to review" }).click();
+  await page.getByRole("option", { name: /1\. Pending publisher submission/ }).click();
+  await expect(editor).toHaveValue("My document draft");
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  await expect(editor).toHaveValue("My document draft");
+  await dialog.getByRole("combobox", { name: "Abstract to review" }).click();
+  await page.getByRole("option", { name: /2\. Collection foreword/ }).click();
+  await expect(editor).toHaveValue("My foreword draft");
+});
+
+test("abstract review can retry a failed foreword and mark it unavailable", async ({ page }) => {
+  let review: AbstractReviewItem = { ...abstractReview, targetType: "compiled_foreword", targetId: 7, status: "failed", candidate: null, errorCode: "PDF_ENCRYPTED" };
+  await page.route("**/api/documents?*", (route) => route.fulfill({ json: { documents: [{ id: 7, title: "Pending collection", document_type: "CONFLUENCE", is_compiled: true, child_count: 0, review_status: "pending_review" }], totalCount: 1, totalPages: 1 } }));
+  await page.route("**/api/admin/abstract-reviews?record_type=compiled&record_id=7", (route) => route.fulfill({ json: { items: [review] } }));
+  await page.route("**/api/admin/abstract-reviews/compiled-foreword/7/retry", (route) => {
+    review = { ...review, status: "queued", errorCode: null };
+    return route.fulfill({ json: { status: "queued" } });
+  });
+  await page.route("**/api/admin/abstract-reviews/compiled-foreword/7", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ action: "mark_unavailable" });
+    review = { ...review, status: "unavailable", currentAbstract: null };
+    return route.fulfill({ json: review });
+  });
+  await page.goto("/admin/Components/documents_list.html?status=pending_review");
+  await page.getByRole("button", { name: "Review abstracts" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review abstracts" });
+  await expect(dialog.getByText("Automatic extraction failed.", { exact: false })).toBeVisible();
+  await dialog.getByText("Extraction details", { exact: true }).click();
+  await dialog.getByRole("button", { name: "Retry extraction" }).click();
+  await expect(dialog.getByText("Waiting for extraction", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Mark unavailable" }).click();
+  await expect(dialog.getByText("Marked unavailable. This abstract review is resolved.", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Confirm abstract" })).toHaveCount(0);
 });
 
 test("action menus close before document dialogs open", async ({ page }) => {
