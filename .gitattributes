@@ -1,0 +1,4 @@
+# Preserve the source bytes used by the deployed migration checksums on Windows.
+Deno/db/production-migrations/0010_direct_topics.sql text eol=lf
+Deno/db/production-migrations/0011_retire_newsletter_runtime.sql text eol=lf
+Deno/db/production-migrations/0013_abstract_worker_readiness.sql text eol=lf
