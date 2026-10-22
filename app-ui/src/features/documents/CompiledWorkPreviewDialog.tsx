@@ -1,3 +1,4 @@
+import { formatPublicationDate } from "../../lib/formatters/date";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { BookCopy, BookOpen, CheckCircle2, ChevronDown, Download, ExternalLink, FileText, FolderOpen, ListTree, RefreshCw, Search, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
@@ -17,7 +18,7 @@ type CollectionSelection =
   | { kind: "back-cover" }
   | { kind: "study"; studyId: number };
 
-export function CompiledWorkPreviewDialog({ document, onOpenChange }: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void }) {
+export function CompiledWorkPreviewDialog({ document, onOpenChange, onCloseAutoFocus }: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void; onCloseAutoFocus?: (event: Event) => void }) {
   const features = useDocumentPreparationFeatures();
   const [manifest, setManifest] = useState<CompiledPreviewManifest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,7 +116,7 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange }: { document
 
   return (
     <Dialog open={Boolean(document)} onOpenChange={onOpenChange}>
-      <DialogContent className="peas-compiled-preview-dialog">
+      {document ? <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="peas-compiled-preview-dialog">
         <DialogHeader className="peas-compiled-preview-dialog__header">
           <div>
             <DialogTitle>{manifest?.collection.title ?? "Compiled work preview"}</DialogTitle>
@@ -150,7 +151,7 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange }: { document
             </section>
           </div>
         ) : null}
-      </DialogContent>
+      </DialogContent> : null}
     </Dialog>
   );
 }
@@ -189,7 +190,7 @@ function ClassificationSummary({ collection }: { collection: CompiledPreviewMani
 }
 
 function StudySelectionPane({ study, url, downloadUrl }: { study: CompiledPreviewStudy; url: string; downloadUrl: string }) {
-  return <PdfSelectionPane title={study.title} description={`${study.authors.map((author) => author.fullName).join(", ")} · ${study.category} · ${formatPreviewDate(study.publicationDate)}`} pdf={study.hasPdf} url={url} downloadUrl={downloadUrl} abstract={study.abstract} />;
+  return <PdfSelectionPane title={study.title} description={`${study.authors.map((author) => author.fullName).join(", ")} · ${study.category} · ${formatPublicationDate(study.publicationDate, study.datePrecision)}`} pdf={study.hasPdf} url={url} downloadUrl={downloadUrl} abstract={study.abstract} />;
 }
 
 function PdfSelectionPane({ title, description, pdf, url, downloadUrl, abstract, initialPage = 1 }: { title: string; description: string; pdf: boolean; url: string; downloadUrl: string; abstract?: string | null; initialPage?: number }) {
@@ -208,4 +209,3 @@ function PdfSelectionPane({ title, description, pdf, url, downloadUrl, abstract,
 function CompiledPreviewLoading() { return <div className="peas-compiled-preview-loading" role="status" aria-live="polite"><PeasInlineSpinner label="Loading collection preview" /><div><span /><span /><span /></div></div>; }
 function CompiledPreviewError({ message, onRetry, sessionExpired, onClose }: { message: string; onRetry: () => void; sessionExpired: boolean; onClose: () => void }) { return <div className="peas-compiled-preview-error" role="alert"><XCircle aria-hidden="true" /><h2>{sessionExpired ? "Authentication required" : "Collection preview unavailable"}</h2><p>{message}</p>{sessionExpired ? <Button variant="outline" onClick={onClose}>Close</Button> : <Button variant="outline" onClick={onRetry}><RefreshCw aria-hidden="true" /> Retry</Button>}</div>; }
 function collectionMeta(collection: CompiledPreviewManifest["collection"]) { const parts = [collection.category, collection.volume ? `Volume ${collection.volume}` : null, collection.startYear ? `${collection.startYear}${collection.endYear ? `–${collection.endYear}` : ""}` : null, `${collection.childCount} ${collection.childCount === 1 ? "study" : "studies"}`].filter(Boolean); return parts.join(" · "); }
-function formatPreviewDate(value: string | null) { if (!value) return "Publication date not specified"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "Publication date not specified" : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" }).format(date); }

@@ -33,6 +33,7 @@ interface ActivityRow {
   category?: string;
   authors?: string;
   publicationDate?: string | null;
+  datePrecision?: import("../../shared/imports.ts").PublicationDatePrecision;
   profilePicture?: string | null;
   department?: string | null;
   affiliation?: string | null;
@@ -174,7 +175,7 @@ export async function getTopActivityExport(query: TopActivityQuery, now = new Da
       ? ["Rank", "Previous rank", "Author", "Department", "Affiliation", "Profile views", "Guest profile views", "Registered profile views", "Public works", "Work views", "Downloads", "Top work", "Percent change"]
       : ["Rank", "Previous rank", "Topic", "Associated works", "Work views", "Guest views", "Registered views", "Share of topic attributions", "Top work", "Percent change"];
   const rows = report.rows.map((row: ActivityRow) => query.kind === "works"
-    ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.title ?? row.name, row.category ?? "", row.authors ?? "", row.publicationDate ?? "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.downloads), percent(row.percentChange)]
+    ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.title ?? row.name, row.category ?? "", row.authors ?? "", row.publicationDate ? row.publicationDate.slice(0, row.datePrecision === "year" ? 4 : row.datePrecision === "month" ? 7 : 10) : "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.downloads), percent(row.percentChange)]
     : query.kind === "authors"
       ? [String(row.rank ?? ""), String(row.previousRank ?? ""), row.name, row.department ?? "", row.affiliation ?? "", String(row.views), String(row.guestViews), String(row.registeredViews), String(row.publicWorks), String(row.workViews), String(row.workDownloads), row.topWork ?? "", percent(row.percentChange)]
       : [String(row.rank ?? ""), String(row.previousRank ?? ""), row.name, String(row.entryCount), String(row.workViews), String(row.guestViews), String(row.registeredViews), share(row.views, report.summary.topicAttributions), row.topWork ?? "", percent(row.percentChange)]);
@@ -313,12 +314,12 @@ async function hydrateMetadataRows(kind: TopActivityKind, rows: ActivityRow[]): 
   const compiledIds = rows.filter((row) => row.key.startsWith("compiled:")).map((row) => Number(row.id));
   const metadata = new Map<number, Partial<ActivityRow>>();
   if (documentIds.length) {
-    const result = await client.queryObject("SELECT d.id, d.publication_date::TEXT publication_date, COALESCE(string_agg(DISTINCT a.full_name, ', ' ORDER BY a.full_name), '') authors, COALESCE(array_agg(DISTINCT dt.topic_id) FILTER (WHERE dt.topic_id IS NOT NULL), ARRAY[]::INTEGER[]) topic_ids, COALESCE(array_agg(DISTINCT d.document_type::TEXT) FILTER (WHERE d.document_type IS NOT NULL), ARRAY[]::TEXT[]) categories FROM documents d LEFT JOIN document_authors da ON da.document_id = d.id LEFT JOIN authors a ON a.id = da.author_id LEFT JOIN document_topics dt ON dt.document_id = d.id WHERE d.id = ANY($1::INTEGER[]) GROUP BY d.id, d.publication_date", [documentIds]);
-    for (const value of result.rows as any[]) metadata.set(Number(value.id), { publicationDate: value.publication_date ? String(value.publication_date) : null, authors: String(value.authors ?? ""), topicIds: Array.isArray(value.topic_ids) ? value.topic_ids.map(Number) : [], categories: Array.isArray(value.categories) ? value.categories.map(String) : [] });
+    const result = await client.queryObject("SELECT d.id, d.publication_date::TEXT publication_date, d.publication_date_precision, COALESCE(string_agg(DISTINCT a.full_name, ', ' ORDER BY a.full_name), '') authors, COALESCE(array_agg(DISTINCT dt.topic_id) FILTER (WHERE dt.topic_id IS NOT NULL), ARRAY[]::INTEGER[]) topic_ids, COALESCE(array_agg(DISTINCT d.document_type::TEXT) FILTER (WHERE d.document_type IS NOT NULL), ARRAY[]::TEXT[]) categories FROM documents d LEFT JOIN document_authors da ON da.document_id = d.id LEFT JOIN authors a ON a.id = da.author_id LEFT JOIN document_topics dt ON dt.document_id = d.id WHERE d.id = ANY($1::INTEGER[]) GROUP BY d.id, d.publication_date", [documentIds]);
+    for (const value of result.rows as any[]) metadata.set(Number(value.id), { publicationDate: value.publication_date ? String(value.publication_date) : null, datePrecision: value.publication_date_precision ?? "legacy", authors: String(value.authors ?? ""), topicIds: Array.isArray(value.topic_ids) ? value.topic_ids.map(Number) : [], categories: Array.isArray(value.categories) ? value.categories.map(String) : [] });
   }
   if (compiledIds.length) {
     const result = await client.queryObject("SELECT c.id, MAX(d.publication_date)::TEXT publication_date, COALESCE(string_agg(DISTINCT a.full_name, ', ' ORDER BY a.full_name), '') authors, COALESCE(array_agg(DISTINCT dt.topic_id) FILTER (WHERE dt.topic_id IS NOT NULL), ARRAY[]::INTEGER[]) topic_ids, COALESCE(array_agg(DISTINCT d.document_type::TEXT) FILTER (WHERE d.document_type IS NOT NULL), ARRAY[]::TEXT[]) categories FROM compiled_documents c JOIN compiled_document_items cdi ON cdi.compiled_document_id = c.id JOIN documents d ON d.id = cdi.document_id LEFT JOIN document_authors da ON da.document_id = d.id LEFT JOIN authors a ON a.id = da.author_id LEFT JOIN document_topics dt ON dt.document_id = d.id WHERE c.id = ANY($1::INTEGER[]) GROUP BY c.id", [compiledIds]);
-    for (const value of result.rows as any[]) metadata.set(Number(value.id), { publicationDate: value.publication_date ? String(value.publication_date) : null, authors: String(value.authors ?? ""), topicIds: Array.isArray(value.topic_ids) ? value.topic_ids.map(Number) : [], categories: Array.isArray(value.categories) ? value.categories.map(String) : [] });
+    for (const value of result.rows as any[]) metadata.set(Number(value.id), { publicationDate: value.publication_date ? String(value.publication_date) : null, datePrecision: value.publication_date_precision ?? "legacy", authors: String(value.authors ?? ""), topicIds: Array.isArray(value.topic_ids) ? value.topic_ids.map(Number) : [], categories: Array.isArray(value.categories) ? value.categories.map(String) : [] });
   }
   return rows.map((row) => ({ ...row, ...(metadata.get(Number(row.id)) ?? {}) }));
 }

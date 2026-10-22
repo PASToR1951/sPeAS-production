@@ -14,6 +14,7 @@ export interface UserLibraryItem {
   author_names: string[];
   child_count: number;
   publication_date: Date | string | null;
+  publication_date_precision?: import("../../shared/imports.ts").PublicationDatePrecision;
   saved_at: Date | string;
   read_at: Date | string | null;
   availability: "available" | "unavailable" | "deleted";
@@ -175,6 +176,7 @@ export class UserLibraryModel {
          CASE WHEN library.availability = 'available' THEN library.author_names ELSE ARRAY[]::TEXT[] END AS author_names,
          library.child_count,
          library.publication_date,
+         CASE WHEN library.availability = 'available' THEN library.publication_date_precision ELSE 'legacy' END AS publication_date_precision,
          library.saved_at,
          library.read_at,
          library.annotation_count,
@@ -257,6 +259,7 @@ function libraryCte() {
       ), '') AS author_names_text,
       0::BIGINT AS child_count,
       d.publication_date,
+      d.publication_date_precision,
       sd.saved_at,
       rd.read_at,
       COALESCE((SELECT COUNT(*) FROM user_document_annotations uda
@@ -301,6 +304,7 @@ function libraryCte() {
       ''::TEXT AS author_names_text,
       COALESCE((SELECT COUNT(*) FROM compiled_document_items cdi WHERE cdi.compiled_document_id = cd.id), 0)::BIGINT AS child_count,
       make_date(cd.end_year, 12, 31) AS publication_date,
+      'year'::text AS publication_date_precision,
       scd.saved_at,
       rcd.read_at,
       0::BIGINT AS annotation_count,

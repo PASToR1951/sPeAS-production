@@ -2,6 +2,13 @@ const DATABASE_NAME = "peas-upload-recovery";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "drafts";
 const LOCAL_STORAGE_PREFIX = "peas-upload-recovery:";
+const writeClocks = new Map<string, { generation: number; savedAt: number }>();
+const fileBytes = new WeakMap<File, Promise<unknown>>();
+function writeClock(id: string) {
+  let clock = writeClocks.get(id);
+  if (!clock) { clock = { generation: 0, savedAt: 0 }; writeClocks.set(id, clock); }
+  return clock;
+}
 
 export const UPLOAD_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
@@ -27,7 +34,7 @@ export async function loadUploadDraft<T>(id: string): Promise<UploadDraftRecord<
 
   try {
     const stored = await readIndexedDbDraft<T>(id);
-    if (isDraftRecord<T>(stored, id)) candidates.push(stored);
+    if (isDraftRecord<T>(stored, id)) candidates.push({ ...stored, state: restoreFiles(stored.state) as T });
   } catch {
     // Browser storage is best effort. The metadata-only fallback may still work.
   }
@@ -49,9 +56,11 @@ export async function loadUploadDraft<T>(id: string): Promise<UploadDraftRecord<
   return null;
 }
 
-export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState: T): Promise<UploadDraftSaveResult> {
-  const savedAt = Date.now();
-  const fullRecord: UploadDraftRecord<T> = { id, version: 1, savedAt, filesIncluded: true, state };
+export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState: T, filesIncluded = true): Promise<UploadDraftSaveResult> {
+  const clock = writeClock(id);
+  const generation = clock.generation;
+  const savedAt = clock.savedAt = Math.max(Date.now(), clock.savedAt + 1);
+  const fullRecord: UploadDraftRecord<T> = { id, version: 1, savedAt, filesIncluded, state };
   const fallbackRecord: UploadDraftRecord<T> = { id, version: 1, savedAt, filesIncluded: false, state: metadataOnlyState };
   let fallbackSaved = false;
 
@@ -63,11 +72,12 @@ export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState
   }
 
   try {
-    await writeIndexedDbDraft(fullRecord);
-    return { savedAt, filesIncluded: true };
+    // Safari can lose native File handles across reloads; persist their bytes instead.
+    await writeIndexedDbDraft({ ...fullRecord, state: await persistFiles(state) }, generation);
+    return { savedAt, filesIncluded };
   } catch {
     try {
-      await writeIndexedDbDraft(fallbackRecord);
+      await writeIndexedDbDraft(fallbackRecord, generation);
       fallbackSaved = true;
     } catch {
       // Report the failure below only when neither storage mechanism worked.
@@ -79,6 +89,7 @@ export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState
 }
 
 export async function deleteUploadDraft(id: string) {
+  writeClock(id).generation += 1;
   try {
     window.localStorage.removeItem(localStorageKey(id));
   } catch {
@@ -130,12 +141,17 @@ async function readIndexedDbDraft<T>(id: string): Promise<unknown> {
   }
 }
 
-async function writeIndexedDbDraft<T>(record: UploadDraftRecord<T>) {
+async function writeIndexedDbDraft<T>(record: UploadDraftRecord<T>, generation: number) {
   const database = await openDatabase();
   try {
+    if (writeClock(record.id).generation !== generation) return;
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).put(record);
+      const store = transaction.objectStore(STORE_NAME);
+      const existing = store.get(record.id);
+      existing.onsuccess = () => {
+        if (!existing.result || existing.result.savedAt <= record.savedAt) store.put(record);
+      };
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Unable to save the upload draft."));
       transaction.onabort = () => reject(transaction.error ?? new Error("Upload draft saving was interrupted."));
@@ -160,4 +176,46 @@ function openDatabase() {
     request.onerror = () => reject(request.error ?? new Error("Unable to open upload recovery storage."));
     request.onblocked = () => reject(new Error("Upload recovery storage is blocked by another page."));
   });
+}
+
+async function persistFiles(value: unknown): Promise<unknown> {
+  if (value instanceof File) {
+    let bytes = fileBytes.get(value);
+    if (!bytes) {
+      bytes = value.arrayBuffer().then((buffer) => ({ __peasUploadFile: 1, name: value.name, type: value.type, lastModified: value.lastModified, bytes: buffer }))
+        .catch((error) => { fileBytes.delete(value); throw error; });
+      fileBytes.set(value, bytes);
+    }
+    return bytes;
+  }
+  if (Array.isArray(value)) return Promise.all(value.map(persistFiles));
+  if (value && typeof value === "object") return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([key, item]) => [key, await persistFiles(item)])));
+  return value;
+}
+
+export function prepareUploadDraftFiles(state: unknown) {
+  // Capture browser file handles while the picker grant is still active.
+  void persistFiles(state).catch(() => undefined);
+}
+
+function restoreFiles(value: unknown): unknown {
+  if (value instanceof File) return value;
+  if (Array.isArray(value)) return value.map(restoreFiles);
+  if (value && typeof value === "object") {
+    const file = value as Record<string, unknown>;
+    if (file.__peasUploadFile === 1 && file.bytes instanceof ArrayBuffer && typeof file.name === "string" && typeof file.type === "string" && typeof file.lastModified === "number") {
+      return new File([file.bytes], file.name, { type: file.type, lastModified: file.lastModified });
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, restoreFiles(item)]));
+  }
+  return value;
+}
+
+export interface AbstractReviewDraft {
+  drafts: Record<string, string>;
+  manualEntryTargets?: Record<string, boolean>;
+}
+
+export function createAbstractDraftKey(userId: string, recordType: "document" | "compiled", recordId: number) {
+  return `admin:${userId}:abstract:${recordType}:${recordId}`;
 }

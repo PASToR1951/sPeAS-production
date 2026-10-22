@@ -1,3 +1,7 @@
+import { useAdminIdentity } from "../../components/layout/AdminLayout";
+import { formatPublicationDate } from "../../lib/formatters/date";
+import type { PublicationDatePrecision } from "../../../../shared/imports";
+import { createAbstractDraftKey, deleteUploadDraft, loadUploadDraft, saveUploadDraft, type AbstractReviewDraft } from "../upload/uploadDraftRecovery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, CheckCircle2, ExternalLink, FileWarning, RefreshCw, Save, X, XCircle, ChevronLeft, ChevronRight, Minus, Plus, Maximize2, Minimize2, Search, Home } from "lucide-react";
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
@@ -5,7 +9,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { AnimatePresence } from "motion/react";
 import { DocumentAuthorPicker } from "../../components/forms/DocumentAuthorPicker";
 import { DocumentClassificationEditor, type DocumentClassificationEditorValue } from "../../components/forms/DocumentClassificationEditor";
-import { archiveDocument, fetchAbstractReviews, fetchCategories, fetchChildDocuments, fetchDocuments, retryAbstractReview, reviewDocument, updateAbstractReview, updateDocumentMetadata, type AbstractReviewItem } from "../../lib/api/documents";
+import { archiveDocument, fetchAbstractReviews, fetchExtractionDiagnostics, type ExtractionDiagnostics, fetchCategories, fetchChildDocuments, fetchDocuments, retryAbstractReview, reviewDocument, updateAbstractReview, updateDocumentMetadata, type AbstractReviewItem } from "../../lib/api/documents";
 import { fetchAuthors } from "../../lib/api/authors";
 import { fetchDocumentClassification, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
 import { updateCompiledDocument as updateCompiledDocumentRecord } from "../../lib/api/compiled-documents";
@@ -59,6 +63,7 @@ const DEFAULT_DOCUMENT_FILTER: DocumentFilterState = {
 };
 
 export function DocumentsAdminPage() {
+  const { userId } = useAdminIdentity();
   const [filter, setFilter] = useState<DocumentFilterState>(readDocumentFilter);
   const debouncedSearch = useDebouncedValue(filter.search, 250);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
@@ -73,6 +78,7 @@ export function DocumentsAdminPage() {
   const [loadingChildren, setLoadingChildren] = useState<Set<number>>(new Set());
   const [archiveTarget, setArchiveTarget] = useState<DocumentRecord | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const previewTrigger = useRef<HTMLElement | null>(null);
   const [previewTarget, setPreviewTarget] = useState<DocumentRecord | null>(null);
   const [editTarget, setEditTarget] = useState<DocumentRecord | null>(null);
   const [editBusy, setEditBusy] = useState(false);
@@ -264,6 +270,7 @@ export function DocumentsAdminPage() {
     setReviewBusyId(document.id);
     try {
       await reviewDocument(document.id, document.isCompiled, decision, publish);
+      if (publish) await deleteUploadDraft(createAbstractDraftKey(userId, document.isCompiled ? "compiled" : "document", document.id));
       toast.success(
         decision === "rejected"
           ? `${document.title} was rejected.`
@@ -327,14 +334,14 @@ export function DocumentsAdminPage() {
                       childrenDocuments={childrenByParent[document.id] ?? []}
                       loadingChildren={loadingChildren.has(document.id)}
                       onToggleChildren={handleToggleChildren}
-                      onPreview={setPreviewTarget}
+                      onPreview={(record, trigger) => { previewTrigger.current = trigger ?? window.document.activeElement as HTMLElement; setPreviewTarget(record); }}
                       onEdit={handleEdit}
                       onArchive={setArchiveTarget}
                     />
                   ) : (
                     <PeasDocumentCard
                       document={document}
-                      onPreview={setPreviewTarget}
+                      onPreview={(record, trigger) => { previewTrigger.current = trigger ?? window.document.activeElement as HTMLElement; setPreviewTarget(record); }}
                       onEdit={handleEdit}
                       onArchive={setArchiveTarget}
                     />
@@ -391,7 +398,7 @@ export function DocumentsAdminPage() {
         onSave={handleSaveEdit}
       />
 
-      <PdfPreviewDialog document={previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)} />
+      <PdfPreviewDialog onCloseAutoFocus={(event) => { event.preventDefault(); previewTrigger.current?.focus(); }} document={previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)} />
 
       <AbstractReviewDialog
         document={abstractReviewTarget}
@@ -413,6 +420,9 @@ function AbstractReviewDialog({
   onOpenChange: (open: boolean) => void;
   onResolved: () => void;
 }) {
+  const { userId } = useAdminIdentity();
+  const [diagnostics, setDiagnostics] = useState<ExtractionDiagnostics | null>(null);
+  const draftKey = document ? createAbstractDraftKey(userId, document.isCompiled ? "compiled" : "document", document.id) : null;
   const [items, setItems] = useState<AbstractReviewItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -426,11 +436,16 @@ function AbstractReviewDialog({
     }
     let active = true;
     setLoading(true);
-    void fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id)
-      .then((result) => {
+    void Promise.all([
+      fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id),
+      loadUploadDraft<AbstractReviewDraft>(draftKey!),
+      fetchExtractionDiagnostics().catch(() => null),
+    ])
+      .then(([result, saved, readiness]) => {
+        if (active) setDiagnostics(readiness);
         if (!active) return;
         setItems(result.items);
-        setDrafts(Object.fromEntries(result.items.map((item) => [`${item.targetType}:${item.targetId}`, item.currentAbstract ?? item.candidate ?? ""])));
+        setDrafts(Object.fromEntries(result.items.map((item) => [`${item.targetType}:${item.targetId}`, saved?.state.drafts?.[`${item.targetType}:${item.targetId}`] ?? item.currentAbstract ?? item.candidate ?? ""])));
       })
       .catch((error) => toast.error(getErrorMessage(error)))
       .finally(() => {
@@ -440,6 +455,26 @@ function AbstractReviewDialog({
       active = false;
     };
   }, [document]);
+
+  useEffect(() => {
+    if (!document || !items.some((item) => item.status === "queued" || item.status === "processing")) return;
+    let active = true;
+    const timer = window.setInterval(() => {
+      void Promise.all([fetchAbstractReviews(document.isCompiled ? "compiled" : "document", document.id), fetchExtractionDiagnostics().catch(() => null)])
+        .then(([result, readiness]) => { if (active) { setItems(result.items); setDiagnostics(readiness); } })
+        .catch(() => undefined);
+    }, 3000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [document, items.some((item) => item.status === "queued" || item.status === "processing")]);
+
+  async function closeReview(open: boolean) {
+    if (open) return onOpenChange(true);
+    if (busyKey || loading) return;
+    try {
+      if (draftKey) await saveUploadDraft(draftKey, { drafts }, { drafts });
+      onOpenChange(false);
+    } catch (error) { toast.error(`Keep this review open: ${getErrorMessage(error)}`); }
+  }
 
   async function act(item: AbstractReviewItem, action: "accept_candidate" | "save_manual" | "mark_unavailable") {
     const key = `${item.targetType}:${item.targetId}`;
@@ -474,12 +509,13 @@ function AbstractReviewDialog({
   }
 
   return (
-    <Dialog open={Boolean(document)} onOpenChange={onOpenChange}>
-      <DialogContent className="peas-abstract-review-dialog">
+    <Dialog open={Boolean(document)} onOpenChange={(open) => void closeReview(open)}>
+      {document ? <DialogContent className="peas-abstract-review-dialog">
         <DialogHeader>
           <DialogTitle>Review abstracts</DialogTitle>
           <DialogDescription>{document?.title ?? "Record"}. Machine-extracted text is private until an administrator accepts it, edits it, or marks it unavailable.</DialogDescription>
         </DialogHeader>
+        {diagnostics && !diagnostics.extractionReady ? <p role="status">Automatic extraction is unavailable. The PDF remains saved privately; you can enter an abstract manually or return later.</p> : null}
         <div className="peas-abstract-review-list" aria-live="polite">
           {loading ? <PeasInlineSpinner label="Loading abstract review…" /> : null}
           {!loading && !items.length ? <p>No abstract targets were found for this record.</p> : null}
@@ -502,6 +538,10 @@ function AbstractReviewDialog({
                   onChange={(event) => {
                     const value = event.currentTarget.value;
                     setDrafts((current) => ({ ...current, [key]: value }));
+                    if (draftKey) {
+                      const state = { drafts: { ...drafts, [key]: value } };
+                      void saveUploadDraft(draftKey, state, state).catch((error) => toast.error(getErrorMessage(error)));
+                    }
                   }}
                 />
               </label>
@@ -510,13 +550,13 @@ function AbstractReviewDialog({
                 <Button size="sm" disabled={busy || resolved || !item.candidate} onClick={() => void act(item, "accept_candidate")}>Accept candidate</Button>
                 <Button size="sm" variant="outline" disabled={busy || resolved || !(drafts[key] ?? "").trim()} onClick={() => void act(item, "save_manual")}>Edit and confirm</Button>
                 <Button size="sm" variant="outline" disabled={busy || resolved} onClick={() => void act(item, "mark_unavailable")}>Mark unavailable</Button>
-                <Button size="sm" variant="ghost" disabled={busy || !["failed", "needs_review"].includes(item.status)} onClick={() => void retry(item)}><RefreshCw aria-hidden="true" /> Retry</Button>
+                <Button size="sm" variant="ghost" disabled={busy || !diagnostics?.extractionReady || !["failed", "needs_review"].includes(item.status)} onClick={() => void retry(item)}><RefreshCw aria-hidden="true" /> Retry</Button>
               </div>
             </section>;
           })}
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button></DialogFooter>
-      </DialogContent>
+        <DialogFooter><Button variant="outline" onClick={() => void closeReview(false)}>Close</Button></DialogFooter>
+      </DialogContent> : null}
     </Dialog>
   );
 }
@@ -584,6 +624,7 @@ function EditDocumentDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [publicationDate, setPublicationDate] = useState("");
+  const [datePrecision, setDatePrecision] = useState<PublicationDatePrecision>("legacy");
   const [category, setCategory] = useState<DocumentCategory>("THESIS");
   const [startYear, setStartYear] = useState("");
   const [endYear, setEndYear] = useState("");
@@ -616,6 +657,7 @@ function EditDocumentDialog({
       title: document.title,
       description: document.description ?? "",
       publicationDate: document.publicationDate ? new Date(document.publicationDate).toISOString().slice(0, 10) : "",
+      datePrecision: document.datePrecision ?? "legacy",
       category: document.category === "All" ? "THESIS" : document.category,
       authors: document.authors
         .map((author) => ({
@@ -634,6 +676,7 @@ function EditDocumentDialog({
     setTitle(nextValues.title);
     setDescription(nextValues.description);
     setPublicationDate(nextValues.publicationDate);
+    setDatePrecision(nextValues.datePrecision);
     setCategory(nextValues.category);
     setAuthors(nextValues.authors);
     setClassification(nextValues.classification);
@@ -704,7 +747,7 @@ function EditDocumentDialog({
   }, [document]);
 
   const isCompiled = Boolean(document?.isCompiled);
-  const currentValues = JSON.stringify({ title, description, publicationDate, category, authors, classification, startYear, endYear, volume, issue });
+  const currentValues = JSON.stringify({ title, description, publicationDate, datePrecision, category, authors, classification, startYear, endYear, volume, issue });
   const isDirty = Boolean(document) && initialValuesRef.current !== currentValues;
 
   const handleOpenChange = (open: boolean) => {
@@ -749,6 +792,7 @@ function EditDocumentDialog({
               title: title.trim(),
               description: description.trim(),
               publication_date: publicationDate || null,
+              publication_date_precision: datePrecision,
               document_type: category,
             }, authors, classification);
           }}
@@ -812,7 +856,16 @@ function EditDocumentDialog({
                 </label>
                 <label className="peas-field">
                   <span>Publication Date</span>
-                  <Input type="date" value={publicationDate} onChange={(event) => setPublicationDate(event.currentTarget.value)} />
+                  <Select value={datePrecision} onValueChange={(value) => {
+                    const precision = value as PublicationDatePrecision;
+                    setDatePrecision(precision);
+                    if (publicationDate && precision === "year") setPublicationDate(`${publicationDate.slice(0, 4)}-01-01`);
+                    if (publicationDate && precision === "month") setPublicationDate(`${publicationDate.slice(0, 7)}-01`);
+                  }}><SelectTrigger aria-label="Publication date precision"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="year">Year only</SelectItem><SelectItem value="month">Month and year</SelectItem><SelectItem value="day">Exact date</SelectItem><SelectItem value="legacy">Legacy date (precision unknown)</SelectItem></SelectContent></Select>
+                  <Input aria-label="Publication date" type={datePrecision === "month" ? "month" : datePrecision === "year" ? "text" : "date"} value={datePrecision === "month" ? publicationDate.slice(0, 7) : datePrecision === "year" ? publicationDate.slice(0, 4) : publicationDate} onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setPublicationDate(!value ? "" : datePrecision === "year" ? `${value}-01-01` : datePrecision === "month" ? `${value}-01` : value);
+                  }} />
                 </label>
               </div>
               <div className="peas-field">
@@ -853,18 +906,20 @@ function EditDocumentDialog({
   );
 }
 
-function PdfPreviewDialog(props: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void }) {
+function PdfPreviewDialog(props: { document: DocumentRecord | null; onOpenChange: (open: boolean) => void; onCloseAutoFocus: (event: Event) => void }) {
   return props.document?.isCompiled
-    ? <CompiledWorkPreviewDialog key={props.document.id} document={props.document} onOpenChange={props.onOpenChange} />
+    ? <CompiledWorkPreviewDialog key={props.document.id} document={props.document} onCloseAutoFocus={props.onCloseAutoFocus} onOpenChange={props.onOpenChange} />
     : <SingularWorkPreviewDialog {...props} />;
 }
 
 function SingularWorkPreviewDialog({
   document,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   document: DocumentRecord | null;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -880,12 +935,12 @@ function SingularWorkPreviewDialog({
 
   return (
     <Dialog open={Boolean(document)} onOpenChange={onOpenChange}>
-      <DialogContent className="peas-pdf-dialog">
+      {document ? <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="peas-pdf-dialog">
         <DialogHeader className="peas-pdf-dialog__header">
           <div>
             <DialogTitle>{document?.title ?? "Document preview"}</DialogTitle>
             <DialogDescription>
-              {document ? `${document.authorsText} · ${formatPreviewDate(document.publicationDate)}` : "PDF preview from the current document record."}
+              {document ? `${document.authorsText} · ${formatPublicationDate(document.publicationDate, document.datePrecision)}` : "PDF preview from the current document record."}
             </DialogDescription>
           </div>
           {document ? <a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-sm" href={`/api/documents/${document.id}/download?disposition=inline`} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" /> Open in new tab</a> : null}
@@ -915,7 +970,7 @@ function SingularWorkPreviewDialog({
             No document selected.
           </div>
         )}
-      </DialogContent>
+      </DialogContent> : null}
     </Dialog>
   );
 }
@@ -1038,11 +1093,7 @@ function SimplePdfReader({ documentId, title, onLoaded, onError }: { documentId:
   </div>;
 }
 
-function formatPreviewDate(value: string | null) {
-  if (!value) return "Publication date not specified";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Publication date not specified" : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" }).format(date);
-}
+
 
 function numericOrNull(value: string) {
   const numberValue = Number(value);

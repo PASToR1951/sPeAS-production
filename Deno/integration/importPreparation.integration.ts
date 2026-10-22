@@ -1,3 +1,7 @@
+import { UserLibraryModel } from "../models/userLibraryModel.ts";
+import { createDocument, updateDocument } from "../controllers/documentController.ts";
+import { startAbstractWorker, failAbstractJob } from "../services/abstractExtractionWorkerService.ts";
+import { getAbstractWorkerDiagnostics, retryAbstractReview, AbstractWorkerUnavailableError } from "../services/abstractReviewService.ts";
 import {
   assert,
   assertEquals,
@@ -162,6 +166,60 @@ Deno.test({
       topic = (await client.queryObject<{ id: number }>(
         "INSERT INTO topics(name,normalized_name,status) VALUES('Synthetic topic','synthetic topic','approved') RETURNING id",
       )).rows[0].id;
+      await t.step("Ordinary document create/edit retains private month precision", async () => {
+        const result = await createDocument(new Request("http://localhost/documents", { method: "POST", body: JSON.stringify({ title: "Month precision fixture", document_type: "DISSERTATION", publication_date: "2021-05-01", publication_date_precision: "month", abstract: "A synthetic manually reviewed abstract.", file_path: "storage/dissertation/synthetic.pdf", is_public: false, review_status: "pending_review", uploaded_by: owner, classificationActorRole: "admin", authors: [{ id: author, full_name: "Synthetic Author" }], classification: { topicIds: [topic], keywords: [] } }) }));
+        const record = await result.json();
+        assertEquals(result.status, 201, JSON.stringify(record));
+        assertEquals(record.publication_date_precision, "month");
+        assertEquals(record.is_public, false);
+        assertEquals(record.review_status, "pending_review");
+        const edit = await updateDocument(new Request(`http://localhost/documents/${record.id}`, { method: "PUT", body: JSON.stringify({ title: "Updated title" }) }));
+        assertEquals(edit.status, 200);
+        assertEquals((await edit.json()).publication_date_precision, "month");
+        const invalid = await updateDocument(new Request(`http://localhost/documents/${record.id}`, { method: "PUT", body: JSON.stringify({ publication_date: "2021-05-23", publication_date_precision: "month" }) }));
+        assertEquals(invalid.status, 422);
+        await UserLibraryModel.addToLibrary(owner, record.id);
+        const privateLibrary = await UserLibraryModel.getUserLibrary(owner);
+        assertEquals(privateLibrary.items[0].publication_date_precision, "legacy");
+        await client.queryArray("UPDATE documents SET review_status='approved',is_public=TRUE WHERE id=$1", [record.id]);
+        const publicLibrary = await UserLibraryModel.getUserLibrary(owner);
+        assertEquals(publicLibrary.items[0].publication_date_precision, "month");
+        await client.queryArray("DELETE FROM documents WHERE id=$1", [record.id]);
+      });
+      await t.step("Unavailable extraction dependencies preserve queued records and retry budgets", async () => {
+        const id = (await client.queryObject<{ id: number }>("INSERT INTO documents(title,document_type,file_path,is_public,review_status) VALUES('Dependency fixture','THESIS','storage/thesis/fixture.pdf',FALSE,'pending_review') RETURNING id")).rows[0].id;
+        const jobId = (await client.queryObject<{ id: number }>("INSERT INTO abstract_extraction_jobs(target_type,document_id) VALUES('document',$1) RETURNING id", [id])).rows[0].id;
+        await client.queryArray("INSERT INTO abstract_extraction_worker_state(state_id) VALUES(TRUE) ON CONFLICT DO NOTHING");
+        const oldPath = Deno.env.get("PATH");
+        let stop: (() => void) | undefined;
+        try {
+          Deno.env.set("PATH", "");
+          stop = await startAbstractWorker();
+          let ready = false;
+          for (let i = 0; i < 100; i++) {
+            const state = await getAbstractWorkerDiagnostics();
+            if (state.workerAvailable && state.checkedAt) { ready = true; break; }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          assert(ready, "The worker must report failed dependency checks");
+          assertEquals((await getAbstractWorkerDiagnostics()).extractionReady, false);
+          const queued = (await client.queryObject<{ status: string; attempt_count: number }>("SELECT status,attempt_count FROM abstract_extraction_jobs WHERE id=$1", [jobId])).rows[0];
+          assertEquals(queued, { status: "queued", attempt_count: 0 });
+          await assertRejects(() => retryAbstractReview("document", id), AbstractWorkerUnavailableError);
+        } finally {
+          stop?.();
+          if (oldPath === undefined) Deno.env.delete("PATH"); else Deno.env.set("PATH", oldPath);
+        }
+        await client.queryArray("UPDATE abstract_extraction_jobs SET status='processing',attempt_count=1 WHERE id=$1", [jobId]);
+        const job = { id: jobId, target_type: "document" as const, document_id: id, compiled_document_id: null, attempt_count: 1 };
+        await failAbstractJob(job, "ABSTRACT_TIMEOUT");
+        assertEquals((await client.queryObject<{ status: string }>("SELECT status FROM abstract_extraction_jobs WHERE id=$1", [jobId])).rows[0].status, "queued");
+        await client.queryArray("UPDATE abstract_extraction_jobs SET status='processing' WHERE id=$1", [jobId]);
+        await failAbstractJob(job, "PDFINFO_UNAVAILABLE");
+        assertEquals((await client.queryObject<{ status: string }>("SELECT status FROM abstract_extraction_jobs WHERE id=$1", [jobId])).rows[0].status, "failed");
+        assertEquals((await client.queryObject<{ is_public: boolean }>("SELECT is_public FROM documents WHERE id=$1", [id])).rows[0].is_public, false);
+        await client.queryArray("DELETE FROM documents WHERE id=$1", [id]);
+      });
       await t.step(
         "P05: absent converter, disabled isolation, unqualified version and timeout give recoverable errors",
         async () => {

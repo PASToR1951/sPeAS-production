@@ -121,7 +121,7 @@ export async function getAllArchivedDocuments(ctx: any) {
           d.id, 
           d.title, 
           d.abstract, 
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           to_char(d.publication_date, 'YYYY-MM-DD') as publication_date_formatted,
           (d.document_type)::TEXT as document_type, 
           d.deleted_at,
@@ -166,7 +166,7 @@ export async function getAllArchivedDocuments(ctx: any) {
             END
           ) as title,
           NULL as abstract,
-          NULL as publication_date,
+          NULL as publication_date, 'legacy'::text AS publication_date_precision,
           NULL as publication_date_formatted,
           (cd.category)::TEXT as document_type,
           cd.deleted_at,

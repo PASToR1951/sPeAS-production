@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import type { DocumentCategory } from "../constants/categories";
 
 export interface ApiAuthor {
@@ -104,6 +105,7 @@ export interface DocumentRecord {
   category: DocumentCategory;
   rawCategory: string;
   publicationDate: string | null;
+  datePrecision?: PublicationDatePrecision;
   authors: ApiAuthor[];
   authorsText: string;
   topics: ApiTopic[];

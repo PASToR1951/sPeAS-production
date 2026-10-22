@@ -157,7 +157,7 @@ jobs:
       - name: Install exact dependencies and Chromium
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
       - name: Start an empty Compose application
         env:
           BETTER_AUTH_SECRET: ci-browser-secret
@@ -175,7 +175,7 @@ jobs:
           PEAS_BASE_URL: http://127.0.0.1:18080
         run: |
           npm run test:public -- --project=desktop
-          npm run test:admin -- --project=desktop
+          npm run test:admin -- --project=desktop --project=upload-webkit
           npm run test:experience -- --project=desktop
       - name: Collect application logs on failure
         if: failure()

@@ -8,6 +8,7 @@ import {
   digestFile,
   ImportError,
   stagingPath,
+  verifyNativeConverterQualification,
 } from "./importStorageService.ts";
 import { assembleImportPdf, inspectImportPdf } from "./importPdfService.ts";
 import { extractAbstractFromPdfPath } from "./abstractExtractionWorkerService.ts";
@@ -200,6 +201,7 @@ export async function importWorkerDiagnostics(workerId: string) {
     diagnostic = "Word conversion is disabled. PDF preparation is available.";
   if (Deno.env.get("IMPORT_CONVERTER_ISOLATED") === "true") {
     try {
+      await verifyNativeConverterQualification(Deno.env.get("IMPORT_LIBREOFFICE_PATH") || "soffice");
       version = new TextDecoder().decode(
         await boundedCommand(
           Deno.env.get("IMPORT_LIBREOFFICE_PATH") || "soffice",

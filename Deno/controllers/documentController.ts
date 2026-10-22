@@ -4,7 +4,7 @@ import { getErrorMessage } from "../utils/errorHandler.ts";
 import { fetchDocuments as fetchDocumentsService, fetchChildDocuments as fetchChildDocumentsService } from "../services/documentService.ts";
 import { getDocumentClassification, replaceDocumentClassification, ClassificationValidationError } from "../services/documentClassificationService.ts";
 import { createDocumentAuthors } from "./documentAuthorController.ts";
-import { validateSinglePublicationDate } from "../services/documentMetadataValidationService.ts";
+import { validatePublicationDatePrecision, validateSinglePublicationDate } from "../services/documentMetadataValidationService.ts";
 import { isAbstractTooLong, normalizeManualAbstract, queueDocumentAbstract } from "../services/abstractWorkflowService.ts";
 
 /**
@@ -368,7 +368,7 @@ export async function createDocument(req: Request): Promise<Response> {
         });
       }
 
-      const publicationDateError = validateSinglePublicationDate(body.document_type, body.publication_date);
+      const publicationDateError = validateSinglePublicationDate(body.document_type, body.publication_date) ?? validatePublicationDatePrecision(body.publication_date, body.publication_date_precision);
       if (publicationDateError) {
         return new Response(JSON.stringify({
           error: "A valid publication date is required for thesis and dissertation records.",
@@ -543,6 +543,12 @@ export async function updateDocument(req: Request): Promise<Response> {
         });
       }
       
+      if ("publication_date" in body || "publication_date_precision" in body) {
+        const oldDate = existingDocument.publication_date;
+        const date = "publication_date" in body ? body.publication_date : oldDate instanceof Date ? oldDate.toISOString().slice(0, 10) : oldDate;
+        const error = validatePublicationDatePrecision(date, body.publication_date_precision ?? existingDocument.publication_date_precision);
+        if (error) return new Response(JSON.stringify({ error, fields: { publication_date: error } }), { status: 422, headers: { "Content-Type": "application/json" } });
+      }
       const updatedDocument = await DocumentModel.update(parseInt(documentId), body);
       
       return new Response(JSON.stringify(updatedDocument), {
@@ -659,6 +665,7 @@ export async function getChildDocuments(req: Request): Promise<Response> {
         parent_compiled_id: doc.parent_compiled_id
       };
       
+      safeDoc.publication_date_precision = doc.publication_date_precision ?? "legacy";
       // Handle date carefully
       if (doc.publication_date instanceof Date) {
         safeDoc.publication_date = doc.publication_date.toISOString();

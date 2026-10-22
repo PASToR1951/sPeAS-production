@@ -60,7 +60,6 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
     setNewAuthorMode(false);
     setNewAuthorName("");
     setDialogError(null);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function useNewAuthor() {
@@ -152,7 +151,7 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
       <p className="peas-document-author-picker__hint">Select authors in publication order.</p>
 
       <Dialog open={newAuthorMode} onOpenChange={(open) => { if (open) setNewAuthorMode(true); else closeDialog(); }}>
-        <DialogContent>
+        {newAuthorMode ? <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}>
           <DialogHeader>
             <DialogTitle>Add author</DialogTitle>
             <DialogDescription>Enter the author’s name to add to this document.</DialogDescription>
@@ -168,7 +167,7 @@ export function DocumentAuthorPicker({ id, authors, value, disabled = false, onC
             <Button variant="outline" type="button" onClick={closeDialog}>Cancel</Button>
             <Button type="button" disabled={creating || !newAuthorName.trim()} onClick={() => void useNewAuthor()}>{creating ? "Adding…" : "Add author"}</Button>
           </DialogFooter>
-        </DialogContent>
+        </DialogContent> : null}
       </Dialog>
     </div>
   );

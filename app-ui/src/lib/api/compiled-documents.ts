@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { apiFetch } from "./http";
 import type { DocumentClassification, DocumentRecord } from "./types";
 import { fetchChildDocuments } from "./documents";
@@ -25,6 +26,7 @@ export interface CompiledPreviewStudy {
   authors: Array<{ id?: string; fullName: string }>;
   category: string;
   publicationDate: string | null;
+  datePrecision?: PublicationDatePrecision;
   pages: number | null;
   abstract: string | null;
   hasPdf: boolean;
@@ -130,6 +132,7 @@ export function normalizeCompiledPreviewManifest(raw: unknown): CompiledPreviewM
         authors: authors.length ? authors : [{ fullName: "Unknown author" }],
         category: String(row.category ?? "Research study"),
       publicationDate: nullableIsoDate(row.publicationDate),
+      datePrecision: ["year", "month", "day"].includes(String(row.datePrecision)) ? row.datePrecision as PublicationDatePrecision : "legacy",
         pages: nullableNumber(row.pages),
         abstract: nullableText(row.abstract),
         hasPdf: Boolean(row.hasPdf),

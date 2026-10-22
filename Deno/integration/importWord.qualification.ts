@@ -44,7 +44,9 @@ const docx = zipSync({
     }<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:body></w:document>`,
   ),
 });
-const source = join(directory, "synthetic.docx");
+const sourceDirectory = join(directory, "source");
+await Deno.mkdir(sourceDirectory, { recursive: true });
+const source = join(sourceDirectory, "synthetic.docx");
 await Deno.writeFile(source, docx);
 const originalHash = await digestFile(source);
 const docxOutput = join(directory, "docx");
@@ -53,7 +55,7 @@ const modern = await convertWord(source, docxOutput);
 const legacyOutput = join(directory, "legacy");
 await Deno.mkdir(legacyOutput, { recursive: true });
 const command = Deno.env.get("IMPORT_LIBREOFFICE_PATH") || "soffice";
-await boundedCommand(command, [
+await boundedCommand(Deno.env.get("IMPORT_QUALIFICATION_FIXTURE_GENERATOR") || command, [
   `-env:UserInstallation=${toFileUrl(join(legacyOutput, "profile")).href}`,
   "--headless",
   "--convert-to",

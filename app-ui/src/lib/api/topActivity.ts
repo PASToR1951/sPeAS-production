@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { apiFetch } from "./http";
 import type { ActivityCoverage } from "./types";
 import type { ReportRange } from "./reports";
@@ -28,6 +29,7 @@ export interface TopActivityRow {
   category?: string;
   authors?: string;
   publicationDate?: string | null;
+  datePrecision?: PublicationDatePrecision;
   profilePicture?: string | null;
   department?: string | null;
   affiliation?: string | null;
@@ -145,6 +147,7 @@ function normalizeRow(value: unknown): TopActivityRow {
     category: row.category ? String(row.category) : undefined,
     authors: row.authors ? String(row.authors) : undefined,
     publicationDate: row.publicationDate ? String(row.publicationDate) : null,
+    datePrecision: ["year", "month", "day"].includes(String(row.datePrecision)) ? row.datePrecision as PublicationDatePrecision : "legacy",
     profilePicture: row.profilePicture ? String(row.profilePicture) : null,
     department: row.department ? String(row.department) : null,
     affiliation: row.affiliation ? String(row.affiliation) : null,

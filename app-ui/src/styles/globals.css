@@ -1468,6 +1468,13 @@ body.peas-editor-open { overflow: hidden; }
 .peas-upload-completion h2 { color: var(--foreground); font-size: 1.25rem; margin: 0; }
 .peas-upload-completion p { color: #52655a; font-size: .88rem; line-height: 1.45; margin: 0; }
 .peas-upload-completion__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.peas-upload-page .peas-upload-form { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.peas-upload-extraction,
+.peas-upload-extraction__list,
+.peas-upload-extraction__item,
+.peas-upload-extraction__editor { min-width: 0; overflow-wrap: anywhere; }
+.peas-upload-completion__actions > .peas-ui-button { height: auto; max-width: 100%; min-height: 40px; min-width: 0; white-space: normal; }
+
 .peas-upload-extraction { background: var(--card, #fff); border: 1px solid #dfe8e3; border-radius: 14px; display: grid; gap: 18px; padding: clamp(18px, 2.5vw, 26px); }
 .peas-upload-extraction > header { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
 .peas-upload-extraction > header h2 { color: var(--foreground); font-size: 1.15rem; margin: 0 0 5px; }

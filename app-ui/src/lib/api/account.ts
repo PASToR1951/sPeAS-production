@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { apiFetch } from "./http";
 
 export type LooseRecord = Record<string, unknown>;
@@ -5,6 +6,7 @@ export type LooseRecord = Record<string, unknown>;
 export type AccountRecordType = "document" | "compiled";
 
 export interface AccountLibraryItem extends LooseRecord {
+  publication_date_precision?: PublicationDatePrecision;
   record_id: number;
   record_type: AccountRecordType;
   title: string;

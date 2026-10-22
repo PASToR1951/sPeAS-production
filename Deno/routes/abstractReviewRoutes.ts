@@ -1,6 +1,6 @@
 import { Router } from "../deps.ts";
 import { isAuthenticated, requireCapability } from "../middleware/authMiddleware.ts";
-import { applyAbstractReview, listAbstractReviews, retryAbstractReview } from "../services/abstractReviewService.ts";
+import { AbstractWorkerUnavailableError, getAbstractWorkerDiagnostics, applyAbstractReview, listAbstractReviews, retryAbstractReview } from "../services/abstractReviewService.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
 
 const router = new Router();
@@ -23,6 +23,12 @@ router.get("/api/admin/abstract-reviews", isAuthenticated, requireReview, async 
     ctx.response.status = 500;
     ctx.response.body = { error: error instanceof Error ? error.message : "Unable to load abstract review" };
   }
+});
+
+router.get("/api/admin/abstract-reviews/diagnostics", isAuthenticated, requireReview, async (ctx) => {
+  ctx.response.headers.set("Cache-Control", "private, no-store");
+  ctx.response.headers.set("Vary", "Cookie");
+  ctx.response.body = await getAbstractWorkerDiagnostics();
 });
 
 for (const target of ["document", "compiled-foreword"] as const) {
@@ -80,7 +86,7 @@ for (const target of ["document", "compiled-foreword"] as const) {
       ctx.response.status = 202;
       ctx.response.body = { status: "queued" };
     } catch (error) {
-      ctx.response.status = 422;
+      ctx.response.status = error instanceof AbstractWorkerUnavailableError ? 503 : 422;
       ctx.response.body = { error: error instanceof Error ? error.message : "Unable to retry abstract extraction" };
     }
   });

@@ -1,3 +1,4 @@
+import { abstractWorkerDiagnostics, type AbstractWorkerState } from "./abstractWorkerReadiness.ts";
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { resolveStoredPdfPath, sha256File } from "./abstractExtractionService.ts";
 import { isAbstractTooLong, normalizeManualAbstract, type AbstractJobStatus, type AbstractSource } from "./abstractWorkflowService.ts";
@@ -156,7 +157,19 @@ export async function applyAbstractReview(
   return item;
 }
 
+export async function getAbstractWorkerDiagnostics() {
+  const result = await client.queryObject<AbstractWorkerState>(
+    "SELECT last_heartbeat_at, dependencies_ready, dependency_error_code, dependencies_checked_at FROM abstract_extraction_worker_state WHERE state_id=TRUE",
+  );
+  return abstractWorkerDiagnostics(result.rows[0]);
+}
+
+export class AbstractWorkerUnavailableError extends Error {
+  constructor() { super("Automatic extraction is unavailable. Your saved PDF is safe; try later or enter an abstract manually."); }
+}
+
 export async function retryAbstractReview(targetType: "document" | "compiled_foreword", targetId: number): Promise<void> {
+  if (!(await getAbstractWorkerDiagnostics()).extractionReady) throw new AbstractWorkerUnavailableError();
   const job = await getCurrentJob(targetType, targetId);
   if (!job || !["failed", "needs_review"].includes(job.status)) throw new Error("This abstract does not need a retry.");
   await withTransaction(async (connection) => {

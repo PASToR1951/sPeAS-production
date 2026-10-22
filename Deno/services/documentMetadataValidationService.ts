@@ -77,3 +77,11 @@ function positiveInteger(value: unknown): number | null {
   const number = Number(text);
   return Number.isSafeInteger(number) ? number : null;
 }
+
+export function validatePublicationDatePrecision(value: unknown, precision: unknown = "legacy"): string | undefined {
+  if (!["year", "month", "day", "legacy"].includes(String(precision))) return "Choose a supported publication date precision.";
+  if (precision === "legacy" && (value == null || value === "")) return;
+  if (!isSupportedIsoDate(value)) return "Enter a valid publication date.";
+  if (precision === "year" && !value.endsWith("-01-01")) return "A year-only date must use January 1 internally.";
+  if (precision === "month" && !value.endsWith("-01")) return "A month-only date must use the first day internally.";
+}

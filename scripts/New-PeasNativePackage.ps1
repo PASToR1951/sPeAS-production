@@ -47,6 +47,8 @@ try {
         Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
     }
 
+    & (Join-Path $staging 'scripts\Build-PeasNativeConverter.ps1') -OutputDirectory (Join-Path $staging 'tools') | Out-Null
+
     [ordered]@{
         schemaVersion = 1
         releaseId = $ReleaseId

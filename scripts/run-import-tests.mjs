@@ -11,6 +11,7 @@ const pgBin = process.env.IMPORT_TEST_PG_BIN ||
   (process.platform === "darwin"
     ? "/opt/homebrew/opt/postgresql@17/bin"
     : "/usr/lib/postgresql/17/bin");
+const pg = (name) => path.join(pgBin, `${name}${process.platform === "win32" ? ".exe" : ""}`);
 const group = process.argv[2] || "integration";
 if (!["integration", "e2e", "reader"].includes(group)) {
   throw new Error("Unknown import test group");
@@ -28,14 +29,14 @@ function run(command, args, env = process.env, cwd = root) {
 }
 async function freePort() {
   const server = net.createServer();
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   const port = server.address().port;
   await new Promise((resolve) => server.close(resolve));
   return port;
 }
 let started = false;
 try {
-  if (!existsSync(path.join(pgBin, "initdb"))) {
+  if (!existsSync(pg("initdb"))) {
     throw new Error(
       "Install PostgreSQL 17 or set IMPORT_TEST_PG_BIN. Tests create an isolated temporary cluster; existing databases are never used.",
     );
@@ -58,7 +59,7 @@ try {
     BETTER_AUTH_SECRET: "test-only-import-secret-with-at-least-32-characters",
     PEAS_DESTRUCTIVE_MIGRATION_CONFIRMATION: "RESTORABLE_BACKUP_VERIFIED",
   };
-  await run(path.join(pgBin, "initdb"), [
+  await run(pg("initdb"), [
     "-D",
     path.join(temporary, "postgres"),
     "-U",
@@ -69,19 +70,19 @@ try {
     "-E",
     "UTF8",
   ]);
-  await run(path.join(pgBin, "pg_ctl"), [
+  await run(pg("pg_ctl"), [
     "-D",
     path.join(temporary, "postgres"),
     "-l",
     path.join(temporary, "postgres.log"),
     "-o",
-    `-p ${port} -h 127.0.0.1 -k ${temporary}`,
+    `-p ${port} -h 127.0.0.1${process.platform === "win32" ? "" : ` -k "${temporary}"`}`,
     "-w",
     "start",
   ]);
   started = true;
-  await run(path.join(pgBin, "createdb"), ["peas_import_test"], env);
-  await run(path.join(pgBin, "psql"), [
+  await run(pg("createdb"), ["peas_import_test"], env);
+  await run(pg("psql"), [
     "-c",
     "CREATE ROLE peas_app NOLOGIN; CREATE ROLE postgres NOLOGIN;",
   ], env);
@@ -129,7 +130,7 @@ try {
     );
   }
   if (group === "e2e" || group === "reader") {
-    await run(path.join(pgBin, "psql"), ["-c", "ALTER ROLE peas_app LOGIN PASSWORD 'test-only';"], env);
+    await run(pg("psql"), ["-c", "ALTER ROLE peas_app LOGIN PASSWORD 'test-only';"], env);
     await run("node", [
       "scripts/run-import-browser-test.mjs",
       temporary,
@@ -151,7 +152,7 @@ try {
     );}
 } finally {
   if (started) {
-    await run(path.join(pgBin, "pg_ctl"), [
+    await run(pg("pg_ctl"), [
       "-D",
       path.join(temporary, "postgres"),
       "-m",

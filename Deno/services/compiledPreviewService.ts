@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../shared/imports.ts";
 import { client } from "../db/denopost_conn.ts";
 import { getDocumentClassification, type DocumentClassification } from "./documentClassificationService.ts";
 
@@ -8,6 +9,7 @@ export interface CompiledPreviewStudy {
   authors: Array<{ id?: string; fullName: string }>;
   category: string;
   publicationDate: string | null;
+  datePrecision?: PublicationDatePrecision;
   pages: number | null;
   abstract: string | null;
   hasPdf: boolean;
@@ -93,7 +95,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       SELECT id, sort_order FROM fallback_children
     )
     SELECT c.id, c.sort_order, d.title, d.document_type::TEXT AS category,
-           d.publication_date, d.pages, d.abstract, d.file_path
+           d.publication_date, d.publication_date_precision, d.pages, d.abstract, d.file_path
     FROM candidates c
     JOIN documents d ON d.id = c.id
     ORDER BY c.sort_order, c.id
@@ -129,6 +131,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
       authors,
       category: String(row.category ?? "Research study"),
       publicationDate: row.publication_date ? new Date(String(row.publication_date)).toISOString() : null,
+      datePrecision: row.publication_date_precision as PublicationDatePrecision ?? "legacy",
       pages: numberOrNull(row.pages),
       abstract: stringOrNull(row.abstract),
       hasPdf: Boolean(stringOrNull(row.file_path)),

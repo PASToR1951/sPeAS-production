@@ -1,3 +1,4 @@
+import { formatPublicationDate } from "../../lib/formatters/date";
 import { Archive, CalendarDays, ChevronDown, ChevronRight, Eye, ListTree, Pencil, UserRound } from "lucide-react";
 import { getCategoryMeta } from "../../lib/constants/categories";
 import { formatYearRange } from "../../lib/formatters/date";
@@ -10,7 +11,7 @@ import { CategoryIcon } from "./CategoryIcon";
 
 interface DocumentCardProps {
   document: DocumentRecord;
-  onPreview: (document: DocumentRecord) => void;
+  onPreview: (document: DocumentRecord, trigger?: HTMLElement) => void;
   onEdit: (document: DocumentRecord) => void;
   onArchive: (document: DocumentRecord) => void;
 }
@@ -34,7 +35,7 @@ export function PeasDocumentCard({ document, onPreview, onEdit, onArchive }: Doc
 
       <div className="peas-document-card__detail" aria-label="Document details">
         <span className="peas-document-card__detail-label">Published</span>
-        <span className="peas-document-card__publication"><CalendarDays aria-hidden="true" />{formatDocumentDate(document.publicationDate)}</span>
+        <span className="peas-document-card__publication"><CalendarDays aria-hidden="true" />{formatPublicationDate(document.publicationDate, document.datePrecision)}</span>
       </div>
 
       <div className="peas-document-card__status">
@@ -42,7 +43,7 @@ export function PeasDocumentCard({ document, onPreview, onEdit, onArchive }: Doc
       </div>
 
       <div className="peas-document-card__actions">
-        <Button size="sm" onClick={() => onPreview(document)}>
+        <Button size="sm" onClick={(event) => onPreview(document, event.currentTarget)}>
           <Eye aria-hidden="true" /> View
         </Button>
         <PeasActionMenu
@@ -111,7 +112,7 @@ export function PeasCompiledDocumentCard({
         </div>
 
         <div className="peas-document-card__actions">
-          <Button size="sm" onClick={() => onPreview(document)}>
+          <Button size="sm" onClick={(event) => onPreview(document, event.currentTarget)}>
             <Eye aria-hidden="true" /> View
           </Button>
           <PeasActionMenu
@@ -142,7 +143,7 @@ export function PeasCompiledDocumentCard({
                   <DocumentMeta document={child} compact />
                 </div>
                 <div className="peas-child-document__actions">
-                  <Button size="sm" onClick={() => onPreview(child)}>
+                  <Button size="sm" onClick={(event) => onPreview(child, event.currentTarget)}>
                     <Eye aria-hidden="true" /> View
                   </Button>
                   <PeasActionMenu
@@ -169,11 +170,4 @@ function DocumentMeta({ document, compact = false, categoryLabel }: { document: 
       {categoryLabel ? <span className="peas-document-card__meta-category">{categoryLabel}</span> : null}
     </div>
   );
-}
-
-function formatDocumentDate(value: string | null) {
-  if (!value) return "Not specified";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not specified";
-  return new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }

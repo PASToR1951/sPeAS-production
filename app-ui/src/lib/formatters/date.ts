@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../../../shared/imports";
 export function formatDate(value: string | number | Date | null | undefined) {
   if (!value) return "Unknown date";
 
@@ -17,4 +18,16 @@ export function formatYearRange(startYear?: number | null, endYear?: number | nu
   if (startYear) return String(startYear);
   if (endYear) return String(endYear);
   return "";
+}
+
+export function formatPublicationDate(value: string | null | undefined, precision: PublicationDatePrecision = "legacy") {
+  if (!value) return "Publication date not specified";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Publication date not specified";
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "UTC",
+    year: "numeric",
+    ...(precision !== "year" ? { month: "short" as const } : {}),
+    ...(precision === "day" || precision === "legacy" ? { day: "numeric" as const } : {}),
+  }).format(date);
 }

@@ -1,3 +1,4 @@
+import type { PublicationDatePrecision } from "../../shared/imports.ts";
 import { client } from "../db/denopost_conn.ts";
 import { join } from "https://deno.land/std@0.190.0/path/mod.ts";
 import { resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
@@ -24,6 +25,7 @@ export interface Document {
   abstract_reviewed_by?: string;
   abstract_reviewed_at?: Date;
   publication_date?: Date;
+  publication_date_precision?: PublicationDatePrecision;
   start_year?: number;
   end_year?: number;
   category_id?: number;
@@ -231,10 +233,10 @@ export class DocumentModel {
           start_year, end_year, category_id, department_id,
           file_path, pages, volume, issue, is_public, document_type,
           compiled_parent_id, uploaded_by, review_status, reviewed_by, reviewed_at,
-          abstract_source, abstract_reviewed_by, abstract_reviewed_at
+          abstract_source, abstract_reviewed_by, abstract_reviewed_at, publication_date_precision
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-          $16, $17, $18, $19, $20, $21, $22
+          $16, $17, $18, $19, $20, $21, $22, $23
         ) RETURNING *`,
         [
           document.title,
@@ -259,6 +261,7 @@ export class DocumentModel {
           document.abstract_source || (document.abstract ? 'legacy' : 'none'),
           document.abstract_reviewed_by || null,
           document.abstract_reviewed_at || null,
+          document.publication_date_precision ?? "legacy",
         ]
       );
       
@@ -290,6 +293,7 @@ export class DocumentModel {
         abstract_reviewed_by: updates.abstract_reviewed_by,
         abstract_reviewed_at: updates.abstract_reviewed_at,
         publication_date: updates.publication_date,
+        publication_date_precision: updates.publication_date_precision,
         start_year: updates.start_year,
         end_year: updates.end_year,
         category_id: updates.category_id,

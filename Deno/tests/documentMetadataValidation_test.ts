@@ -68,3 +68,14 @@ Deno.test("compiled cover migration persists a complete page mapping while prese
   assertStringIncludes(sql, "front_cover_page BETWEEN 1 AND cover_page_count");
   assertStringIncludes(sql, "back_cover_page BETWEEN 1 AND cover_page_count");
 });
+import { validatePublicationDatePrecision } from "../services/documentMetadataValidationService.ts";
+
+Deno.test("publication precision preserves month/year semantics without guessing legacy dates", () => {
+  assertEquals(validatePublicationDatePrecision("2021-05-01", "month"), undefined);
+  assertEquals(validatePublicationDatePrecision("2021-05-01"), undefined);
+  assertEquals(validatePublicationDatePrecision("2021-01-01", "year"), undefined);
+  assertEquals(validatePublicationDatePrecision("2021-05-23", "day"), undefined);
+  for (const [date, precision] of [["2021-05-23", "month"], ["2021-05-01", "year"], ["2021-02-30", "day"], ["2021-05-01", "unknown"]]) {
+    assertEquals(typeof validatePublicationDatePrecision(date, precision), "string");
+  }
+});

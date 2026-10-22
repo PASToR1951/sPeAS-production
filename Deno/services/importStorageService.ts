@@ -9,6 +9,7 @@ import {
 } from "https://deno.land/std@0.200.0/path/mod.ts";
 import { STORAGE_ROOT, WORKSPACE_ROOT } from "../config/storage.ts";
 import { IMPORT_LIMITS } from "../../shared/imports.ts";
+import { nativeQualificationMatches } from "./nativeConverterQualification.ts";
 
 export class ImportError extends Error {
   constructor(message: string, public status = 422) {
@@ -149,6 +150,7 @@ export async function convertWord(
       503,
     );
   }
+  await verifyNativeConverterQualification(executable);
   const version = new TextDecoder().decode(
     await boundedCommand(executable, ["--version"], 15_000),
   ).trim();
@@ -188,4 +190,24 @@ export async function convertWord(
     );
   }
   return { path, version };
+}
+
+export async function verifyNativeConverterQualification(executable: string): Promise<void> {
+  if (Deno.build.os !== "windows") return;
+  try {
+    const receipt = JSON.parse(await Deno.readTextFile(Deno.env.get("IMPORT_WINDOWS_QUALIFICATION_FILE") || ""));
+    const engine = Deno.env.get("IMPORT_WINDOWS_SOFFICE_PATH");
+    if (!engine || !isAbsolute(engine) || !isAbsolute(executable)) throw new Error("Unconfigured native converter");
+    const current = {
+      launcherSha256: await digestFile(executable),
+      engineSha256: await digestFile(resolve(dirname(engine), "soffice.bin")),
+      engineLauncherSha256: await digestFile(engine),
+      fontManifestSha256: Deno.env.get("IMPORT_FONT_MANIFEST_SHA256") || "",
+      serviceSid: new TextDecoder().decode(await boundedCommand(executable, ["--identity"], 15000)).trim(),
+      version: Deno.env.get("IMPORT_LIBREOFFICE_VERSION") || "",
+    };
+    if (!nativeQualificationMatches(receipt, current, Deno.env.get("DENO_ENV") === "test")) throw new Error("Qualification changed");
+  } catch {
+    throw new ImportError("Native Word conversion has not been qualified for this service account, launcher, LibreOffice version and font bundle. Upload a prepared PDF.", 503);
+  }
 }

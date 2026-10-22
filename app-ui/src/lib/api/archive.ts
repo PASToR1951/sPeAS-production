@@ -77,6 +77,7 @@ function normalizeArchivedDocument(raw: Record<string, unknown>): ArchivedDocume
     category,
     rawCategory,
     publicationDate: stringifyNullable(raw.publication_date_formatted ?? raw.publication_date),
+    datePrecision: ["year", "month", "day"].includes(String(raw.publication_date_precision)) ? raw.publication_date_precision as "year" | "month" | "day" : "legacy",
     authors: authorsText === "Unknown author" ? [] : authorsText.split(",").map((fullName) => ({ full_name: fullName.trim() })),
     authorsText,
     topics: [],

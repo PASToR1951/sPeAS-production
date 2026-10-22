@@ -22,7 +22,7 @@ function run(cmd, args, env) {
   });
 }
 const probe = net.createServer();
-await new Promise((r) => probe.listen(0, "127.0.0.1", r));
+await new Promise((resolve, reject) => { probe.once("error", reject); probe.listen(0, "127.0.0.1", resolve); });
 const port = probe.address().port;
 await new Promise((r) => probe.close(r));
 const origin = `http://127.0.0.1:${port}`;
@@ -57,7 +57,8 @@ function start(name, args) {
   return child;
 }
 try {
-  await run("npm", ["run", "build:app-ui"], env);
+  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.admin.config.ts"], env);
+  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.public.config.ts"], env);
   await run("deno", [
     "run",
     "--config",
@@ -115,16 +116,16 @@ try {
   } finally {
     await loginRequest.dispose();
   }
-  await run("npx", [
-    "playwright",
+  await run(process.execPath, [
+    path.join(root, "node_modules/@playwright/test/cli.js"),
     "test",
     "-c",
     "app-ui/playwright.import.config.ts",
     ...process.argv.slice(3),
   ], env);
   if (!process.argv.slice(3).length) {
-    await run("npx", [
-      "playwright",
+    await run(process.execPath, [
+      path.join(root, "node_modules/@playwright/test/cli.js"),
       "test",
       "-c",
       "app-ui/playwright.admin.config.ts",

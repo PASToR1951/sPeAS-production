@@ -129,7 +129,11 @@ if (-not (Test-Path -LiteralPath $migrationScript)) { Write-Log "ERROR: Migratio
 if (-not (Test-Path -LiteralPath $emailScript)) { Write-Log "ERROR: Startup email sender not found: $emailScript"; exit 1 }
 if (-not (Test-Path -LiteralPath $envFile)) { Write-Log "ERROR: Environment file not found: $envFile"; exit 1 }
 
-$env:PATH = "$pgBin;$(Split-Path -Parent $deno);$env:PATH"
+$processingPaths = @($env:PEAS_PDF_TOOLS_PATH, $env:PEAS_TESSERACT_PATH) | Where-Object { $_ }
+foreach ($processingPath in $processingPaths) {
+    if (-not [IO.Path]::IsPathRooted($processingPath) -or -not (Test-Path -LiteralPath $processingPath -PathType Container)) { throw "Processing tools directory is invalid: $processingPath" }
+}
+$env:PATH = (($processingPaths + @($pgBin, (Split-Path -Parent $deno), $env:PATH)) -join ';')
 $env:PEAS_APP_ROOT = $AppRoot
 $env:PEAS_STATE_ROOT = $stateRoot
 $nativeBindHost = if ($env:PEAS_BIND_HOST) { $env:PEAS_BIND_HOST.Trim() } elseif ($env:HOST) { $env:HOST.Trim() } else { '' }

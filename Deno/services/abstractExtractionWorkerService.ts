@@ -1,3 +1,4 @@
+import { dependencyErrorCode, isDependencyFailure } from "./abstractWorkerReadiness.ts";
 import { ensureDir, join } from "../deps.ts";
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
@@ -226,7 +227,7 @@ async function finishAbstractJob(job: JobRow, digest: string, pageCount: number,
 
 export async function failAbstractJob(job: JobRow, errorCode: string): Promise<void> {
   const attemptCount = Number(job.attempt_count);
-  const terminal = attemptCount >= MAX_RETRIES;
+  const terminal = attemptCount >= MAX_RETRIES || isDependencyFailure(errorCode);
   const delayMinutes = attemptCount === 1 ? 1 : attemptCount === 2 ? 5 : 15;
   const safeErrorCode = sanitizeAbstractError(errorCode);
   await client.queryArray(
@@ -253,7 +254,7 @@ export async function failAbstractJob(job: JobRow, errorCode: string): Promise<v
 
 function sanitizeAbstractError(value: string): string {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9_:-]/gu, "_");
-  if (/(?:PDFINFO|PDFTOTEXT|PDFTOPPM|TESSERACT)_UNAVAILABLE/u.test(normalized)) {
+  if (isDependencyFailure(normalized)) {
     return "ABSTRACT_DEPENDENCY_UNAVAILABLE";
   }
   const allowed = new Set([
@@ -347,40 +348,64 @@ export async function verifyAbstractWorkerDependencies(): Promise<void> {
   }
   const languages = await runCommand("tesseract", ["--list-langs"], 10_000);
   const output = decoder.decode(languages.stdout);
-  for (const language of ["eng", "fil"]) {
+  if (!languages.success) throw new Error("ABSTRACT_DEPENDENCY_UNAVAILABLE:tesseract");
+  for (const language of OCR_LANGUAGES.split("+")) {
     if (!output.split(/\r?\n/u).includes(language)) throw new Error(`ABSTRACT_OCR_LANGUAGE_UNAVAILABLE:${language}`);
   }
 }
 
 export async function startAbstractWorker(): Promise<() => void> {
   const { maintenanceRequested } = await import("./maintenanceState.ts");
-  try {
-    await verifyAbstractWorkerDependencies();
-  } catch (err) {
-    console.warn("[abstract-worker] Optional extraction CLI dependencies missing (OCR/PDF parsing disabled):", err instanceof Error ? err.message : String(err));
-  }
   const workerId = `abstract-${crypto.randomUUID()}`;
   let running = false;
+  let dependenciesReady = false;
+  let checkedAt = 0;
+  const verify = async () => {
+    let errorCode: string | null = null;
+    try {
+      await verifyAbstractWorkerDependencies();
+      dependenciesReady = true;
+    } catch (error) {
+      dependenciesReady = false;
+      errorCode = dependencyErrorCode(error);
+      console.warn("[abstract-worker] Extraction paused:", error instanceof Error ? error.message : errorCode);
+    }
+    await client.queryArray(
+      `UPDATE abstract_extraction_worker_state SET dependencies_ready=$1,
+       dependency_error_code=$2, dependencies_checked_at=CURRENT_TIMESTAMP WHERE state_id=TRUE`,
+      [dependenciesReady, errorCode],
+    );
+    checkedAt = Date.now();
+  };
   const run = async () => {
     if (running) return;
     if (await maintenanceRequested("abstract-worker")) return;
     running = true;
     try {
+      if (Date.now() - checkedAt >= 30_000) await verify();
       await recoverStaleAbstractJobs();
       await updateAbstractWorkerHeartbeat(workerId);
+      if (!dependenciesReady) return;
       const job = await claimNextAbstractJob(workerId);
       if (!job) return;
       try {
         await processAbstractJob(job);
       } catch (error) {
-        await failAbstractJob(job, error instanceof Error ? error.message : "ABSTRACT_PROCESSING_FAILED");
+        const code = error instanceof Error ? error.message : "ABSTRACT_PROCESSING_FAILED";
+        await failAbstractJob(job, code);
+        if (isDependencyFailure(code)) {
+          dependenciesReady = false;
+          checkedAt = 0;
+          await client.queryArray("UPDATE abstract_extraction_worker_state SET dependencies_ready=FALSE, dependency_error_code=$1 WHERE state_id=TRUE", [dependencyErrorCode(error)]);
+        }
       }
     } finally {
       running = false;
     }
   };
-  void run();
-  const timer = setInterval(() => void run(), WORKER_POLL_MS);
+  const tick = () => void run().catch((error) => console.error("[abstract-worker] Poll failed", error));
+  tick();
+  const timer = setInterval(tick, WORKER_POLL_MS);
   const heartbeat = setInterval(() => void updateAbstractWorkerHeartbeat(workerId).catch(() => undefined), 30_000);
   return () => {
     clearInterval(timer);

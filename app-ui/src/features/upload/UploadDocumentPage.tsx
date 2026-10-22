@@ -35,12 +35,17 @@ import { PeasIconButton } from "../../components/ui/peas-button";
 import { normalizeClassificationTerm } from "../../../../shared/classification";
 import {
   fetchAbstractReviews,
+  fetchExtractionDiagnostics,
+  retryAbstractReview,
+  type ExtractionDiagnostics,
   reviewDocument,
   updateAbstractReview,
   type AbstractReviewItem,
 } from "../../lib/api/documents";
 import {
   createUploadDraftKey,
+  prepareUploadDraftFiles,
+  createAbstractDraftKey,
   deleteUploadDraft,
   loadUploadDraft,
   saveUploadDraft,
@@ -112,6 +117,7 @@ interface SubmissionProgress {
   value: number;
   stage: number;
   detail: string;
+  status?: "failed" | "waiting";
 }
 
 interface ExtractionSession {
@@ -207,7 +213,8 @@ export function UploadDocumentPage() {
   const [checklistExpanded, setChecklistExpanded] = useState(() =>
     typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches
   );
-  const publicationAttemptedRef = useRef(false);
+  const [savedReview, setSavedReview] = useState<ExtractionSession | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ExtractionDiagnostics | null>(null);
   const draftKey = useMemo(() => createUploadDraftKey(userId), [userId]);
 
   useEffect(() => {
@@ -219,16 +226,29 @@ export function UploadDocumentPage() {
     setDraftReady(false);
     setDraftStatus("loading");
     void loadUploadDraft<UploadDraftState>(draftKey)
-      .then((record) => {
+      .then(async (record) => {
         if (!active) return;
         if (!record || !isUploadDraftState(record.state)) {
           setDraftStatus("idle");
           return;
         }
-        const restoredMode = record.state.extractionSession?.type ?? record.state.mode;
+        if (record.state.extractionSession) {
+          const session = record.state.extractionSession;
+          const id = session.compiledDocumentId ?? session.documentId;
+          if (!id) throw new Error("The saved review has no record identifier.");
+          const state = { drafts: record.state.abstractDrafts, manualEntryTargets: record.state.manualEntryTargets };
+          await saveUploadDraft(createAbstractDraftKey(userId, session.type === "compiled" ? "compiled" : "document", id), state, state);
+          if (!active) return;
+          await deleteUploadDraft(draftKey);
+          setSavedReview(session);
+          setDraftStatus("idle");
+          return;
+        }
+        const restoredMode = record.state.mode;
         setMode(restoredMode);
-        setStep(record.state.extractionSession ? FINAL_UPLOAD_STEP : record.state.step);
+        setStep(record.state.step);
         setSingleForm(record.state.singleForm);
+        if (record.state.step >= 4) setErrors(restoredMode === "single" ? validateSingleStep(record.state.singleForm, 4, !isPublisher) : validateCompiledStep(record.state.compiledForm, 4, !isPublisher));
         setCompiledForm(record.state.compiledForm);
         setExtractionSession(record.state.extractionSession);
         setAbstractDrafts(record.state.abstractDrafts);
@@ -245,7 +265,7 @@ export function UploadDocumentPage() {
         if (active) setDraftReady(true);
       });
     return () => { active = false; };
-  }, [draftKey]);
+  }, [draftKey, userId]);
 
   useEffect(() => {
     if (!extractionSession) return;
@@ -262,7 +282,11 @@ export function UploadDocumentPage() {
         const recordType = extractionSession.type === "compiled" ? "compiled" : "document";
         const recordId = extractionSession.compiledDocumentId ?? extractionSession.documentId;
         if (!recordId) throw new Error("The saved upload has no record identifier.");
-        const result = await fetchAbstractReviews(recordType, recordId);
+        const [result, readiness] = await Promise.all([
+          fetchAbstractReviews(recordType, recordId),
+          fetchExtractionDiagnostics().catch(() => null),
+        ]);
+        if (active) setDiagnostics(readiness);
         if (!active) return;
         const targetSet = new Set(extractionSession.targetKeys);
         const items = result.items.filter((item) => targetSet.has(abstractTargetKey(item)));
@@ -320,7 +344,7 @@ export function UploadDocumentPage() {
         abstractDrafts,
         manualEntryTargets,
       };
-      void saveUploadDraft(draftKey, state, removeFilesFromDraft(state))
+      void saveUploadDraft(draftKey, extractionSession ? removeFilesFromDraft(state) : state, removeFilesFromDraft(state), draftFilesIncluded || (mode === "single" ? Boolean(singleForm.file) : Boolean(compiledForm.coverFile) && compiledForm.sections.every((section) => Boolean(section.file))))
         .then((result) => {
           setDraftStatus("saved");
           setDraftSavedAt(result.savedAt);
@@ -330,6 +354,53 @@ export function UploadDocumentPage() {
     }, extractionSession ? 0 : DRAFT_AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [abstractDrafts, compiledForm, dirty, draftKey, draftReady, extractionSession, manualEntryTargets, mode, receipt, singleForm, step]);
+
+  useEffect(() => {
+    if (!extractionSession) return;
+    const id = extractionSession.compiledDocumentId ?? extractionSession.documentId;
+    if (!id) return;
+    const state = { drafts: abstractDrafts, manualEntryTargets };
+    const timer = window.setTimeout(() => {
+      void saveUploadDraft(createAbstractDraftKey(userId, extractionSession.type === "compiled" ? "compiled" : "document", id), state, state)
+        .catch(() => setDraftStatus("error"));
+    }, DRAFT_AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [extractionSession, abstractDrafts, manualEntryTargets, userId]);
+
+  async function saveReviewAndStartAnother() {
+    if (!extractionSession || publishingExtraction || abstractActionKey) return;
+    const id = extractionSession.compiledDocumentId ?? extractionSession.documentId;
+    if (!id) return;
+    setAbstractActionKey("saving-review");
+    try {
+      const state = { drafts: abstractDrafts, manualEntryTargets };
+      await saveUploadDraft(createAbstractDraftKey(userId, extractionSession.type === "compiled" ? "compiled" : "document", id), state, state);
+      await deleteUploadDraft(draftKey);
+      setSavedReview(extractionSession);
+      setExtractionSession(null);
+      setSingleForm(initialSingleForm);
+      setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
+      setAbstractDrafts({});
+      setManualEntryTargets({});
+      setErrors({});
+      setSubmissionError(null);
+      setStep(1);
+      setMode("single");
+      setDraftRecovered(false);
+      setDraftStatus("idle");
+    } catch (error) {
+      toast.error(`Your review draft could not be preserved. ${getErrorMessage(error)}`);
+    } finally { setAbstractActionKey(null); }
+  }
+
+  async function retryExtraction(item: AbstractReviewItem) {
+    setAbstractActionKey(abstractTargetKey(item));
+    try {
+      await retryAbstractReview(item.targetType === "compiled_foreword" ? "compiled-foreword" : "document", item.targetId);
+      setExtractionRefreshToken((value) => value + 1);
+    } catch (error) { toast.error(getErrorMessage(error)); }
+    finally { setAbstractActionKey(null); }
+  }
 
   useEffect(() => {
     if (!pendingFocusKey) return;
@@ -396,6 +467,7 @@ export function UploadDocumentPage() {
       setPendingFocusKey(Object.keys(nextErrors)[0] ?? null);
       return;
     }
+    setDraftStatus("saving");
     setStep((current) => Math.min(FINAL_UPLOAD_STEP, current + 1) as UploadStep);
     setPendingFocusKey(null);
   }
@@ -430,7 +502,8 @@ export function UploadDocumentPage() {
   }
 
   function beginExtraction(session: ExtractionSession) {
-    publicationAttemptedRef.current = false;
+    const state = removeFilesFromDraft({ mode: session.type, step: FINAL_UPLOAD_STEP, singleForm, compiledForm, extractionSession: session, abstractDrafts: {}, manualEntryTargets: {} });
+    void saveUploadDraft(draftKey, state, state).catch(() => setDraftStatus("error"));
     setExtractionSession(session);
     setExtractionItems([]);
     setAbstractDrafts({});
@@ -491,6 +564,7 @@ export function UploadDocumentPage() {
       const recordId = session.compiledDocumentId ?? session.documentId;
       if (!recordId) throw new Error("The saved upload has no record identifier.");
       await reviewDocument(recordId, session.type === "compiled", "approved", true);
+      await deleteUploadDraft(createAbstractDraftKey(userId, session.type === "compiled" ? "compiled" : "document", recordId));
       setReceipt({
         type: session.type,
         title: session.title,
@@ -515,17 +589,9 @@ export function UploadDocumentPage() {
 
   function retryPublication() {
     if (!extractionSession || publishingExtraction) return;
-    publicationAttemptedRef.current = true;
     void publishExtractionSession(extractionSession);
   }
 
-  useEffect(() => {
-    if (!extractionSession || publicationAttemptedRef.current) return;
-    if (extractionItems.length !== extractionSession.targetKeys.length) return;
-    if (!extractionItems.every((item) => item.status === "accepted" || item.status === "unavailable")) return;
-    publicationAttemptedRef.current = true;
-    void publishExtractionSession(extractionSession);
-  }, [extractionItems, extractionSession]);
 
   async function handleSingleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -557,8 +623,10 @@ export function UploadDocumentPage() {
         title: singleForm.title.trim(),
         abstract: singleForm.abstractMode === "manual" ? singleForm.abstract.trim() || null : null,
         publication_date: buildPublicationDate(singleForm.pubYear, singleForm.pubMonth),
+        publication_date_precision: "month",
         file_path: upload.filePath,
-        is_public: true,
+        is_public: false,
+        review_status: "pending_review",
         document_type: singleForm.category,
         category_id: null,
         pages: upload.metadata?.pageCount ?? upload.metadata?.pages ?? 0,
@@ -569,7 +637,7 @@ export function UploadDocumentPage() {
         },
       });
       setSubmissionProgress({ label: "Finalizing document…", value: 94, stage: 3, detail: "The repository record was created. PeAS is refreshing related author and document information." });
-      await fetchAuthors().then(setAuthors).catch(() => undefined);
+      void fetchAuthors().then(setAuthors).catch(() => undefined);
       const pendingReview = document.review_status === "pending_review";
       if (pendingReview && singleForm.abstractMode === "auto") {
         setSubmissionProgress({ label: "Starting abstract extraction…", value: 100, stage: 3, detail: "The PDF and repository information were saved. PeAS is now extracting the abstract for confirmation." });
@@ -650,6 +718,7 @@ export function UploadDocumentPage() {
       setSubmissionProgress({ label: "Creating publication record…", value: weightedProgress(), stage: 2, detail: "PeAS is saving the publication years, volume, issue, department, and foreword information." });
       const compiled = await createCompiledDocumentRecord({
         compiledDoc: {
+          review_status: "pending_review",
           start_year: safeInt(compiledForm.startYear),
           end_year: safeInt(compiledForm.endYear),
           volume: safeInt(compiledForm.volume),
@@ -680,7 +749,8 @@ export function UploadDocumentPage() {
           file_path: upload.filePath,
           category_id: compiledForm.category === "CONFLUENCE" ? 3 : 4,
           pages: upload.metadata?.pageCount ?? upload.metadata?.pages ?? 0,
-          is_public: true,
+          is_public: false,
+        review_status: "pending_review",
           compiled_parent_id: compiled.id,
           authors: section.authors.map((author) => ({ id: author.id, full_name: author.fullName })),
           classification: {
@@ -692,7 +762,7 @@ export function UploadDocumentPage() {
         completedRecords += 1;
       }
       setSubmissionProgress({ label: "Refreshing author information…", value: 93, stage: 3, detail: "All publication and study records are saved. PeAS is refreshing the linked author directory." });
-      await fetchAuthors().then(setAuthors).catch(() => undefined);
+      void fetchAuthors().then(setAuthors).catch(() => undefined);
       setSubmissionProgress({ label: "Linking studies to publication…", value: 96, stage: 3, detail: `PeAS is connecting ${childDocumentIds.length} ${childDocumentIds.length === 1 ? "study" : "studies"} to the compiled publication.` });
       await linkDocumentsToCompilation(compiled.id, childDocumentIds);
       const targetKeys: string[] = [];
@@ -737,7 +807,7 @@ export function UploadDocumentPage() {
 
   const actionLabel = isPublisher
     ? (mode === "single" ? "Submit document for review" : "Submit publication for review")
-    : (mode === "single" ? "Publish document" : "Publish publication");
+    : "Upload for review";
 
   return (
     <main className="peas-admin-island peas-upload-page">
@@ -751,6 +821,7 @@ export function UploadDocumentPage() {
 
       {preparationFeatures.imports ? <section className="peas-preparation-summary"><h2>Prepare multiple source files</h2><p>Review PDF and Word components before creating a repository record.</p><div className="peas-preparation-actions"><Button onClick={() => setPreparationMode("single")}>Prepare one paper</Button><Button onClick={() => setPreparationMode("compiled")}>Prepare a compiled volume</Button><Button onClick={() => setPreparationMode("batch")}>Open batch workspace</Button>{preparationMode ? <Button variant="outline" onClick={() => setPreparationMode(null)}>Return to existing upload</Button> : null}</div></section> : null}
       {preparationMode && preparationFeatures.imports ? <ImportPreparationWorkspace key={preparationMode} initialMode={preparationMode} /> : <>
+      {savedReview ? <section className="peas-upload-draft-status" role="status"><p><strong>{savedReview.title}</strong> is saved privately. <a href={`/admin/Components/documents_list.html?status=pending_review&search=${encodeURIComponent(savedReview.title)}`}>Resume review in Documents</a></p></section> : null}
       {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) ? (
         <UploadDraftStatus
           status={draftStatus}
@@ -784,9 +855,9 @@ export function UploadDocumentPage() {
                   <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
                 ) : (
                   <>
-                    <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setSingleForm} onError={markError} />
+                    <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => { prepareUploadDraftFiles(value); setDraftStatus("saving"); setSingleForm(value); }} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
+                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} diagnostics={diagnostics} onRetryExtraction={retryExtraction} onSaveForLater={() => void saveReviewAndStartAnother()} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} continueDisabled={step === 4 && Object.keys(mode === "single" ? validateSingleStep(singleForm, 4, !isPublisher) : validateCompiledStep(compiledForm, 4, !isPublisher)).length > 0} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -798,9 +869,9 @@ export function UploadDocumentPage() {
                   <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
                 ) : (
                   <>
-                    <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={setCompiledForm} onError={markError} />
+                    <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => { prepareUploadDraftFiles(value); setDraftStatus("saving"); setCompiledForm(value); }} onError={markError} />
                     {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} onBack={goBack} onContinue={continueWorkflow} />}
+                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} diagnostics={diagnostics} onRetryExtraction={retryExtraction} onSaveForLater={() => void saveReviewAndStartAnother()} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} continueDisabled={step === 4 && Object.keys(mode === "single" ? validateSingleStep(singleForm, 4, !isPublisher) : validateCompiledStep(compiledForm, 4, !isPublisher)).length > 0} onBack={goBack} onContinue={continueWorkflow} />}
                   </>
                 )}
               </form>
@@ -824,12 +895,12 @@ function UploadDraftStatus({ status, recovered, savedAt, filesIncluded, disabled
   const message = failed
     ? "PeAS could not use browser storage. Keep this tab open and copy important text before leaving the page."
     : !filesIncluded
-      ? `Form details were saved ${savedLabel}, but this browser could not preserve the selected PDFs. Reattach any PDFs before publishing.`
+      ? `Form details were saved ${savedLabel}, but this browser could not preserve the selected files. Reattach any accepted files before submitting.`
       : saving
-        ? "Saving the latest form details and selected PDFs on this device."
+        ? "Saving the latest form details and selected files on this device."
         : recovered
-          ? `Restored from ${savedLabel}. New changes and selected PDFs continue to save automatically for seven days.`
-          : `Saved ${savedLabel}. Form details and selected PDFs can be restored after a refresh or connection interruption.`;
+          ? `Restored from ${savedLabel}. New changes and selected files continue to save automatically for seven days.`
+          : `Saved ${savedLabel}. Form details and selected files can be restored after a refresh or connection interruption.`;
   return (
     <section className={`peas-upload-draft-status${failed ? " is-error" : recovered ? " is-recovered" : ""}`} role="status" aria-live="polite">
       <span className="peas-upload-draft-status__icon" aria-hidden="true">{recovered ? <ShieldCheck /> : <Save />}</span>
@@ -1167,7 +1238,7 @@ function SingleReview({ form, errors }: { form: SingleFormState; errors: FieldEr
     <ReviewRow label="Publication date" value={formatPublicationDate(form.pubMonth, form.pubYear)} error={errors["single.pubMonth"] || errors["single.pubYear"]} />
     <ReviewRow label="Topics" value={form.topicNames.length ? form.topicNames.join(", ") : "Not selected"} />
     <ReviewRow label="Keywords" value={form.keywords.length ? form.keywords.join(", ") : "No keywords"} />
-    <ReviewRow label="Abstract" value={form.abstractMode === "manual" ? "Manual abstract supplied" : "Automatic extraction selected; record remains private until confirmation"} />
+    <ReviewRow label="Abstract" value={form.abstractMode === "manual" ? "Manual abstract supplied" : "Automatic extraction selected; record remains private until a separate publication decision"} />
     <ReviewRow label="PDF" value={form.file?.name || "Not selected"} error={errors["single.file"]} />
   </ReviewPanel>;
 }
@@ -1395,7 +1466,7 @@ function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, 
   return <aside className="peas-upload-preview peas-upload-checklist" aria-label="Upload checklist">
     <header className="peas-upload-checklist__header">
       <div className="peas-upload-checklist__header-copy">
-        <h2>{receipt ? (receipt.pendingReview ? "Files saved; extraction queued" : "Published successfully") : step === FINAL_UPLOAD_STEP ? "Ready to submit?" : "What you need to complete"}</h2>
+        <h2>{receipt ? (receipt.pendingReview ? "Files saved for review" : "Published successfully") : step === FINAL_UPLOAD_STEP ? "Ready to submit?" : "What you need to complete"}</h2>
         {!receipt ? <><p className="peas-upload-checklist__intro">{isSingle ? `${documentType}${singleForm.title.trim() ? ` · ${singleForm.title.trim()}` : ""}` : `${compiledTitle} · ${compiledForm.sections.length} ${compiledForm.sections.length === 1 ? "study" : "studies"}`}</p><p className="peas-upload-checklist__step">Step {step} of {FINAL_UPLOAD_STEP}: {stepName}</p></> : null}
       </div>
       <Button type="button" variant="outline" size="sm" className="peas-upload-checklist__toggle" aria-label={`${expanded ? "Collapse" : "Expand"} upload checklist`} aria-controls={checklistContentId} aria-expanded={expanded} title={`${expanded ? "Collapse" : "Expand"} upload checklist`} onClick={() => onExpandedChange(!expanded)}>
@@ -1405,7 +1476,7 @@ function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, 
     </header>
     {!expanded ? <div className="peas-upload-checklist__rail-summary" aria-hidden="true"><strong>{receipt ? "Done" : `${completeItems}/${totalItems}`}</strong><span>Checklist</span></div> : null}
     <div id={checklistContentId} className="peas-upload-checklist__content" hidden={!expanded}>
-      {receipt ? <div className="peas-upload-receipt"><CheckCircle2 aria-hidden="true" /><p>{receipt.title}</p>{receipt.pendingReview ? <p>Extraction queued. This publication remains private until an administrator resolves the abstract review and approves it.</p> : null}<div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><Button type="button" onClick={() => receipt.pendingReview ? window.location.reload() : window.location.assign("/admin/Components/documents_list.html")}>{receipt.pendingReview ? "Upload another" : "View documents"}</Button></div> : <dl>
+      {receipt ? <div className="peas-upload-receipt"><CheckCircle2 aria-hidden="true" /><p>{receipt.title}</p>{receipt.pendingReview ? <p>This publication remains private until an administrator resolves the abstract review and approves it.</p> : null}<div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html?status=pending_review")}>{"View documents"}</Button></div> : <dl>
         {isSingle ? <>
           <ChecklistRow label="Document details" value={detailsReady ? `${singleForm.authors.length} ${singleForm.authors.length === 1 ? "author" : "authors"} added` : !singleForm.title.trim() ? "Add a title and at least one author" : "Add at least one author"} ready={detailsReady} />
           <ChecklistRow label="Publication date" value={publicationReady ? formatPublicationDate(singleForm.pubMonth, singleForm.pubYear) : "Choose a month and four-digit year"} ready={publicationReady} />
@@ -1435,7 +1506,7 @@ function ChecklistRow({ label, value, ready, optional = false }: { label: string
 }
 
 function CompletionPanel({ receipt, isPublisher, onUploadAnother }: { receipt: UploadReceipt; isPublisher: boolean; onUploadAnother: () => void }) {
-  return <section className="peas-upload-completion"><CheckCircle2 aria-hidden="true" /><h2>{receipt.pendingReview ? "Files saved; extraction queued" : "Your upload is published"}</h2><p><strong>{receipt.title}</strong> has been processed successfully.</p><p>{receipt.pendingReview ? "The publication remains private until an administrator resolves every required abstract and approves it." : "The document is now available in the repository."}</p><div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><div className="peas-upload-completion__actions"><Button type="button" variant="outline" onClick={onUploadAnother}>Upload another</Button>{!receipt.pendingReview && !isPublisher ? <Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html")}>View documents</Button> : null}</div></section>;
+  return <section className="peas-upload-completion"><CheckCircle2 aria-hidden="true" /><h2>{receipt.pendingReview ? "Files saved for review" : "Your upload is published"}</h2><p><strong>{receipt.title}</strong> has been processed successfully.</p><p>{receipt.pendingReview ? "The publication remains private until an administrator resolves every required abstract and approves it." : "The document is now available in the repository."}</p><div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><div className="peas-upload-completion__actions"><Button type="button" variant="outline" onClick={onUploadAnother}>Upload another</Button>{!isPublisher ? <Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html?status=pending_review")}>View documents</Button> : null}</div></section>;
 }
 
 function AbstractExtractionPanel({
@@ -1454,6 +1525,9 @@ function AbstractExtractionPanel({
   onConfirm,
   onRetryPoll,
   onRetryPublication,
+  diagnostics,
+  onRetryExtraction,
+  onSaveForLater,
 }: {
   session: ExtractionSession;
   items: AbstractReviewItem[];
@@ -1470,6 +1544,9 @@ function AbstractExtractionPanel({
   onConfirm: (item: AbstractReviewItem) => void;
   onRetryPoll: () => void;
   onRetryPublication: () => void;
+  diagnostics: ExtractionDiagnostics | null;
+  onRetryExtraction: (item: AbstractReviewItem) => void;
+  onSaveForLater: () => void;
 }) {
   const itemMap = new Map(items.map((item) => [abstractTargetKey(item), item]));
   const resolved = items.filter((item) => item.status === "accepted" || item.status === "unavailable").length;
@@ -1477,10 +1554,11 @@ function AbstractExtractionPanel({
 
   return <section className="peas-upload-extraction" aria-labelledby="upload-extraction-title">
     <header>
-      <div><h2 id="upload-extraction-title">Confirm extracted abstracts</h2><p>The files and repository records are saved. Confirm each abstract before PeAS publishes {session.type === "compiled" ? "the publication" : "the document"}.</p></div>
+      <div><h2 id="upload-extraction-title">Confirm extracted abstracts</h2><p>The files and repository records are saved. Confirm each abstract to prepare {session.type === "compiled" ? "the publication" : "the document"} for a separate publication decision. Saving an abstract keeps this record private.</p></div>
       <Badge tone={resolved === session.targetKeys.length ? "green" : "gold"}>{resolved} of {session.targetKeys.length} confirmed</Badge>
     </header>
     <UploadProgressDetails progress={extractionProgress} stages={ABSTRACT_EXTRACTION_STAGES} ariaLabel="Abstract extraction workflow progress" />
+    {diagnostics && !diagnostics.extractionReady ? <p role="status">Automatic extraction is unavailable. Your saved files are safe. You can enter an abstract manually or save this review for later.</p> : null}
     {pollError ? <div className="peas-upload-extraction__notice" role="alert"><div><strong>Extraction status is temporarily unavailable.</strong><span>{pollError}</span></div><Button type="button" size="sm" variant="outline" onClick={onRetryPoll}><RefreshCw aria-hidden="true" /> Retry status</Button></div> : null}
     <div className="peas-upload-extraction__list" aria-live="polite">
       {session.targetKeys.map((key, index) => {
@@ -1500,8 +1578,9 @@ function AbstractExtractionPanel({
           {itemResolved ? <p className="peas-upload-extraction__confirmed"><CheckCircle2 aria-hidden="true" /> Abstract confirmed.</p> : null}
           {!itemResolved && item.status === "processing" ? <p className="peas-upload-extraction__waiting">{item.sourceVerified ? "The stored PDF is verified. PeAS is reading embedded text, locating abstract headings, and will use OCR when a reliable candidate is not found." : "PeAS is verifying the stored PDF and calculating its checksum before reading document text."}</p> : null}
           {!itemResolved && item.status === "queued" ? <p className="peas-upload-extraction__waiting">{item.attemptCount > 0 ? "The previous attempt did not finish. PeAS has scheduled an automatic retry." : "The extraction job is queued and will begin when the worker is available."}</p> : null}
-          {noCandidate ? <p className="peas-upload-extraction__error" role="alert">{item.status === "failed" ? `${formatExtractionError(item.errorCode)} Enter the abstract manually to continue.` : "PeAS finished searching but did not find a reliable abstract. Enter it manually to continue."}</p> : null}
+          {noCandidate ? <p className="peas-upload-extraction__error" role="alert">{item.status === "failed" ? `${formatExtractionError(item.errorCode)} Retry when the service is available, enter the abstract manually, or save this review for later.` : "PeAS finished searching but did not find a reliable abstract. Enter it manually to continue."}</p> : null}
           <ExtractionFacts facts={extractionFacts(item)} />
+          {item.status === "failed" ? <Button type="button" variant="outline" disabled={!diagnostics?.extractionReady || working || publishing} onClick={() => onRetryExtraction(item)}>Retry extraction</Button> : null}
           {showEditor && !itemResolved ? <div className="peas-upload-extraction__editor">
             {manualWhileExtracting || candidateAvailableDuringManual ? <div className="peas-upload-extraction__manual-option is-editor" role="status"><div><strong>{candidateAvailableDuringManual ? "Automatic extraction found an abstract" : "Automatic extraction is still running"}</strong><span>{candidateAvailableDuringManual ? "Your manual draft is preserved. You can review the extracted candidate instead, or submit your own text." : "Opening this editor did not stop the background job. You can close it and keep waiting, or submit your own text now. Submitting manual text will stop the current extraction job and use your entry."}</span></div><Button type="button" size="sm" variant="outline" disabled={working || publishing} onClick={() => onKeepWaiting(key)}>{candidateAvailableDuringManual ? "Review extracted candidate" : "Close editor and keep waiting"}</Button></div> : null}
             <label htmlFor={`upload-abstract-${item.targetType}-${item.targetId}`}>{item.candidate && !manualEntryTargets[key] ? "Extracted abstract" : "Manual abstract"}</label>
@@ -1511,6 +1590,10 @@ function AbstractExtractionPanel({
           {canChooseManual ? <div className="peas-upload-extraction__manual-option" role="status"><div><strong>Extraction is taking longer than expected</strong><span>Automatic extraction is still working in the background. You can keep waiting—no manual action is required—or enter the abstract yourself as an optional fallback.</span></div><div className="peas-upload-extraction__manual-actions"><Button type="button" size="sm" variant="ghost" disabled={publishing} onClick={onRetryPoll}><RefreshCw aria-hidden="true" /> Keep waiting and check status</Button><Button type="button" size="sm" variant="outline" disabled={publishing} onClick={() => onManualEntry(key)}>Enter manually instead</Button></div></div> : null}
         </article>;
       })}
+    </div>
+    <div className="peas-upload-completion__actions">
+      <Button type="button" variant="outline" disabled={publishing || Boolean(actionKey)} onClick={onSaveForLater}>Save for review and start another upload</Button>
+      {resolved === session.targetKeys.length ? <Button type="button" disabled={publishing || Boolean(actionKey)} onClick={onRetryPublication}>{session.type === "compiled" ? "Publish publication" : "Publish document"}</Button> : null}
     </div>
     {publishing ? <div className="peas-upload-extraction__publishing" role="status"><RefreshCw aria-hidden="true" /><div><strong>Publishing your upload…</strong><span>Every required abstract is confirmed.</span></div></div> : null}
     {publicationError ? <div className="peas-upload-extraction__notice" role="alert"><div><strong>Abstracts were saved, but publication did not finish.</strong><span>{publicationError}</span></div><Button type="button" onClick={onRetryPublication}>Retry publication</Button></div> : null}
@@ -1546,13 +1629,15 @@ function buildExtractionProgress(
   const queued = items.filter((item) => item.status === "queued");
   const verifying = items.filter((item) => item.status === "processing" && !item.sourceVerified);
   const extracting = items.filter((item) => item.status === "processing" && item.sourceVerified);
-  const awaitingReview = items.filter((item) => item.status === "needs_review" || item.status === "failed");
+  const failed = items.filter((item) => item.status === "failed");
+  const awaitingReview = items.filter((item) => item.status === "needs_review");
   const resolved = items.filter((item) => item.status === "accepted" || item.status === "unavailable");
   const statusNote = pollError ? " The latest known status is shown while PeAS reconnects." : " Status refreshes automatically every 3 seconds.";
 
   if (publishing || resolved.length === session.targetKeys.length) {
-    return { label: publishing ? "Publishing repository record…" : "Preparing publication…", value: 96, stage: 4, detail: `Every required abstract is resolved. PeAS is applying the final publication decision and refreshing repository links.${statusNote}` };
+    return { label: publishing ? "Publishing repository record…" : "Ready for publication decision", value: 96, stage: 4, status: publishing ? undefined : "waiting", detail: `Every required abstract is resolved. The record stays private until you select Publish.${statusNote}` };
   }
+  if (failed.length > 0) return { label: "Extraction failed", value: 0, stage: failed.every((item) => item.sourceVerified) ? 2 : 1, status: "failed", detail: "Automatic extraction stopped. Retry when the service is available, enter an abstract manually, or save this review for later." };
   if (missing > 0 || queued.length > 0) {
     const retryCount = queued.filter((item) => item.attemptCount > 0).length;
     const detail = retryCount > 0
@@ -1567,7 +1652,7 @@ function buildExtractionProgress(
     return { label: "Locating abstracts in PDFs…", value: 58, stage: 2, detail: `The PDFs are verified. PeAS first searches embedded text and then uses OCR when the text does not produce a reliable abstract candidate.${statusNote}` };
   }
   if (awaitingReview.length > 0) {
-    return { label: "Waiting for abstract confirmation…", value: 82, stage: 3, detail: `${awaitingReview.length} ${awaitingReview.length === 1 ? "abstract needs" : "abstracts need"} review or manual entry. Method, confidence, page range, attempts, and any failure reason are shown below.${statusNote}` };
+    return { label: "Waiting for abstract confirmation…", value: 82, stage: 3, status: "waiting", detail: `${awaitingReview.length} ${awaitingReview.length === 1 ? "abstract needs" : "abstracts need"} review or manual entry. Method, confidence, page range, attempts, and any failure reason are shown below.${statusNote}` };
   }
   return { label: "Checking extraction status…", value: 8, stage: 0, detail: `PeAS is requesting the latest extraction state.${statusNote}` };
 }
@@ -1616,11 +1701,11 @@ function SubmissionError({ message }: { message: string }) {
   return <div className="peas-upload-alert" role="alert"><strong>We couldn’t finish this upload.</strong><span>{readableMessage} Your entered details are still here. Check the highlighted fields and try again.</span></div>;
 }
 
-function UploadActions({ step, busy, progress, label, onBack, onContinue }: { step: UploadStep; busy: boolean; progress: SubmissionProgress | null; label: string; onBack: () => void; onContinue: () => void }) {
+function UploadActions({ step, busy, progress, label, continueDisabled, onBack, onContinue }: { step: UploadStep; busy: boolean; progress: SubmissionProgress | null; label: string; continueDisabled?: boolean; onBack: () => void; onContinue: () => void }) {
   return <div className="peas-upload-actions">
     {progress ? <UploadProgressDetails progress={progress} /> : null}
     {step > 1 ? <Button type="button" variant="outline" disabled={busy} onClick={(event) => { event.preventDefault(); onBack(); }}><ChevronLeft aria-hidden="true" /> Back</Button> : null}
-    {step < FINAL_UPLOAD_STEP ? <Button type="button" disabled={busy} onClick={(event) => { event.preventDefault(); onContinue(); }}>Continue <ChevronRight aria-hidden="true" /></Button> : <Button type="submit" disabled={busy} onClick={(event) => { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }}><UploadCloud aria-hidden="true" />{busy ? "Working…" : label}</Button>}
+    {step < FINAL_UPLOAD_STEP ? <Button type="button" disabled={busy || continueDisabled} onClick={(event) => { event.preventDefault(); onContinue(); }}>Continue <ChevronRight aria-hidden="true" /></Button> : <Button type="submit" disabled={busy} onClick={(event) => { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }}><UploadCloud aria-hidden="true" />{busy ? "Working…" : label}</Button>}
   </div>;
 }
 
@@ -1630,11 +1715,11 @@ function UploadProgressDetails({ progress, stages = ["Transfer PDF files", "Vali
     <summary aria-live="polite">
       <span className="peas-upload-progress-status__summary">
         <strong>{progress.label}</strong>
-        <span>{progress.value}%</span>
+        <span>{progress.status === "failed" ? "Stopped" : `${progress.value}%`}</span>
       </span>
-      <span className="peas-upload-progress-bar" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.value} aria-valuetext={`${progress.value}% complete. ${progress.label}`}>
+      {progress.status !== "failed" ? <span className="peas-upload-progress-bar" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.value} aria-valuetext={`${progress.value}% complete. ${progress.label}`}>
         <span style={{ width: `${progress.value}%` }} />
-      </span>
+      </span> : null}
     </summary>
     <div className="peas-upload-progress-status__details">
       <p><strong>What’s happening</strong>{progress.detail}</p>
@@ -1642,7 +1727,7 @@ function UploadProgressDetails({ progress, stages = ["Transfer PDF files", "Vali
         {stages.map((stage, index) => <li className={index < progress.stage ? "is-complete" : index === progress.stage ? "is-current" : ""} key={stage}>
           <span aria-hidden="true">{index < progress.stage ? <Check /> : index + 1}</span>
           <strong>{stage}</strong>
-          {index < progress.stage ? <small>Complete</small> : index === progress.stage ? <small>In progress</small> : <small>Next</small>}
+          {index < progress.stage ? <small>Complete</small> : index === progress.stage ? <small>{progress.status === "failed" ? "Failed" : progress.status === "waiting" ? "Awaiting your decision" : "In progress"}</small> : <small>Next</small>}
         </li>)}
       </ol>
     </div>

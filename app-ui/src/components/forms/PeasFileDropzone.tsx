@@ -57,6 +57,8 @@ export function PeasFileDropzone({
           type="file"
           accept={accept}
           aria-label={label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={fieldKey ? `${fieldKey}-description${error ? ` ${fieldKey}-error` : ""}` : undefined}
           disabled={disabled}
           onChange={(event) => onFileChange(event.currentTarget.files?.[0] ?? null)}
         />
@@ -65,7 +67,7 @@ export function PeasFileDropzone({
             {file ? <FileText aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
           </span>
           <span className="peas-file-dropzone__copy">
-            <strong>{file ? file.name : "Choose PDF or drag it here"}</strong>
+            <strong>{file ? `${error ? "Rejected: " : ""}${file.name}` : "Choose PDF or drag it here"}</strong>
             <span id={fieldKey ? `${fieldKey}-description` : undefined}>{file ? formatFileSize(file.size) : description ?? "PDF files are supported."}</span>
           </span>
         </button>

@@ -59,7 +59,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/admin/notifications", (route) => route.fulfill({ json: {
     notifications: [], summary: { total: 0, unread: 0, urgent: 0 },
   } }));
-  await page.route("**/api/categories", (route) => route.fulfill({ json: [
+  await page.route("**/api/categories**", (route) => route.fulfill({ json: [
     { name: "THESIS", count: 1 },
     { name: "DISSERTATION", count: 0 },
     { name: "CONFLUENCE", count: 0 },
@@ -119,6 +119,7 @@ test("catalog rows use labeled actions and dashboard-aligned metadata", async ({
 });
 
 test("document preview uses the authenticated inline delivery route", async ({ page }) => {
+  await page.route("**/api/documents/1/download?disposition=inline", (route) => route.fulfill({ contentType: "application/pdf", body: createSinglePagePdf() }));
   await page.goto("/admin/Components/documents_list.html");
   await page.getByRole("button", { name: "View", exact: true }).click();
 
@@ -126,6 +127,29 @@ test("document preview uses the authenticated inline delivery route", async ({ p
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".peas-simple-pdf-reader")).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Open in new tab" })).toHaveAttribute("href", "/api/documents/1/download?disposition=inline");
+});
+
+test("preview dialogs repeatedly unmount and return focus to View", async ({ page }) => {
+  await page.goto("/admin/Components/documents_list.html");
+  for (const action of ["Close dialog", "Escape", "Close dialog"]) {
+    const view = page.getByRole("button", { name: "View", exact: true });
+    await view.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    if (action === "Escape") await page.keyboard.press("Escape");
+    else await page.getByRole("button", { name: action, exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator(".peas-ui-dialog-overlay")).toHaveCount(0);
+    await expect(view).toBeFocused();
+  }
+});
+
+test("month-only dates stay month-only in catalog and reader", async ({ page }) => {
+  await page.route("**/api/documents?*", (route) => route.fulfill({ json: { documents: [{ id: 1, title: "Month precision fixture", document_type: "DISSERTATION", publication_date: "2021-05-01", publication_date_precision: "month", authors: [{ id: "author-1", full_name: "Synthetic Author" }], review_status: "approved" }], totalCount: 1, totalPages: 1 } }));
+  await page.goto("/admin/Components/documents_list.html");
+  await expect(page.locator(".peas-document-card__publication")).toHaveText("May 2021");
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("May 2021");
+  await expect(page.getByRole("dialog")).not.toContainText("May 1, 2021");
 });
 
 test("catalog cards keep readable identity columns on a phone", async ({ page }) => {

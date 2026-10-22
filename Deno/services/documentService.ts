@@ -26,6 +26,7 @@ export interface Document {
   abstract?: string | null;
   abstract_source?: 'none' | 'manual' | 'pdf_text' | 'ocr' | 'legacy';
   publication_date?: Date | null;
+  publication_date_precision?: import("../../shared/imports.ts").PublicationDatePrecision;
   document_type: string;
   volume?: string;
   issue?: string;
@@ -385,7 +386,7 @@ export async function fetchDocuments(
           d.id, 
             COALESCE(d.title, 'Untitled Document')::TEXT as title,
             COALESCE(d.description, '')::TEXT as description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           (d.document_type)::TEXT as document_type,
             COALESCE(d.volume, '')::TEXT as volume,
             COALESCE(d.issue, '')::TEXT as issue,
@@ -448,7 +449,7 @@ export async function fetchDocuments(
             END
           )::TEXT as title,
           ''::TEXT as description,
-          NULL as publication_date,
+          NULL as publication_date, 'legacy'::text AS publication_date_precision,
           (COALESCE(cd.category, 'CONFLUENCE'))::TEXT as document_type,
           COALESCE(CAST(cd.volume AS TEXT), '')::TEXT as volume,
           COALESCE(CAST(cd.issue_number AS TEXT), '')::TEXT as issue,
@@ -591,6 +592,7 @@ export async function fetchDocuments(
         title: row.title || 'Untitled Document',
         description: row.description || '',
         publication_date: row.publication_date ? new Date(row.publication_date) : null,
+        publication_date_precision: row.publication_date_precision ?? "legacy",
         document_type: row.document_type || '',
         volume: row.volume || '',
         issue: row.issue || '',
@@ -751,7 +753,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -773,7 +775,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -796,7 +798,7 @@ export async function fetchChildDocuments(compiledDocId: number | string): Promi
           d.id, 
           d.title,
           d.description,
-          d.publication_date, 
+          d.publication_date, d.publication_date_precision,
           d.document_type,
           d.volume,
           d.issue,
@@ -838,6 +840,7 @@ async function processChildDocuments(rows: any[]): Promise<Document[]> {
       title: row.title || '',
       description: row.description || '',
       publication_date: row.publication_date ? new Date(row.publication_date) : null,
+        publication_date_precision: row.publication_date_precision ?? "legacy",
       document_type: row.document_type || '',
       volume: row.volume || '',
       issue: row.issue || '',
