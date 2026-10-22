@@ -22,7 +22,7 @@ router.post("/api/upload", isAuthenticated, isAdmin, async (ctx) => {
   }
 });
 
-// Restricted upload route for content publishers. It only accepts new PDFs,
+// Restricted upload route for content publishers. It accepts new documents and converts them to PDF,
 // chooses the storage path server-side, and cannot replace files or avatars.
 router.post("/api/content/upload", isAuthenticated, requireDocumentUpload, async (ctx) => {
   try {

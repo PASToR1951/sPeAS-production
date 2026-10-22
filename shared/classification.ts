@@ -1,5 +1,5 @@
 export const CLASSIFICATION_LIMITS = {
-  agendasMin: 1,
+  agendasMin: 0,
   agendasMax: 3,
   topicsMin: 1,
   topicsMax: 5,
@@ -31,4 +31,14 @@ export interface DocumentClassification {
   keywords: ClassificationTerm[];
   complete: boolean;
   source: "document" | "aggregated_children";
+}
+
+export function isClassificationComplete(
+  agendas: ClassificationTerm[],
+  topics: ClassificationTerm[],
+  source: DocumentClassification["source"] = "document",
+): boolean {
+  if (topics.length < CLASSIFICATION_LIMITS.topicsMin || topics.some((term) => term.status !== "approved")) return false;
+  if (source === "aggregated_children") return true;
+  return agendas.length <= CLASSIFICATION_LIMITS.agendasMax && topics.length <= CLASSIFICATION_LIMITS.topicsMax;
 }

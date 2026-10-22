@@ -96,7 +96,7 @@ export function DocumentClassificationEditor({
   return <div className="peas-classification-editor" aria-label="Document classification editor">
     <fieldset className="peas-classification-editor__group">
       <legend>Research agendas</legend>
-      <p>Select 1–3 of {agendas.length} official priorities and choose one primary agenda.</p>
+      <p>Optionally select up to 3 of {agendas.length} official priorities and choose one primary agenda.</p>
       <div className="peas-agenda-selection-summary" aria-live="polite"><strong>{value.researchAgendaIds.length} selected</strong><span>Maximum 3 per document</span></div>
       {agendas.length > 6 ? <Input id={`${idPrefix}-agenda-search`} className="peas-agenda-search" aria-label="Search research agendas" value={agendaQuery} disabled={disabled} placeholder="Search research agendas…" onChange={(event) => setAgendaQuery(event.currentTarget.value)} /> : null}
       <div className="peas-agenda-options" role="group" aria-label="Research agendas">

@@ -1,5 +1,5 @@
 import { client, withTransaction } from "../db/denopost_conn.ts";
-import { CLASSIFICATION_LIMITS, normalizeClassificationTerm } from "../../shared/classification.ts";
+import { CLASSIFICATION_LIMITS, isClassificationComplete, normalizeClassificationTerm } from "../../shared/classification.ts";
 import type { ClassificationTerm, DocumentClassification } from "../../shared/classification.ts";
 export { CLASSIFICATION_LIMITS, normalizeClassificationTerm } from "../../shared/classification.ts";
 export type { ClassificationTerm, DocumentClassification } from "../../shared/classification.ts";
@@ -619,13 +619,7 @@ export async function getDocumentClassifications(
     const researchAgendas = agendaById.get(id) ?? [];
     const topics = topicById.get(id) ?? [];
     const keywords = keywordById.get(id) ?? [];
-    const hasOfficialAgenda = researchAgendas.length > 0;
-    const complete = source === "aggregated_children"
-      ? Boolean(scopePairs.some(([requestedId]) => requestedId === id)) && hasOfficialAgenda && topics.length > 0 && topics.every((term) => term.status === "approved")
-      : researchAgendas.length >= CLASSIFICATION_LIMITS.agendasMin && researchAgendas.length <= CLASSIFICATION_LIMITS.agendasMax
-        && hasOfficialAgenda
-        && topics.length >= CLASSIFICATION_LIMITS.topicsMin && topics.length <= CLASSIFICATION_LIMITS.topicsMax
-        && topics.every((term) => term.status === "approved");
+    const complete = isClassificationComplete(researchAgendas, topics, source);
     result.set(id, { researchAgendas, topics, keywords, complete, source });
   }
   return result;
@@ -673,13 +667,7 @@ export async function getDocumentClassification(
   const agendaTerms = (agendas.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const topicTerms = (topics.rows as Record<string, unknown>[]).map((row) => toTerm(row));
   const keywordTerms = (keywords.rows as Record<string, unknown>[]).map((row) => toTerm(row, "term"));
-  const hasOfficialAgenda = agendaTerms.length > 0;
-  const complete = scope.source === "aggregated_children"
-    ? ids.length > 0 && hasOfficialAgenda && topicTerms.length > 0 && topicTerms.every((term) => term.status === "approved")
-    : agendaTerms.length >= CLASSIFICATION_LIMITS.agendasMin && agendaTerms.length <= CLASSIFICATION_LIMITS.agendasMax
-      && hasOfficialAgenda
-      && topicTerms.length >= CLASSIFICATION_LIMITS.topicsMin && topicTerms.length <= CLASSIFICATION_LIMITS.topicsMax
-      && topicTerms.every((term) => term.status === "approved");
+  const complete = isClassificationComplete(agendaTerms, topicTerms, scope.source);
 
   return {
     researchAgendas: agendaTerms,
@@ -714,9 +702,8 @@ export async function replaceDocumentClassification(
   if (agendaIds.length && !agendaIds.includes(primaryAgendaId)) {
     throw new ClassificationValidationError("The primary agenda must be selected", { primaryResearchAgendaId: "Choose one of the selected agendas" });
   }
-  if (!allowIncomplete && (agendaIds.length < CLASSIFICATION_LIMITS.agendasMin || topicIds.length < CLASSIFICATION_LIMITS.topicsMin)) {
-    throw new ClassificationValidationError("An approved document requires at least one research agenda and one topic", {
-      researchAgendaIds: "Select at least one research agenda",
+  if (!allowIncomplete && topicIds.length < CLASSIFICATION_LIMITS.topicsMin) {
+    throw new ClassificationValidationError("An approved document requires at least one topic", {
       topicIds: "Select at least one topic",
     });
   }

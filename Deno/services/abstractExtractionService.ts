@@ -40,9 +40,12 @@ export function normalizePdfText(value: string): string[] {
   return value
     .replace(/\r\n?/gu, "\n")
     .replace(/[\u0000-\u0008\u000B\u000E-\u001F\u007F]/gu, "")
+    // Reserved Unicode noncharacters can represent unmapped PDF glyphs.
+    // Keep a word boundary rather than joining words or inventing a glyph.
+    .replace(/\p{Noncharacter_Code_Point}/gu, " ")
     .split("\f")
-    .map((page) => normalizePage(page))
-    .filter((page) => page.length > 0);
+    // Empty pages still occupy physical PDF page numbers (especially scans).
+    .map((page) => normalizePage(page));
 }
 
 function normalizePage(value: string): string {
@@ -50,6 +53,8 @@ function normalizePage(value: string): string {
     .split("\n")
     .map((line) => line.replace(/[ \t]+$/gu, "").trim())
     .filter(Boolean);
+  // Scanned manuscripts often place an isolated page number below the abstract.
+  if (lines.length > 1 && /^(?:\d{1,4}|[ivxlcdm]{1,8})$/iu.test(lines.at(-1) ?? "")) lines.pop();
   const paragraphs: string[] = [];
   let current = "";
 
@@ -84,6 +89,11 @@ export function extractAbstractFromText(
   method: AbstractMethod = "pdf_text",
 ): TextExtractionResult {
   const normalizedPages = normalizePdfText(text);
+  const pageQualityFlags = text.split("\f").map((page) =>
+    /\p{Noncharacter_Code_Point}/u.test(page)
+      ? ["non_text_characters_removed"]
+      : []
+  );
   const pages = normalizedPages.slice(0, ABSTRACT_EMBEDDED_PAGE_LIMIT);
   const headingCandidates: Array<
     { text: string; page: number; explicitEnd: boolean }
@@ -137,7 +147,7 @@ export function extractAbstractFromText(
         text: boundCandidate(headingCandidate.text),
         method,
         confidence: headingCandidate.score.confidence,
-        qualityFlags: headingCandidate.score.flags,
+        qualityFlags: [...headingCandidate.score.flags, ...pageQualityFlags[headingCandidate.page - 1]],
         pageStart: headingCandidate.page,
         pageEnd: headingCandidate.page,
       },
@@ -174,7 +184,7 @@ export function extractAbstractFromText(
         text: boundCandidate(paragraphCandidate.paragraph),
         method,
         confidence: paragraphCandidate.score.confidence,
-        qualityFlags: paragraphCandidate.score.flags,
+        qualityFlags: [...paragraphCandidate.score.flags, ...pageQualityFlags[paragraphCandidate.page - 1]],
         pageStart: paragraphCandidate.page,
         pageEnd: paragraphCandidate.page,
       },

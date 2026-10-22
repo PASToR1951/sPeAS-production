@@ -43,6 +43,30 @@ Deno.test("preserves Unicode and dehyphenates line-wrapped words", () => {
   if (!pages[0]?.includes("makabuluhang")) throw new Error("Expected Unicode text");
 });
 
+Deno.test("blank and unreadable pages do not shift abstract page numbers", () => {
+  const result = extractAbstractFromText(`\f\fAbstract\n${body}\nKeywords: research`, "ocr");
+  if (result.candidate?.pageStart !== 3) throw new Error("Expected physical PDF page three");
+  const tooLate = `${"\f".repeat(15)}Abstract\n${body}`;
+  if (extractAbstractFromText(tooLate).candidate) throw new Error("Blank pages bypassed the page limit");
+});
+
+Deno.test("unmapped PDF glyphs preserve word boundaries and flag only the affected candidate page", () => {
+  const source = `Abstract\n${body} Teachers’ self\uFFFEefficacy and a semi\u{1FFFF}structured study preserve Filipino ñ and valid Ω symbols.\nKeywords: research`;
+  const result = extractAbstractFromText(source);
+  if (!result.candidate?.text.includes("self efficacy and a semi structured")) throw new Error("Unmapped glyphs joined words or remained in the candidate");
+  if (!result.candidate.text.includes("ñ and valid Ω")) throw new Error("Valid Unicode was changed");
+  if (!result.candidate.qualityFlags.includes("non_text_characters_removed")) throw new Error("Missing text cleanup review warning");
+  const clean = extractAbstractFromText(`Front matter \uFFFF\fAbstract\n${body}\nKeywords: research`);
+  if (clean.candidate?.pageStart !== 2 || clean.candidate.qualityFlags.includes("non_text_characters_removed")) throw new Error("Another page contaminated the candidate warning");
+});
+
+Deno.test("isolated scanned page numbers are excluded from the abstract", () => {
+  for (const footer of ["vi", "12"]) {
+    const result = extractAbstractFromText(`Abstract\n${body}\n${footer}`, "ocr");
+    if (result.candidate?.text !== body) throw new Error("Page footer contaminated the abstract");
+  }
+});
+
 Deno.test("rejects empty, garbled, and low-signal text without inventing a candidate", () => {
   if (extractAbstractFromText("").candidate) throw new Error("Empty text produced a candidate");
   if (extractAbstractFromText("\uFFFD\uFFFD\uFFFD\uFFFD").candidate) throw new Error("Garbled text produced a candidate");

@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [string]$AppRoot = 'C:\ProgramData\PeAS',
-    [string]$RepoRoot = ''
+    [string]$RepoRoot = '',
+    [switch]$SkipStartupReport
 )
 
 $ErrorActionPreference = 'Continue'
@@ -130,6 +131,10 @@ if (-not (Test-Path -LiteralPath $emailScript)) { Write-Log "ERROR: Startup emai
 if (-not (Test-Path -LiteralPath $envFile)) { Write-Log "ERROR: Environment file not found: $envFile"; exit 1 }
 
 $env:PATH = "$pgBin;$(Split-Path -Parent $deno);$env:PATH"
+$libreOfficeProgram = Join-Path $AppRoot 'tools\libreoffice\program'
+if (Test-Path -LiteralPath (Join-Path $libreOfficeProgram 'soffice.exe')) {
+    $env:PATH = "$libreOfficeProgram;$env:PATH"
+}
 $env:PEAS_APP_ROOT = $AppRoot
 $env:PEAS_STATE_ROOT = $stateRoot
 $env:HOST = '0.0.0.0'
@@ -433,8 +438,8 @@ function Send-PeasStartupReport([string]$ReportPath) {
 }
 
 $mediaArgs = @('run', "--env-file=$envFile", '--allow-net', '--allow-read', '--allow-write', '--allow-env', '--allow-run=ffmpeg,ffprobe,clamdscan', 'media-worker.ts')
-$abstractArgs = @('run', "--env-file=$envFile", '--allow-env', '--allow-read', '--allow-write', '--allow-net', '--allow-run=pdfinfo,pdftotext,pdftoppm,tesseract', 'abstract-worker.ts')
-$webArgs = @('run', "--env-file=$envFile", '--allow-net', '--allow-read', '--allow-write', '--allow-env', '--allow-run=pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan', 'server.ts')
+$abstractArgs = @('run', "--env-file=$envFile", '--allow-env', '--allow-read', '--allow-write', '--allow-net', 'abstract-worker.ts')
+$webArgs = @('run', "--env-file=$envFile", '--allow-net', '--allow-read', '--allow-write', '--allow-env', '--allow-run=soffice,pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan', 'server.ts')
 $media = $null
 $abstract = $null
 $web = $null
@@ -448,7 +453,7 @@ try {
     Write-Log "System startup passed local readiness and stability checks in $([math]::Round($startupStopwatch.Elapsed.TotalSeconds, 2)) seconds."
     $startupReport = New-PeasStartupReport $media $abstract $web $readiness
     Write-Log "Detailed startup report created: $startupReport"
-    Send-PeasStartupReport $startupReport
+    if (-not $SkipStartupReport) { Send-PeasStartupReport $startupReport }
 } catch {
     Write-Log "ERROR: System startup did not become ready: $($_.Exception.Message)"
     Write-DiagnosticTail 'Web stderr' (Join-Path $logs 'web.err.log')

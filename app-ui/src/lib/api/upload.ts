@@ -88,8 +88,8 @@ export function uploadFile(file: File, options: { storagePath: string; documentT
       }
       reject(new ApiError(uploadErrorMessage(payload, request.statusText), request.status, payload));
     });
-    request.addEventListener("error", () => reject(new Error("The PDF upload was interrupted. Check your connection and try again.")));
-    request.addEventListener("abort", () => reject(new Error("The PDF upload was cancelled.")));
+    request.addEventListener("error", () => reject(new Error("The document upload was interrupted. Check your connection and try again.")));
+    request.addEventListener("abort", () => reject(new Error("The document upload was cancelled.")));
     request.send(formData);
   });
 }
@@ -106,7 +106,7 @@ function uploadErrorMessage(payload: unknown, fallback: string): string {
     if (typeof message === "string" && message.trim()) return message;
   }
   if (typeof payload === "string" && payload.trim()) return payload;
-  return fallback || "The PDF could not be uploaded.";
+  return fallback || "The document could not be uploaded.";
 }
 
 export function uploadAuthorProfilePicture(file: File) {

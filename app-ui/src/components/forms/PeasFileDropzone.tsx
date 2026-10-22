@@ -65,7 +65,7 @@ export function PeasFileDropzone({
             {file ? <FileText aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
           </span>
           <span className="peas-file-dropzone__copy">
-            <strong>{file ? file.name : "Choose PDF or drag it here"}</strong>
+            <strong>{file ? file.name : "Choose file or drag it here"}</strong>
             <span id={fieldKey ? `${fieldKey}-description` : undefined}>{file ? formatFileSize(file.size) : description ?? "PDF files are supported."}</span>
           </span>
         </button>

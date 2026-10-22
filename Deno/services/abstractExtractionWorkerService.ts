@@ -1,13 +1,8 @@
-import { ensureDir, join } from "../deps.ts";
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
+import { extractAbstractFromPdfPath, verifyBundledAbstractDependencies } from "./abstractPdfService.ts";
+export { extractAbstractFromPdfPath } from "./abstractPdfService.ts";
 import {
-  ABSTRACT_EMBEDDED_PAGE_LIMIT,
-  ABSTRACT_JOB_TIMEOUT_MS,
-  ABSTRACT_MAX_TEXT_OUTPUT_BYTES,
-  ABSTRACT_OCR_PAGE_LIMIT,
-  extractAbstractFromText,
-  parsePdfInfo,
   resolveStoredPdfPath,
   sha256File,
   type AbstractCandidate,
@@ -29,20 +24,9 @@ type SourceRow = {
   stored_digest: string | null;
 };
 
-type CommandResult = {
-  success: boolean;
-  stdout: Uint8Array;
-  stderr: Uint8Array;
-  code: number;
-  timedOut: boolean;
-};
-
-const decoder = new TextDecoder();
 const MAX_RETRIES = 3;
 const WORKER_POLL_MS = 5_000;
 const STALE_LOCK_MINUTES = 15;
-const OCR_DPI = "300";
-const OCR_LANGUAGES = Deno.env.get("ABSTRACT_OCR_LANGUAGES") || "eng+fil";
 const WORKER_VERSION = Deno.env.get("PEAS_RELEASE_ID") || "development";
 
 export async function claimNextAbstractJob(workerId: string): Promise<JobRow | null> {
@@ -86,16 +70,16 @@ export async function recoverStaleAbstractJobs(): Promise<void> {
 
 export async function updateAbstractWorkerHeartbeat(workerId: string): Promise<void> {
   await client.queryArray(
-    `UPDATE abstract_extraction_worker_state
-     SET worker_id = $1, worker_version = $2,
-         last_heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-     WHERE state_id = TRUE`,
+    `INSERT INTO abstract_extraction_worker_state (state_id, worker_id, worker_version, last_heartbeat_at, updated_at)
+     VALUES (TRUE, $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     ON CONFLICT (state_id) DO UPDATE SET worker_id = EXCLUDED.worker_id,
+       worker_version = EXCLUDED.worker_version, last_heartbeat_at = CURRENT_TIMESTAMP,
+       updated_at = CURRENT_TIMESTAMP`,
     [workerId, WORKER_VERSION],
   );
 }
 
 export async function processAbstractJob(job: JobRow): Promise<void> {
-  const deadline = Date.now() + ABSTRACT_JOB_TIMEOUT_MS;
   const source = await getJobSource(job);
   if (!source?.file_path) throw new Error("ABSTRACT_SOURCE_MISSING");
   const pdfPath = resolveStoredPdfPath(source.file_path);
@@ -104,33 +88,8 @@ export async function processAbstractJob(job: JobRow): Promise<void> {
   const sourceDigest = await sha256File(pdfPath);
   await saveSourceDigest(job, sourceDigest);
 
-  const inspection = await inspectPdf(pdfPath, remainingTimeout(deadline, 30_000));
-  if (!inspection) throw new Error("PDF_INSPECTION_FAILED");
-  if (inspection.encrypted) throw new Error("PDF_ENCRYPTED");
-
-  const tempDirectory = await Deno.makeTempDir({ prefix: "peas-abstract-" });
-  try {
-    const embeddedTextPath = join(tempDirectory, "embedded.txt");
-    const embedded = await runCommand("pdftotext", ["-enc", "UTF-8", "-layout", pdfPath, embeddedTextPath], remainingTimeout(deadline, 30_000));
-    if (embedded.timedOut) throw new Error("ABSTRACT_TIMEOUT");
-    let candidate: AbstractCandidate | null = null;
-    if (embedded.success) {
-      const stat = await Deno.stat(embeddedTextPath).catch(() => null);
-      if (stat && stat.size <= ABSTRACT_MAX_TEXT_OUTPUT_BYTES) {
-        const text = await Deno.readTextFile(embeddedTextPath);
-        candidate = extractAbstractFromText(text, "pdf_text").candidate;
-      }
-    }
-
-    if (!candidate || candidate.confidence < 0.6) {
-      const ocrCandidate = await extractWithOcr(pdfPath, inspection.pageCount, tempDirectory, deadline);
-      if (ocrCandidate && (!candidate || ocrCandidate.confidence > candidate.confidence)) candidate = ocrCandidate;
-    }
-
-    await finishAbstractJob(job, sourceDigest, inspection.pageCount, candidate);
-  } finally {
-    await Deno.remove(tempDirectory, { recursive: true }).catch(() => undefined);
-  }
+  const { pageCount, candidate } = await extractAbstractFromPdfPath(pdfPath);
+  await finishAbstractJob(job, sourceDigest, pageCount, candidate);
 }
 
 async function getJobSource(job: JobRow): Promise<SourceRow | null> {
@@ -219,9 +178,9 @@ async function finishAbstractJob(job: JobRow, digest: string, pageCount: number,
 
 export async function failAbstractJob(job: JobRow, errorCode: string): Promise<void> {
   const attemptCount = Number(job.attempt_count);
-  const terminal = attemptCount >= MAX_RETRIES;
-  const delayMinutes = attemptCount === 1 ? 1 : attemptCount === 2 ? 5 : 15;
   const safeErrorCode = sanitizeAbstractError(errorCode);
+  const terminal = attemptCount >= MAX_RETRIES || ["ABSTRACT_DEPENDENCY_UNAVAILABLE", "PDF_ENCRYPTED", "PDF_INSPECTION_FAILED", "ABSTRACT_SOURCE_TOO_LARGE", "ABSTRACT_PAGE_TOO_LARGE", "ABSTRACT_TEXT_OUTPUT_TOO_LARGE"].includes(safeErrorCode);
+  const delayMinutes = attemptCount === 1 ? 1 : attemptCount === 2 ? 5 : 15;
   await client.queryArray(
     `UPDATE abstract_extraction_jobs
      SET status = $2,
@@ -246,7 +205,7 @@ export async function failAbstractJob(job: JobRow, errorCode: string): Promise<v
 
 function sanitizeAbstractError(value: string): string {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9_:-]/gu, "_");
-  if (/(?:PDFINFO|PDFTOTEXT|PDFTOPPM|TESSERACT)_UNAVAILABLE/u.test(normalized)) {
+  if (/(?:PDFINFO|PDFTOTEXT|PDFTOPPM|TESSERACT)_UNAVAILABLE/u.test(normalized) || ["ABSTRACT_ENGINE_UNAVAILABLE", "ABSTRACT_OCR_LANGUAGE_UNAVAILABLE"].includes(normalized)) {
     return "ABSTRACT_DEPENDENCY_UNAVAILABLE";
   }
   const allowed = new Set([
@@ -257,6 +216,9 @@ function sanitizeAbstractError(value: string): string {
     "ABSTRACT_TIMEOUT",
     "ABSTRACT_DEPENDENCY_UNAVAILABLE",
     "ABSTRACT_PROCESSING_FAILED",
+    "ABSTRACT_SOURCE_TOO_LARGE",
+    "ABSTRACT_PAGE_TOO_LARGE",
+    "ABSTRACT_TEXT_OUTPUT_TOO_LARGE",
   ]);
   return allowed.has(normalized) ? normalized : "ABSTRACT_PROCESSING_FAILED";
 }
@@ -277,88 +239,32 @@ async function supersedeAndQueue(job: JobRow): Promise<void> {
   });
 }
 
-async function inspectPdf(pdfPath: string, timeoutMs: number): Promise<{ pageCount: number; encrypted: boolean } | null> {
-  const result = await runCommand("pdfinfo", [pdfPath], timeoutMs);
-  if (!result.success) return null;
-  return parsePdfInfo(decoder.decode(result.stdout));
-}
-
-async function extractWithOcr(pdfPath: string, pageCount: number, tempDirectory: string, deadline: number): Promise<AbstractCandidate | null> {
-  const pages = Math.min(pageCount, ABSTRACT_OCR_PAGE_LIMIT);
-  let combined = "";
-  for (let page = 1; page <= pages; page += 1) {
-    const imageRoot = join(tempDirectory, `page-${page}`);
-    const imagePath = `${imageRoot}.png`;
-    const rendered = await runCommand("pdftoppm", ["-f", String(page), "-l", String(page), "-singlefile", "-r", OCR_DPI, "-png", pdfPath, imageRoot], remainingTimeout(deadline, 60_000));
-    if (rendered.timedOut) throw new Error("ABSTRACT_TIMEOUT");
-    if (!rendered.success) continue;
-    const ocr = await runCommand("tesseract", [imagePath, "stdout", "-l", OCR_LANGUAGES, "--oem", "1", "--psm", "3"], remainingTimeout(deadline, 60_000));
-    if (ocr.timedOut) throw new Error("ABSTRACT_TIMEOUT");
-    if (ocr.success) combined += `${decoder.decode(ocr.stdout)}\f`;
-    await Deno.remove(imagePath).catch(() => undefined);
-  }
-  return extractAbstractFromText(combined, "ocr").candidate;
-}
-
-async function runCommand(command: string, args: string[], timeoutMs: number): Promise<CommandResult> {
-  const controller = new AbortController();
-  let child: Deno.ChildProcess;
-  try {
-    child = new Deno.Command(command, { args, stdout: "piped", stderr: "piped", signal: controller.signal }).spawn();
-  } catch (error) {
-    throw new Error(error instanceof Deno.errors.NotFound ? `${command.toUpperCase()}_UNAVAILABLE` : "COMMAND_START_FAILED");
-  }
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-    try { child.kill("SIGTERM"); } catch { /* process already exited */ }
-  }, timeoutMs);
-  try {
-    try {
-      const result = await child.output();
-      return { ...result, timedOut };
-    } catch (error) {
-      if (timedOut) return { success: false, stdout: new Uint8Array(), stderr: new Uint8Array(), code: -1, timedOut: true };
-      throw error;
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function remainingTimeout(deadline: number, cap: number): number {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) throw new Error("ABSTRACT_TIMEOUT");
-  return Math.min(cap, remaining);
-}
-
 export async function verifyAbstractWorkerDependencies(): Promise<void> {
-  for (const command of ["pdfinfo", "pdftotext", "pdftoppm", "tesseract"]) {
-    const result = await runCommand(command, command === "tesseract" ? ["--version"] : ["-v"], 10_000);
-    if (!result.success) throw new Error(`ABSTRACT_DEPENDENCY_UNAVAILABLE:${command}`);
-  }
-  const languages = await runCommand("tesseract", ["--list-langs"], 10_000);
-  const output = decoder.decode(languages.stdout);
-  for (const language of ["eng", "fil"]) {
-    if (!output.split(/\r?\n/u).includes(language)) throw new Error(`ABSTRACT_OCR_LANGUAGE_UNAVAILABLE:${language}`);
-  }
+  await verifyBundledAbstractDependencies();
 }
 
 export async function startAbstractWorker(): Promise<() => void> {
   const { maintenanceRequested } = await import("./maintenanceState.ts");
-  try {
-    await verifyAbstractWorkerDependencies();
-  } catch (err) {
-    console.warn("[abstract-worker] Optional extraction CLI dependencies missing (OCR/PDF parsing disabled):", err instanceof Error ? err.message : String(err));
-  }
   const workerId = `abstract-${crypto.randomUUID()}`;
+  let dependenciesReady = false;
+  let nextDependencyCheck = 0;
   let running = false;
   const run = async () => {
     if (running) return;
     if (await maintenanceRequested("abstract-worker")) return;
     running = true;
     try {
+      if (!dependenciesReady) {
+        if (Date.now() < nextDependencyCheck) return;
+        try {
+          await verifyAbstractWorkerDependencies();
+          dependenciesReady = true;
+        } catch (error) {
+          nextDependencyCheck = Date.now() + 30_000;
+          console.warn("[abstract-worker] Bundled extraction engine unavailable; queued jobs are retained:", error instanceof Error ? error.message : "ABSTRACT_ENGINE_UNAVAILABLE");
+          return;
+        }
+      }
       await recoverStaleAbstractJobs();
       await updateAbstractWorkerHeartbeat(workerId);
       const job = await claimNextAbstractJob(workerId);
@@ -372,9 +278,10 @@ export async function startAbstractWorker(): Promise<() => void> {
       running = false;
     }
   };
-  void run();
-  const timer = setInterval(() => void run(), WORKER_POLL_MS);
-  const heartbeat = setInterval(() => void updateAbstractWorkerHeartbeat(workerId).catch(() => undefined), 30_000);
+  const tick = () => void run().catch((error) => console.warn("[abstract-worker] Poll failed:", error instanceof Error ? error.message : "ABSTRACT_PROCESSING_FAILED"));
+  tick();
+  const timer = setInterval(tick, WORKER_POLL_MS);
+  const heartbeat = setInterval(() => { if (dependenciesReady) void updateAbstractWorkerHeartbeat(workerId).catch(() => undefined); }, 30_000);
   return () => {
     clearInterval(timer);
     clearInterval(heartbeat);

@@ -1,9 +1,11 @@
+import { convertDocumentToPdf, DocumentConversionError } from "../services/documentConversionService.ts";
 // Upload controller for handling file uploads
 
 import { Context } from "../deps.ts";
 import { saveFile } from "../services/uploadService.ts";
 import { inspectPdfFile } from "../services/abstractExtractionService.ts";
 import { createUploaderHashCode } from "../utils/uploaderHash.ts";
+import { readUploadMultipart } from "../services/uploadMultipartService.ts";
 
 export interface UploadPolicy {
   documentOnly?: boolean;
@@ -31,14 +33,14 @@ export async function handleFileUpload(
     }
 
     // Get form data
-    const form = await ctx.request.body({ type: "form-data" }).value;
     const maxFileSize = policy.documentOnly
       ? DOCUMENT_UPLOAD_MAX_BYTES
       : GENERAL_UPLOAD_MAX_BYTES;
-    const data = await form.read({
+    const data = await readUploadMultipart(
+      ctx.request.body({ type: "stream" }).value,
+      contentType,
       maxFileSize,
-      maxSize: maxFileSize + 10_000_000,
-    });
+    );
 
     // Get file from form data
     let file = data.files?.[0];
@@ -83,7 +85,7 @@ export async function handleFileUpload(
     if (policy.documentOnly && (isProfilePicture || isReplacement)) {
       ctx.response.status = 403;
       ctx.response.body = {
-        error: "This upload route only accepts new document PDFs",
+        error: "This upload route only accepts new documents",
       };
       return;
     }
@@ -117,13 +119,6 @@ export async function handleFileUpload(
           validDocumentTypes.join(", ")
         }`,
       };
-      return;
-    }
-
-    const originalFileName = getUploadedFileName(file).toLowerCase();
-    if (policy.documentOnly && !originalFileName.endsWith(".pdf")) {
-      ctx.response.status = 415;
-      ctx.response.body = { error: "Only PDF document uploads are allowed" };
       return;
     }
 
@@ -227,7 +222,13 @@ export async function handleFileUpload(
       };
 
     // Save file
-    const fileResult = await saveFile(file, storagePath, saveOptions);
+    const sourceName = getUploadedFileName(file);
+    const sourceBytes = file.content ?? (file.filename ? await Deno.readFile(file.filename) : undefined);
+    if (!sourceBytes) throw new DocumentConversionError("The uploaded document could not be read.");
+    const pdf = await convertDocumentToPdf(sourceName, sourceBytes);
+    const pdfName = sourceName.replace(/\.[^.]+$/, "") + ".pdf";
+    if (saveOptions.originalName) saveOptions.originalName = saveOptions.originalName.replace(/\.[^.]+$/, "") + ".pdf";
+    const fileResult = await saveFile({ originalName: pdfName, content: pdf, type: "application/pdf" }, storagePath, saveOptions);
 
     // Verify file was saved
     const fullFilePath = fileResult.absolutePath;
@@ -258,7 +259,7 @@ export async function handleFileUpload(
     // Inspect PDF structure synchronously, but defer abstract extraction to the
     // durable worker so uploads never store guesses or block on OCR.
     let metadata = null;
-    const isPdf = getUploadedFileName(file).toLowerCase().endsWith(".pdf");
+    const isPdf = true;
 
     if (isPdf) {
       const inspection = await inspectPdfFile(fullFilePath);
@@ -323,7 +324,7 @@ export async function handleFileUpload(
     ctx.response.body = response;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const status = uploadFailureStatus(errorMessage);
+    const status = error instanceof DocumentConversionError ? error.status : uploadFailureStatus(errorMessage);
     console.error("[upload] File upload failed", {
       errorType: error instanceof Error ? error.name : typeof error,
       message: errorMessage,
@@ -332,10 +333,12 @@ export async function handleFileUpload(
     });
     ctx.response.status = status;
     ctx.response.body = {
-      error: status === 413
-        ? "The PDF is larger than the 100 MB upload limit. Reduce the file size and try again."
+      error: error instanceof DocumentConversionError
+        ? error.message
+        : status === 413
+        ? "The document is larger than the 100 MB upload limit. Reduce the file size and try again."
         : status === 422
-        ? "The selected PDF is empty and cannot be uploaded."
+        ? "The selected document is empty and cannot be uploaded."
         : "Failed to upload file",
       status: "error",
       details: errorMessage,

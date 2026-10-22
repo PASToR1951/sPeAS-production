@@ -31,6 +31,10 @@ RUN apt-get update \
     ca-certificates \
     clamav \
     ffmpeg \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-dejavu \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -63,7 +67,9 @@ RUN printf '%s\n' \
     /app/storage/news-media/source \
     /app/storage/news-media/variants \
     /app/Deno/logs \
-  && deno cache Deno/server.ts Deno/scripts/migrate.ts Deno/scripts/bootstrap-admin.ts \
+  && deno cache --config Deno/deno.json --lock Deno/deno.lock \
+    Deno/server.ts Deno/abstract-worker.ts Deno/services/abstractPdfWorker.ts \
+    Deno/scripts/migrate.ts Deno/scripts/bootstrap-admin.ts \
   && chown -R deno:deno /app
 
 USER deno
@@ -72,4 +78,4 @@ WORKDIR /app/Deno
 EXPOSE 8000
 
 ENTRYPOINT ["deno"]
-CMD ["run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan", "server.ts"]
+CMD ["run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=soffice,pdftoppm,pdfinfo,cwebp,ffmpeg,ffprobe,clamdscan", "server.ts"]

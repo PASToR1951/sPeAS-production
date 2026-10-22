@@ -39,23 +39,23 @@ test.describe("guided upload workflow", () => {
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Classification" })).toBeVisible();
 
-    await page.getByRole("checkbox", { name: "Environmental Discipline and Stewardship" }).check();
-    await page.getByRole("combobox", { name: "Primary research agenda" }).click();
-    await page.getByRole("option", { name: "Environmental Discipline and Stewardship" }).click();
+    await expect(page.getByText(/research agenda/i)).toHaveCount(0);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Select at least one approved topic.", { exact: true })).toBeVisible();
     await page.locator("#single-topic-search").fill("waste");
     await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
     await page.locator("#single-topic-search").press("Enter");
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Upload PDF" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
     let fileUploadRequests = 0;
     page.on("request", (request) => {
       if (request.url().includes("/api/content/upload")) fileUploadRequests += 1;
     });
     await expect.poll(() => fileUploadRequests).toBe(0);
-    await page.getByLabel("Document PDF").setInputFiles({ name: "community-health.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+    await page.getByLabel("Document file").setInputFiles({ name: "community-health.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("mock document source") });
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Review your document" })).toBeVisible();
-    await expect(page.locator(".peas-upload-review").getByText("community-health.pdf", { exact: true })).toBeVisible();
+    await expect(page.locator(".peas-upload-review").getByText("community-health.docx", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish document" })).toBeVisible();
 
     const documentRequest = page.waitForRequest((request) => request.url().includes("/api/documents") && request.method() === "POST");
@@ -64,6 +64,7 @@ test.describe("guided upload workflow", () => {
     expect(fileUploadRequests).toBe(1);
     expect(documentPayload.publication_date).toBe("2026-08-01");
     expect(documentPayload.abstract).toBe("A manually confirmed abstract for the community health survey.");
+    expect(documentPayload.classification).toEqual({ topicIds: [32], keywords: [] });
     expect(documentPayload.authors).toEqual([
         { id: "author-1", full_name: "Juan Dela Cruz" },
         { id: "author-new", full_name: "Simon Riley" },
@@ -112,7 +113,7 @@ test.describe("guided upload workflow", () => {
     await prepareSingleDocument(page, "Extraction fixture");
     await page.getByRole("button", { name: "Publish document" }).click();
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
-    await expect(page.getByText("Extracting", { exact: true })).toBeVisible();
+    await expect(page.getByText("Verifying PDF", { exact: true })).toBeVisible();
     await expect(page.locator(".peas-upload-extraction__editor textarea")).toHaveValue("Extracted abstract candidate.", { timeout: 8_000 });
     await page.getByRole("button", { name: "Confirm abstract" }).click();
     await expect(page.getByRole("button", { name: "Retry publication" })).toBeVisible();
@@ -121,6 +122,52 @@ test.describe("guided upload workflow", () => {
     expect(abstractAction).toEqual({ action: "accept_candidate" });
     expect(reviewPayload).toEqual({ decision: "approved", publish: true });
     expect(reviewAttempts).toBe(2);
+  });
+
+  test("failed extraction can retry and start another upload without publishing or uploading twice", async ({ page }) => {
+    let retried = false;
+    let uploads = 0;
+    let records = 0;
+    let publications = 0;
+    page.on("request", (request) => {
+      if (request.method() !== "POST") return;
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/content/upload") uploads++;
+      if (pathname === "/api/documents") records++;
+      if (pathname === "/api/documents/42/review") publications++;
+    });
+    await page.route("**/api/documents", (route) => route.fulfill({ json: { id: 42, review_status: "pending_review", is_public: false } }));
+    await page.route("**/api/admin/abstract-reviews?record_type=document&record_id=42", (route) => route.fulfill({ json: { items: [{
+      targetType: "document", targetId: 42, title: "Failed extraction fixture", documentType: "THESIS",
+      status: retried ? "needs_review" : "failed", currentAbstract: null,
+      candidate: retried ? "Recovered abstract candidate." : null, method: retried ? "pdf_text" : "none",
+      confidence: retried ? 0.8 : null, qualityFlags: [], pageStart: retried ? 6 : null, pageEnd: retried ? 6 : null,
+      attemptCount: retried ? 1 : 3, errorCode: retried ? null : "ABSTRACT_DEPENDENCY_UNAVAILABLE", updatedAt: "2026-10-23T00:00:00Z",
+    }] } }));
+    await page.route("**/api/admin/abstract-reviews/document/42/retry", (route) => {
+      retried = true;
+      return route.fulfill({ json: { status: "queued" } });
+    });
+    await prepareSingleDocument(page, "Failed extraction fixture");
+    await page.getByRole("button", { name: "Publish document" }).click();
+    await expect(page.getByText("The local abstract extraction engine is unavailable.", { exact: false }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start another upload" })).toBeEnabled();
+    await page.getByRole("button", { name: "Retry extraction", exact: true }).click();
+    await expect(page.locator(".peas-upload-extraction__editor textarea")).toHaveValue("Recovered abstract candidate.");
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole("button", { name: "Start another upload" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("extraction-retry-ready.png") });
+    await page.getByRole("button", { name: "Start another upload" }).click();
+    await expect(page.getByRole("heading", { name: "Document details", exact: true })).toBeVisible();
+    await expect(page.locator("#single-title")).toHaveValue("");
+    await expect(page.getByRole("tab", { name: /Compiled publication/ })).toBeEnabled();
+    await page.screenshot({ path: test.info().outputPath("next-upload-ready.png") });
+    expect(retried).toBe(true);
+    expect(uploads).toBe(1);
+    expect(records).toBe(1);
+    expect(publications).toBe(0);
   });
 
   test("manual entry becomes available after one minute and supersedes extraction", async ({ page }) => {
@@ -144,12 +191,14 @@ test.describe("guided upload workflow", () => {
 
     await prepareSingleDocument(page, "Slow extraction fixture");
     await page.getByRole("button", { name: "Publish document" }).click();
-    await expect(page.getByRole("button", { name: "Enter abstract manually" })).toHaveCount(0);
-    await page.clock.fastForward(60_000);
-    await expect(page.getByRole("button", { name: "Enter abstract manually" })).toBeVisible();
-    await page.getByRole("button", { name: "Enter abstract manually" }).click();
+    await expect(page.getByRole("button", { name: "Enter manually instead" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
+    await expect(page.getByText("Verifying PDF", { exact: true })).toBeVisible();
+    await page.clock.fastForward(60_001);
+    await expect(page.getByRole("button", { name: "Enter manually instead" })).toBeVisible();
+    await page.getByRole("button", { name: "Enter manually instead" }).click();
     await page.getByLabel("Manual abstract").fill("Manually entered after waiting.");
-    await page.getByRole("button", { name: "Confirm abstract" }).click();
+    await page.getByRole("button", { name: "Use this manual abstract" }).click();
     await expect(page.getByRole("heading", { name: "Your upload is published" })).toBeVisible();
     expect(abstractAction).toEqual({ action: "save_manual", abstract: "Manually entered after waiting." });
   });
@@ -221,9 +270,6 @@ test.describe("guided upload workflow", () => {
     await page.locator("#single-year").fill("2026");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Classification" })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Environmental Discipline and Stewardship" }).check();
-    await page.getByRole("combobox", { name: "Primary research agenda" }).click();
-    await page.getByRole("option", { name: "Environmental Discipline and Stewardship" }).click();
     await page.locator("#single-topic-search").fill("waste");
     await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
     await page.locator("#single-topic-search").press("Enter");
@@ -232,9 +278,9 @@ test.describe("guided upload workflow", () => {
     await expect(page.locator("#single-year")).toHaveValue("2026");
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Upload PDF" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByText("Attach the document PDF.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Attach the document file.", { exact: true })).toBeVisible();
   });
 
   test("author picker stages multiple names, prevents normalized duplicates, and removes chips", async ({ page }) => {
@@ -299,14 +345,15 @@ test.describe("guided upload workflow", () => {
 
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Study classification" })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Environmental Discipline and Stewardship" }).check();
-    await page.getByRole("combobox", { name: "Primary research agenda" }).click();
-    await page.getByRole("option", { name: "Environmental Discipline and Stewardship" }).click();
+    await expect(page.getByText(/research agenda/i)).toHaveCount(0);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Select at least one approved topic.", { exact: true })).toBeVisible();
     await page.getByLabel("Search approved topics").fill("waste");
     await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
     await page.getByLabel("Search approved topics").press("Enter");
+    await expect(page.locator(".peas-study-card").getByText("Classified", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Upload PDFs" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Upload documents" })).toBeVisible();
     await page.getByLabel("Study 1 PDF").setInputFiles({ name: "study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Review your publication" })).toBeVisible();
@@ -346,14 +393,11 @@ async function prepareSingleDocument(page: Page, title: string) {
   await page.getByRole("option", { name: "August" }).click();
   await page.locator("#single-year").fill("2026");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("checkbox", { name: "Environmental Discipline and Stewardship" }).check();
-  await page.getByRole("combobox", { name: "Primary research agenda" }).click();
-  await page.getByRole("option", { name: "Environmental Discipline and Stewardship" }).click();
   await page.locator("#single-topic-search").fill("waste");
   await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
   await page.locator("#single-topic-search").press("Enter");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Document PDF").setInputFiles({ name: "abstract-fixture.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await page.getByLabel("Document file").setInputFiles({ name: "abstract-fixture.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Review your document" })).toBeVisible();
 }
@@ -370,14 +414,11 @@ async function prepareCompiledPublication(page: Page) {
   await page.getByRole("combobox", { name: "Add author" }).click();
   await page.getByRole("option", { name: "Juan Dela Cruz" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("checkbox", { name: "Environmental Discipline and Stewardship" }).check();
-  await page.getByRole("combobox", { name: "Primary research agenda" }).click();
-  await page.getByRole("option", { name: "Environmental Discipline and Stewardship" }).click();
   await page.getByLabel("Search approved topics").fill("waste");
   await expect(page.getByRole("option", { name: "Waste-material-based concrete paving blocks" })).toBeVisible();
   await page.getByLabel("Search approved topics").press("Enter");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Foreword PDF").setInputFiles({ name: "foreword.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await page.getByLabel("Foreword file").setInputFiles({ name: "foreword.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await page.getByLabel("Study 1 PDF").setInputFiles({ name: "study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Review your publication" })).toBeVisible();

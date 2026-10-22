@@ -63,6 +63,7 @@ logs/
 *.log
 *.exe
 initdb_log.txt
+import
 
 # Local tooling and obsolete planning material
 .claude/
