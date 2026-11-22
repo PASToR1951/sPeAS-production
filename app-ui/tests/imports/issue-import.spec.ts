@@ -297,6 +297,9 @@ test("native complete issue import preserves front matter and serves independent
   });
   const issuePdf = await issueTask.promise, paperPdf = await paperTask.promise;
   expect(issuePdf.numPages).toBe(10);
+  const frontCover = await issuePdf.getPage(1);
+  expect((await frontCover.getTextContent()).items.map((i: any) => i.str).join(" "))
+    .toContain("Synthetic covers.pdf page 1");
   expect(paperPdf.numPages).toBe(3);
   const metadata = await (await anonymous.request.get(
     `/api/public/documents/${batch.items[0].documentId}`,
@@ -317,6 +320,13 @@ test("native complete issue import preserves front matter and serves independent
       "href",
       `/pages/guest-compiled.html?id=${metadata.document.parent_issue.id}`,
     );
+  await publicPage.getByRole("link", { name: /View complete issue/ }).click();
+  await publicPage.getByRole("button", { name: "Read complete issue", exact: true }).click();
+  const reader = publicPage.getByRole("region", { name: "Complete issue reader", exact: true });
+  await expect(reader.getByRole("group", { name: "Text on page 1", exact: true })).toContainText("Synthetic covers.pdf page 1");
+  await expect(publicPage.getByRole("link", { name: "Download cover PDF" })).toHaveCount(0);
+  await reader.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(reader.getByRole("group", { name: "Text on page 2", exact: true })).toContainText("Synthetic issue-main.pdf page 1");
   const first = await paperPdf.getPage(1);
   const last = await paperPdf.getPage(3);
   expect((await first.getTextContent()).items.map((i: any) => i.str).join(" "))

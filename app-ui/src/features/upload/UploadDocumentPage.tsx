@@ -1185,7 +1185,7 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, onAuthorCreat
           {form.coverInspectionStatus === "inspecting" ? <p className="peas-upload-inline-hint" role="status">Reading the cover PDF page count…</p> : null}
           {form.coverInspectionStatus === "ready" && form.coverPageCount ? <div className="peas-cover-page-mapping">
             <div className="peas-form-grid peas-form-grid--two">
-              <PeasField label="Front cover page" fieldKey="compiled.frontCoverPage" required error={errors["compiled.frontCoverPage"]} description="Choose the PDF page used as the front cover.">
+              <PeasField label="Front cover page" fieldKey="compiled.frontCoverPage" required error={errors["compiled.frontCoverPage"]} description="Choose the page that will open the complete issue PDF.">
                 <Select value={form.frontCoverPage} disabled={busy} onValueChange={(value) => { onChange({ ...form, frontCoverPage: value }); onError("compiled.frontCoverPage", value === form.backCoverPage ? "Front and back covers must use different PDF pages." : undefined); onError("compiled.backCoverPage", value === form.backCoverPage ? "Front and back covers must use different PDF pages." : undefined); }}><SelectTrigger aria-label="Front cover page"><SelectValue placeholder="Choose page" /></SelectTrigger><SelectContent>{Array.from({ length: form.coverPageCount }, (_, index) => <SelectItem key={`front-${index + 1}`} value={String(index + 1)}>Page {index + 1}</SelectItem>)}</SelectContent></Select>
               </PeasField>
               <PeasField label="Back cover page" fieldKey="compiled.backCoverPage" required error={errors["compiled.backCoverPage"]} description="Choose the PDF page used as the back cover.">

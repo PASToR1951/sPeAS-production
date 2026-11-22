@@ -30,7 +30,7 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange, onCloseAutoF
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
-  const [selection, setSelection] = useState<CollectionSelection>({ kind: "overview" });
+  const [requestedSelection, setSelection] = useState<CollectionSelection>({ kind: "overview" });
   const [filter, setFilter] = useState("");
   const [contentsOpen, setContentsOpen] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -42,7 +42,11 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange, onCloseAutoF
   const requestId = useRef(0);
   const overviewTabRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLElement>(null);
-  const { output, error: outputError } = useIssueOutput(document?.id ?? 0, manifestVersion, Boolean(document));
+  const { output, error: outputError, loading: outputLoading } = useIssueOutput(document?.id ?? 0, manifestVersion, Boolean(document));
+  const hasCompleteIssue = Boolean(output && !outputError);
+  const selection: CollectionSelection = requestedSelection.kind === "front-cover" && hasCompleteIssue
+    ? { kind: "whole" }
+    : requestedSelection;
 
   const loadManifest = () => {
     if (!document) return;
@@ -75,7 +79,7 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange, onCloseAutoF
     }
   }, [document?.id]);
 
-  useEffect(() => { paneRef.current?.scrollTo(0, 0); }, [selection, editing]);
+  useEffect(() => { paneRef.current?.scrollTo(0, 0); }, [requestedSelection, selection.kind, editing]);
 
   useEffect(() => {
     if (!manifest) return;
@@ -163,7 +167,7 @@ export function CompiledWorkPreviewDialog({ document, onOpenChange, onCloseAutoF
               <div className="peas-compiled-preview-contents__heading"><strong>Contents · {studies.length} {studies.length === 1 ? "paper" : "papers"}</strong></div>
               <label className="peas-compiled-preview-contents__search"><Search aria-hidden="true" /><span className="peas-visually-hidden">Filter studies</span><input type="search" value={filter} onChange={(event) => setFilter(event.currentTarget.value)} placeholder="Title or author" /></label>
               <div className="peas-compiled-preview-contents__tabs" role="tablist" aria-orientation="vertical">
-                {manifest.collection.hasCover ? <CollectionTab tabId="compiled-preview-tab-front-cover" active={selection.kind === "front-cover"} label="Front cover" panelId="compiled-preview-panel" meta={`PDF page ${manifest.collection.frontCoverPage ?? 1}`} icon={<BookCopy aria-hidden="true" />} onClick={() => setSelection({ kind: "front-cover" })} /> : null}
+                {manifest.collection.hasCover && !hasCompleteIssue && (!outputLoading || selection.kind === "front-cover") ? <CollectionTab tabId="compiled-preview-tab-front-cover" active={selection.kind === "front-cover"} label="Front cover" panelId="compiled-preview-panel" meta={`PDF page ${manifest.collection.frontCoverPage ?? 1}`} icon={<BookCopy aria-hidden="true" />} onClick={() => setSelection({ kind: "front-cover" })} /> : null}
                 <CollectionTab ref={overviewTabRef} tabId="compiled-preview-tab-overview" active={selection.kind === "overview"} label="Collection overview" panelId="compiled-preview-panel" icon={<FolderOpen aria-hidden="true" />} onClick={() => setSelection({ kind: "overview" })} />
                 <CollectionTab tabId="compiled-preview-tab-whole" active={selection.kind === "whole"} label="Whole issue" panelId="compiled-preview-panel" meta={output ? `${output.pages} pages` : "PDF unavailable"} icon={<BookOpen aria-hidden="true" />} onClick={() => setSelection({ kind: "whole" })} />
                 {manifest.collection.hasForeword ? <CollectionTab tabId="compiled-preview-tab-foreword" active={selection.kind === "foreword"} label="Collection foreword" panelId="compiled-preview-panel" icon={<BookOpen aria-hidden="true" />} onClick={() => setSelection({ kind: "foreword" })} /> : null}
@@ -203,7 +207,7 @@ const CollectionTab = forwardRef<HTMLButtonElement, { tabId: string; panelId: st
 function CollectionOverview({ manifest }: { manifest: CompiledPreviewManifest }) {
   const { collection } = manifest;
   const details = [collection.volume ? `Volume ${collection.volume}` : null, collection.issue ? `Issue ${collection.issue}` : null, collection.startYear ? `${collection.startYear}${collection.endYear ? `–${collection.endYear}` : ""}` : null, collection.department].filter(Boolean);
-  return <div className="peas-compiled-preview-overview"><div className="peas-compiled-preview-overview__icon"><FolderOpen aria-hidden="true" /></div><p className="peas-compiled-preview-overview__eyebrow">{collection.category} collection</p><h2>{collection.title}</h2><div className="peas-compiled-preview-overview__details">{details.map((detail) => <span key={detail}>{detail}</span>)}<span>{collection.childCount} {collection.childCount === 1 ? "study" : "studies"}</span></div><div className="peas-compiled-preview-overview__summary"><h3>Collection overview</h3><p>{collection.overview || "No collection overview is available for this record."}</p></div><ClassificationSummary collection={collection} />{collection.childCount ? <p className="peas-compiled-preview-overview__hint">Choose a cover, foreword, or study from the contents to open its PDF.</p> : <p className="peas-compiled-preview-overview__hint">No studies have been added to this collection.</p>}</div>;
+  return <div className="peas-compiled-preview-overview"><div className="peas-compiled-preview-overview__icon"><FolderOpen aria-hidden="true" /></div><p className="peas-compiled-preview-overview__eyebrow">{collection.category} collection</p><h2>{collection.title}</h2><div className="peas-compiled-preview-overview__details">{details.map((detail) => <span key={detail}>{detail}</span>)}<span>{collection.childCount} {collection.childCount === 1 ? "study" : "studies"}</span></div><div className="peas-compiled-preview-overview__summary"><h3>Collection overview</h3><p>{collection.overview || "No collection overview is available for this record."}</p></div><ClassificationSummary collection={collection} />{collection.childCount ? <p className="peas-compiled-preview-overview__hint">Choose a section or paper from the contents to open its PDF.</p> : <p className="peas-compiled-preview-overview__hint">No studies have been added to this collection.</p>}</div>;
 }
 
 function ClassificationSummary({ collection }: { collection: CompiledPreviewManifest["collection"] }) {

@@ -22,6 +22,7 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
   const features = useDocumentPreparationFeatures();
   const classification = classificationOf(record);
   const period = collectionPeriodOf(record);
+  const completeIssueAvailable = record.complete_download_available === true;
   const [query, setQuery] = useState("");
   const [readingIssue, setReadingIssue] = useState(false);
   const [readerError, setReaderError] = useState("");
@@ -32,7 +33,7 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
       <h1>{titleOf(record)}</h1>
       {period ? <div className="peas-document-hero__meta"><span className="peas-document-hero__date"><CalendarDays aria-hidden="true" /> {period}</span></div> : null}
       <p>{record.issue_number ? `Issue ${record.issue_number} · ` : ""}{record.department ? `${record.department} · ` : ""}{children.length} research {children.length === 1 ? "paper" : "papers"}</p>
-      {record.complete_download_available === true ? <div className="peas-issue-actions"><button className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" onClick={() => { setReadingIssue(!readingIssue); setReaderError(""); }}><BookOpen aria-hidden="true" />{readingIssue ? "Close complete issue" : "Read complete issue"}</button><a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-default" href={`/api/public/compiled-documents/${encodeURIComponent(id)}/complete/download`}><Download aria-hidden="true" />Download complete issue (PDF)</a></div> : <p>The complete issue PDF is currently unavailable. Available paper downloads are listed below.</p>}
+      {completeIssueAvailable ? <div className="peas-issue-actions"><button className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" onClick={() => { setReadingIssue(!readingIssue); setReaderError(""); }}><BookOpen aria-hidden="true" />{readingIssue ? "Close complete issue" : "Read complete issue"}</button><a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-default" href={`/api/public/compiled-documents/${encodeURIComponent(id)}/complete/download`}><Download aria-hidden="true" />Download complete issue (PDF)</a></div> : <p>The complete issue PDF is currently unavailable. Available paper downloads are listed below.</p>}
     </header>
     {readingIssue ? <section className="peas-document-access-popup" aria-label="Complete issue reader">{readerError ? <p role="alert">{readerError}<button onClick={() => setReaderError("")}>Retry complete issue</button></p> : <SimplePdfReader onLoaded={() => {}} title="Complete issue" url={`/api/public/compiled-documents/${encodeURIComponent(id)}/complete/inline`} onError={() => setReaderError("The complete issue could not be opened. Your place in the contents is preserved.")} />}</section> : null}
     <section className="peas-document-abstract">
@@ -45,12 +46,11 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
     </div>
     <div className="peas-document-layout">
       <article>
-        <CollectionCoverPanel
+        {!completeIssueAvailable && record.cover_download_available === true ? <CollectionCoverPanel
           id={id}
-          available={record.cover_download_available === true}
           frontPage={positivePage(record.front_cover_page)}
           backPage={positivePage(record.back_cover_page)}
-        />
+        /> : null}
         <CollectionForewordPanel id={id} available={record.foreword_download_available === true} />
         {features.volumeReader ? <VolumeContentsReader id={String(record.id || id)} /> : null}
         <section aria-labelledby="compiled-publication-contents-title">
@@ -122,8 +122,7 @@ function CollectionForewordPanel({ id, available }: { id: string; available: boo
   </section>;
 }
 
-function CollectionCoverPanel({ id, available, frontPage, backPage }: { id: string; available: boolean; frontPage: number | null; backPage: number | null }) {
-  if (!available) return null;
+function CollectionCoverPanel({ id, frontPage, backPage }: { id: string; frontPage: number | null; backPage: number | null }) {
   const mapping = frontPage && backPage ? `Page ${frontPage} is the front cover and page ${backPage} is the back cover.` : "The publication cover PDF is available.";
   return <section className="peas-document-access-popup" aria-labelledby="collection-cover-title">
     <header><div><BookCopy aria-hidden="true" /><h2 id="collection-cover-title">Publication covers</h2></div></header>

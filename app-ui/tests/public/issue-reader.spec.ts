@@ -132,6 +132,7 @@ test("unavailable complete output preserves the table of contents", async ({ pag
           public_id: issue,
           title: "Synergy issue",
           complete_download_available: false,
+          cover_download_available: true,
         },
       }),
   );
@@ -139,6 +140,8 @@ test("unavailable complete output preserves the table of contents", async ({ pag
   await expect(
     page.getByRole("link", { name: "Download complete issue (PDF)" }),
   ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download cover PDF" }))
+    .toHaveAttribute("href", `/api/public/compiled-documents/${issue}/cover/download`);
   await expect(
     page.getByText(
       "The complete issue PDF is currently unavailable. Available paper downloads are listed below.",

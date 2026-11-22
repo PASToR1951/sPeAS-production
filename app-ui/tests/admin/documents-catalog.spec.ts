@@ -536,6 +536,11 @@ test("compiled view opens a collection manifest without treating the parent as a
     return route.fulfill({ status: 404, json: { error: "Parent is not a study PDF" } });
   });
   await page.route("**/api/compiled-documents/3/cover?*", (route) => route.fulfill({ status: 200, contentType: "application/pdf", body: createEmptyPdf(3) }));
+  let completeIssuePrepared = false;
+  await page.route("**/api/compiled-documents/3/complete", (route) => route.fulfill({
+    json: completeIssuePrepared ? { fingerprint: "compiled-issue", sha256: "issue-pdf", pages: 5, reviewed: true } : null,
+  }));
+  await page.route("**/api/compiled-documents/3/complete/inline", (route) => route.fulfill({ contentType: "application/pdf", body: createEmptyPdf(5) }));
   await page.route("**/api/documents/31/download*", (route) => route.fulfill({ status: 200, contentType: "application/pdf", body: createSinglePagePdf() }));
 
   await page.goto("/admin/Components/documents_list.html");
@@ -551,6 +556,16 @@ test("compiled view opens a collection manifest without treating the parent as a
   await dialog.getByRole("tab", { name: /Front cover/ }).click();
   await expect(dialog.getByRole("heading", { name: "Front cover" })).toBeVisible();
   await expect(dialog.getByRole("spinbutton", { name: "Page number" })).toHaveValue("2");
+
+  completeIssuePrepared = true;
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("peas:issue-output-changed", { detail: 3 })));
+  await expect(dialog.getByRole("tab", { name: /Front cover/ })).toHaveCount(0);
+  await expect(dialog.getByRole("tab", { name: /Whole issue/ })).toHaveAttribute("aria-selected", "true");
+  const issuePage = dialog.getByRole("spinbutton", { name: "Page number" });
+  await expect(issuePage).toHaveAttribute("max", "5");
+  await expect(issuePage).toHaveValue("1");
+  await dialog.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(issuePage).toHaveValue("2");
   await dialog.getByRole("tab", { name: /Back cover/ }).click();
   await expect(dialog.getByRole("spinbutton", { name: "Page number" })).toHaveValue("3");
 
