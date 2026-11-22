@@ -47,6 +47,10 @@ export function PublicAuthorPage() {
 }
 
 function AuthorProfileContent({ profile }: { profile: PublicAuthorProfile }) {
+  useEffect(() => {
+    document.title = `${profile.author.fullName} | PeAS`;
+  }, [profile.author.fullName]);
+
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sort, setSort] = useState<WorksSort>("newest");
   const [biographyExpanded, setBiographyExpanded] = useState(false);
@@ -119,7 +123,7 @@ function AuthorProfileContent({ profile }: { profile: PublicAuthorProfile }) {
 
 function AuthorWorkCard({ work }: { work: PublicAuthorProfile["works"][number] }) {
   const base = work.recordType === "compiled" ? "guest-compiled" : "guest-single";
-  const documentHref = `/pages/${base}.html?id=${encodeURIComponent(String(work.id))}`;
+  const documentHref = `/pages/${base}.html?id=${encodeURIComponent(work.publicId || String(work.id))}`;
   return <article className={`peas-author-work-card peas-category-tone-${getCategoryMeta(work.category).tone}`}>
     <div className="peas-author-work-card__topline"><span>{work.category}</span>{formatWorkDate(work) ? <small><CalendarDays aria-hidden="true" /> {formatWorkDate(work)}</small> : null}</div>
     <h3>{work.title}</h3>

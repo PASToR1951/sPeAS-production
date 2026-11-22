@@ -43,6 +43,7 @@ export interface PublicAuthorProfile {
   publicationsByYear: Array<{ year: number; worksCount: number }>;
   works: Array<{
     id: number;
+    publicId?: string;
     recordType: "document" | "compiled";
     title: string;
     category: string;
@@ -104,7 +105,7 @@ export async function fetchAuthors(filters: { search?: string; department?: stri
   if (filters.affiliation?.trim()) params.set("affiliation", filters.affiliation.trim());
   const query = params.toString();
   const endpoint = query ? `/api/authors/all?${query}` : "/api/authors/all";
-  const payload = await apiFetch<AdminAuthorsResponse>(endpoint);
+  const payload = await apiFetch<AdminAuthorsResponse>(endpoint, { cache: "no-store" });
   return payload.authors.map(normalizeAuthor);
 }
 
@@ -137,7 +138,7 @@ export function deleteAffiliation(id: number) {
 }
 
 export function fetchDocumentAuthors(documentId: number) {
-  return apiFetch<AdminDocumentAuthorsResponse>(`/api/document-authors/${documentId}`);
+  return apiFetch<AdminDocumentAuthorsResponse>(`/api/document-authors/${documentId}`, { cache: "no-store" });
 }
 
 export async function fetchAuthorWorks(authorId: string | number): Promise<AuthorWorkRecord[]> {

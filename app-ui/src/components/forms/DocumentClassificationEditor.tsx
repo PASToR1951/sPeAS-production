@@ -27,6 +27,8 @@ export function DocumentClassificationEditor({
   const [topicQuery, setTopicQuery] = useState("");
   const [topicMatches, setTopicMatches] = useState<Array<{ id: number; name: string; status?: string }>>([]);
   const [topicBusy, setTopicBusy] = useState(false);
+  const [topicLookup,setTopicLookup]=useState<string|null>(null);
+  const lookupReady=topicLookup===topicQuery.trim()&&!topicBusy;
   const [keywordDraft, setKeywordDraft] = useState("");
 
   useEffect(() => {
@@ -37,14 +39,16 @@ export function DocumentClassificationEditor({
       return;
     }
     let active = true;
+    setTopicBusy(true);
+    setTopicLookup(null);
+    setTopicMatches([]);
     const timer = window.setTimeout(() => {
-      setTopicBusy(true);
       void searchTopics(query)
         .then((matches) => {
-          if (active) setTopicMatches(matches);
+          if (active) {setTopicMatches(matches);setTopicLookup(query);}
         })
         .catch(() => {
-          if (active) setTopicMatches([]);
+          if (active) {setTopicMatches([]);setTopicLookup(null);}
         })
         .finally(() => {
           if (active) setTopicBusy(false);
@@ -65,7 +69,7 @@ export function DocumentClassificationEditor({
 
   async function createCurrentTopic() {
     const name = topicQuery.trim();
-    if (name.length < 2 || value.topicIds.length >= 5) return;
+    if (!lookupReady || topicMatches.length || name.length < 2 || value.topicIds.length >= 5) return;
     setTopicBusy(true);
     try {
       const topic = await createTopic(name);
@@ -90,8 +94,8 @@ export function DocumentClassificationEditor({
       <p>Reusable subject headings. Select an existing topic or add a new one immediately.</p>
       {value.topicNames.length ? <div className="peas-keyword-input__badges" role="list" aria-label="Selected topics">{value.topicNames.map((name, index) => <Badge key={`${name}-${index}`} tone="blue" role="listitem">{name}<button className="peas-classification-editor__remove" type="button" aria-label={`Remove topic ${name}`} disabled={disabled} onClick={() => onChange({ ...value, topicIds: value.topicIds.filter((_, itemIndex) => itemIndex !== index), topicNames: value.topicNames.filter((_, itemIndex) => itemIndex !== index) })}><X aria-hidden="true" /></button></Badge>)}</div> : null}
       <div className="peas-document-tag-editor__input">
-        <Input id={`${idPrefix}-topic-search`} aria-label="Search or add topics" value={topicQuery} disabled={disabled || value.topicIds.length >= 5} placeholder="Search or add topics…" onChange={(event) => setTopicQuery(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (topicMatches[0]) addTopic(topicMatches[0].id, topicMatches[0].name); else void createCurrentTopic(); } }} />
-        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Topic suggestions">{topicBusy ? <span>Searching topics…</span> : topicMatches.map((topic) => <button type="button" role="option" key={topic.id} onMouseDown={(event) => { event.preventDefault(); addTopic(topic.id, topic.name); }}>{topic.name}</button>)}{!topicBusy && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void createCurrentTopic(); }}>Add “{topicQuery.trim()}”</button> : null}</div> : null}
+        <Input id={`${idPrefix}-topic-search`} aria-label="Search or add topics" value={topicQuery} disabled={disabled || value.topicIds.length >= 5} placeholder="Search or add topics…" onChange={(event) => setTopicQuery(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if(!lookupReady)return; if (topicMatches[0]) addTopic(topicMatches[0].id, topicMatches[0].name); else void createCurrentTopic(); } }} />
+        {topicQuery.trim().length >= 2 ? <div className="peas-document-tag-editor__suggestions" role="listbox" aria-label="Topic suggestions">{!lookupReady ? <span>{topicBusy?"Searching topics…":"Search unavailable. Try again."}</span> : topicMatches.map((topic) => <button type="button" role="option" key={topic.id} onMouseDown={(event) => { event.preventDefault(); addTopic(topic.id, topic.name); }}>{topic.name}</button>)}{lookupReady && !topicMatches.length ? <button type="button" onMouseDown={(event) => { event.preventDefault(); void createCurrentTopic(); }}>Add “{topicQuery.trim()}”</button> : null}</div> : null}
       </div>
     </fieldset>
 

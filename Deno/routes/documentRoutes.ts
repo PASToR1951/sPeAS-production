@@ -11,7 +11,7 @@ import {
 import { DocumentModel } from "../models/documentModel.ts";
 import { getSessionFromHeaders } from "../utils/sessionUtils.ts";
 import { isAuthenticated, isAdmin, requireCapability } from "../middleware/authMiddleware.ts";
-import { client } from "../db/denopost_conn.ts";
+import { client, withTransaction } from "../db/denopost_conn.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
 import { canViewDocument } from "../services/contentAuthorizationService.ts";
 import { getDocumentClassification } from "../services/documentClassificationService.ts";
@@ -20,6 +20,10 @@ import { recordRepositoryActivity } from "../services/operationalReportingServic
 import { applyPublicPdfHeaders, isStoredPdfAvailable, publicPdfFileName, readStoredPdf } from "../services/publicPdfService.ts";
 import { toPublicAuthorReference } from "../services/authorProjectionService.ts";
 import { clientIpFromContext } from "../utils/clientIp.ts";
+import { paperPrintedPages, publicIssueContext } from "../services/issueRenditionService.ts";
+import { resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
+import { servePdfRange } from "../services/pdfRangeService.ts";
+import { bindUploadReview, getUploadJob, uploadPublicationHold } from "../services/uploadReviewService.ts";
 
 const DOCUMENT_FILE_FIELD_NAMES = new Set([
     "file_path",
@@ -300,6 +304,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
             document: {
                 doc_id: document.id, // Map id to doc_id to match frontend expectations
                 id: document.id,
+                public_id: document.public_id,
                 title: document.title || "Untitled Document",
                 author: authorText,
                 abstract: document.abstract || "",
@@ -313,6 +318,8 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 date_uploaded: document.created_at,
                 editor: document.editor || null,
+                parent_issue: await publicIssueContext(numericId),
+                printed_page_range: await paperPrintedPages(numericId),
                 download_available: await isStoredPdfAvailable(document.file_path)
                 // Note: Not including sensitive fields like file_path
             } as DocumentResult
@@ -330,6 +337,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
                     const processedDocuments = [];
                     
                     for (const doc of containedDocuments) {
+                        if (!await canViewDocument(undefined, doc.id)) continue;
                         // Get authors for this contained document
                         let childAuthorText = "";
                         try {
@@ -359,6 +367,7 @@ const getGuestDocumentById = async (ctx: RouterContext<any, any, any>) => {
                         processedDocuments.push({
                             doc_id: doc.id,
                             id: doc.id,
+                            public_id: doc.public_id,
                             title: doc.title || "Untitled Document",
                             author: childAuthorText,
                             abstract: doc.abstract || "",
@@ -414,6 +423,15 @@ const downloadPublicDocument = async (ctx: RouterContext<any, any, any>) => {
     ctx.response.status = 200;
     ctx.response.body = pdf.bytes;
     await recordRepositoryActivity({ recordType: "document", recordId: numericId, audience: "guest", action: "download" }).catch(() => undefined);
+};
+
+const readPublicPaper = async (ctx: RouterContext<any, any, any>) => {
+    const id = Number(ctx.params.id);
+    if (!await canViewDocument(undefined, id)) { ctx.response.status = 404; ctx.response.body = { error: "Paper not found" }; return; }
+    const row = (await client.queryObject<{ file_path: string }>("SELECT file_path FROM documents WHERE id=$1", [id])).rows[0];
+    const path = resolveStoredPdfPath(row?.file_path);
+    if (!path || !await isStoredPdfAvailable(row?.file_path)) { ctx.response.status = 404; ctx.response.body = { error: "Paper PDF unavailable" }; return; }
+    await servePdfRange(ctx, path);
 };
 
 // Document authors handler - returns author information for a document
@@ -548,6 +566,7 @@ const getPublicDocumentById = async (ctx: RouterContext<any, any, any>) => {
             document: {
                 doc_id: document.id,
                 id: document.id,
+                public_id: document.public_id,
                 title: document.title || "Untitled Document",
                 author: authorText,
                 abstract: document.abstract || "",
@@ -561,6 +580,8 @@ const getPublicDocumentById = async (ctx: RouterContext<any, any, any>) => {
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 date_uploaded: document.created_at,
                 editor: document.editor || null,
+                parent_issue: await publicIssueContext(numericId),
+                printed_page_range: await paperPrintedPages(numericId),
                 download_available: await isStoredPdfAvailable(document.file_path)
             }
         };
@@ -580,56 +601,90 @@ const getPublicDocumentById = async (ctx: RouterContext<any, any, any>) => {
 
 // Document Creation
 const createDocument = async (ctx: RouterContext<any, any, any>) => {
-    const bodyParser = await ctx.request.body({type: "json"});
+    const bodyParser = await ctx.request.body({ type: "json" });
     const body = await bodyParser.value;
     const actorId = String(ctx.state.user.id);
     const actorRole = String(ctx.state.user.role);
 
-    body.uploaded_by = actorId;
-    body.classificationActorRole = actorRole;
-    if (actorRole === "publisher") {
-        body.is_public = false;
-        body.review_status = "pending_review";
-        body.reviewed_by = null;
-        body.reviewed_at = null;
-    } else {
-        body.review_status = body.review_status === "pending_review" ? "pending_review" : "approved";
-        if (body.review_status === "approved") {
-            body.reviewed_by = actorId;
-            body.reviewed_at = new Date().toISOString();
+    const execute = async () => {
+        body.uploaded_by = actorId;
+        body.classificationActorRole = actorRole;
+        if (body.upload_job_id) {
+            const job = await getUploadJob(String(body.upload_job_id), actorId);
+            if (job.documentId) {
+                ctx.response.status = 200;
+                ctx.response.body = await DocumentModel.getById(job.documentId);
+                return;
+            }
+            if (job.state !== "ready" || job.result?.filePath !== body.file_path) {
+                ctx.response.status = 409;
+                ctx.response.body = { error: "Prepare the current files before saving this record." };
+                return;
+            }
+            body.is_public = false;
+            body.review_status = "pending_review";
         }
-    }
-    
-    // Convert context to Request
-    const request = new Request(ctx.request.url.toString(), {
-        method: "POST",
-        headers: ctx.request.headers,
-        body: JSON.stringify(body)
-    });
-    
-    const response = await handleCreateDocument(request);
-    
-    // Convert Response back to context
-    ctx.response.status = response.status;
-    ctx.response.headers = response.headers;
-    const responseBody = await response.json();
-    ctx.response.body = responseBody;
+        if (actorRole === "publisher") {
+            body.is_public = false;
+            body.review_status = "pending_review";
+            body.reviewed_by = null;
+            body.reviewed_at = null;
+        } else {
+            body.review_status = body.review_status === "pending_review" ? "pending_review" : "approved";
+            if (body.review_status === "approved") {
+                body.reviewed_by = actorId;
+                body.reviewed_at = new Date().toISOString();
+            }
+        }
 
-    if (response.ok && responseBody?.id) {
-        await SystemLogsModel.createLog({
-            log_type: "document",
-            user_id: actorId,
-            username: actorId,
-            action: actorRole === "publisher" ? "document_submitted_for_review" : "document_created",
-            details: {
-                role: actorRole,
-                title: body.title,
-                documentType: body.document_type,
-                reviewStatus: body.review_status,
-            },
-            related_id: String(responseBody.id),
-        }).catch(() => undefined);
-    }
+        // Convert context to Request
+        const request = new Request(ctx.request.url.toString(), {
+            method: "POST",
+            headers: ctx.request.headers,
+            body: JSON.stringify(body),
+        });
+
+        const response = await handleCreateDocument(request);
+
+        // Convert Response back to context
+        ctx.response.status = response.status;
+        ctx.response.headers = response.headers;
+        const responseBody = await response.json();
+        ctx.response.body = responseBody;
+
+        if (response.ok && responseBody?.id) {
+            if (body.upload_job_id) {
+                await bindUploadReview(
+                    String(body.upload_job_id),
+                    actorId,
+                    Number(responseBody.id),
+                    body.file_path,
+                );
+            }
+            await SystemLogsModel.createLog({
+                log_type: "document",
+                user_id: actorId,
+                username: actorId,
+                action: actorRole === "publisher" ? "document_submitted_for_review" : "document_created",
+                details: {
+                    role: actorRole,
+                    title: body.title,
+                    documentType: body.document_type,
+                    reviewStatus: body.review_status,
+                },
+                related_id: String(responseBody.id),
+            }).catch(() => undefined);
+        }
+    };
+    const keys = ([body.upload_job_id].filter(Boolean) || []).map(String).sort();
+    if (keys.length) {
+        await withTransaction(async (connection) => {
+            for (const key of keys) {
+                await connection.queryArray("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [key]);
+            }
+            await execute();
+        });
+    } else await execute();
 };
 
 const reviewDocument = async (ctx: RouterContext<any, any, any>) => {
@@ -659,6 +714,10 @@ const reviewDocument = async (ctx: RouterContext<any, any, any>) => {
     }
 
     const publish = decision === "approved" && body.publish === true;
+    if (decision === "approved") {
+        const hold=await uploadPublicationHold(id);
+        if (hold) { ctx.response.status=422; ctx.response.body={error:hold}; return; }
+    }
     if (decision === "approved") {
         const importWorkspace = await client.queryObject<{ id: string }>(
             "SELECT b.id FROM import_batches b JOIN import_items i ON i.batch_id=b.id WHERE i.document_id=$1 AND b.status='draft' LIMIT 1", [id]);
@@ -919,11 +978,15 @@ const downloadDocument = async (ctx: RouterContext<any, any, any>) => {
             return;
         }
         
-        // Get file name for the content-disposition header
-        const fileName = filePath.split("/").pop() || `document-${id}`;
+        const document = (await client.queryObject<{ title: string | null }>(
+            "SELECT title FROM documents WHERE id=$1 AND deleted_at IS NULL", [numericId]
+        )).rows[0];
+        // Storage paths (including Windows separators) stay internal.
+        const fileExt = filePath.split('.').pop()?.toLowerCase() || '';
+        const safeExtension = /^[a-z0-9]{1,8}$/.test(fileExt) ? fileExt : 'bin';
+        const fileName = publicPdfFileName(document?.title, `document-${numericId}`).replace(/\.pdf$/, `.${safeExtension}`);
         
         // Determine content type based on file extension
-        const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
         let contentType = 'application/octet-stream';
         
         if (fileExt === 'pdf') {
@@ -946,6 +1009,7 @@ const downloadDocument = async (ctx: RouterContext<any, any, any>) => {
         ctx.response.headers.set("Content-Disposition", `${disposition}; filename="${fileName}"`);
         ctx.response.headers.set("Content-Type", contentType);
         ctx.response.headers.set("Cache-Control", "no-store");
+        ctx.response.headers.set("X-Content-Type-Options", "nosniff");
         
         // Stream the file
         const fileContent = await Deno.readFile(filePath);
@@ -1199,5 +1263,6 @@ export const documentRoutes: Route[] = [
     { method: "GET", path: "/public/documents/:id", handler: getPublicDocumentById },
     { method: "GET", path: "/public/documents/:id/authors", handler: getDocumentAuthorsById },
     { method: "GET", path: "/public/documents/:id/download", handler: downloadPublicDocument },
+    { method: "GET", path: "/public/documents/:id/inline", handler: readPublicPaper },
     { method: "GET", path: "/documents/:id/verify-file", handler: verifyDocumentFile, middleware: [isAuthenticated, isAdmin] }
 ];

@@ -2,6 +2,9 @@ import { Router } from "../deps.ts";
 import { isAuthenticated, requireCapability } from "../middleware/authMiddleware.ts";
 import { AbstractWorkerUnavailableError, getAbstractWorkerDiagnostics, applyAbstractReview, listAbstractReviews, retryAbstractReview } from "../services/abstractReviewService.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
+import { client } from "../db/denopost_conn.ts";
+import { resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
+import { servePdfRange } from "../services/pdfRangeService.ts";
 
 const router = new Router();
 const requireReview = requireCapability("documents:review");
@@ -33,6 +36,14 @@ router.get("/api/admin/abstract-reviews/diagnostics", isAuthenticated, requireRe
 
 for (const target of ["document", "compiled-foreword"] as const) {
   const targetType = target === "document" ? "document" : "compiled_foreword";
+  router.get(`/api/admin/abstract-reviews/${target}/:id/source`,isAuthenticated,requireReview,async ctx=>{
+    const id=Number(ctx.params.id);
+    if(!Number.isSafeInteger(id)||id<=0){ctx.response.status=400;return;}
+    const row=(await client.queryObject<{file_path:string}>(target==="document"?"SELECT file_path FROM documents WHERE id=$1 AND deleted_at IS NULL":"SELECT foreword AS file_path FROM compiled_documents WHERE id=$1 AND deleted_at IS NULL",[id])).rows[0];
+    const path=row?.file_path?resolveStoredPdfPath(row.file_path):null;
+    if(!path){ctx.response.status=404;return;}
+    await servePdfRange(ctx,path);
+  });
   router.put(`/api/admin/abstract-reviews/${target}/:id`, isAuthenticated, requireReview, async (ctx) => {
     const targetId = Number(ctx.params.id);
     if (!Number.isSafeInteger(targetId) || targetId <= 0) {

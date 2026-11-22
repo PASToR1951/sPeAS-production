@@ -24,6 +24,8 @@ import {
   stagingPath,
 } from "./importStorageService.ts";
 import { inspectImportPdf } from "./importPdfService.ts";
+import { DOCUMENT_MAX_BYTES, DOCUMENT_MAX_FILES } from "../../shared/documentFormats.ts";
+import { checkedRetainedImportPath } from "./retainedImportService.ts";
 import {
   readImportCatalog,
   validateOfficeZip,
@@ -63,6 +65,7 @@ export function itemDto(r: Row): ImportItem {
     pageCount: r.page_count,
     pageMapping: r.page_mapping,
     abstractCandidate: r.abstract_candidate,
+    abstractDiagnostics: r.abstract_diagnostics,
     documentId: r.document_id,
     error: r.error,
   };
@@ -113,7 +116,10 @@ export async function createImportBatch(
 }
 export async function listImportBatches(owner: string) {
   return (await client.queryObject(
-    "SELECT id,mode,status,created_at,expires_at FROM import_batches WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100",
+    `SELECT b.id,b.mode,b.status,b.created_at,b.expires_at,
+      (SELECT count(*)::int FROM import_items i WHERE i.batch_id=b.id AND i.state<>'ignored' AND i.document_id IS NOT NULL) AS "committedPapers",
+      (SELECT count(*)::int FROM import_items i WHERE i.batch_id=b.id AND i.state<>'ignored') AS "includedPapers"
+      FROM import_batches b WHERE b.owner_id=$1 ORDER BY b.created_at DESC LIMIT 100`,
     [owner],
   )).rows;
 }
@@ -134,6 +140,8 @@ export async function getImportBatch(
   ]);
   return {
     id,
+    revisionTarget: (await client.queryObject<Row>("SELECT compiled_document_id,base_fingerprint,published_at FROM issue_revisions WHERE batch_id=$1", [id])).rows.map(r => ({ id: Number(r.compiled_document_id), baseFingerprint: String(r.base_fingerprint), published: !!r.published_at }))[0] ?? null,
+    jobs: (await client.queryObject<Row>("SELECT id,item_id,status,progress,coalesce(heartbeat_at,created_at) AS updated_at FROM import_jobs WHERE batch_id=$1 ORDER BY created_at DESC LIMIT 500",[id])).rows.map(j=>({id:String(j.id),itemId:j.item_id,status:j.status,progress:j.progress,updatedAt:String(j.updated_at)})),
     mode: batch.mode,
     status: batch.status,
     revision: batch.revision,
@@ -324,9 +332,11 @@ export async function updateImportItem(
       new Set(recipe.parts.map((p: any) => p.assetId)).size !==
         recipe.parts.length
     ) throw new ImportError("Invalid preparation recipe");
+    let groupBytes = 0;
+    if (recipe.parts.filter((p: PreparationRecipe["parts"][number]) => p.included).length > DOCUMENT_MAX_FILES) throw new ImportError("A paper preparation group supports up to 20 files.", 413);
     for (const part of recipe.parts) {
       const asset = (await connection.queryObject<Row>(
-        "SELECT kind FROM import_assets WHERE id=$1 AND batch_id=$2",
+        "SELECT kind,size FROM import_assets WHERE id=$1 AND batch_id=$2",
         [part.assetId, batchId],
       )).rows[0];
       if (
@@ -334,12 +344,14 @@ export async function updateImportItem(
         typeof part.included !== "boolean" || typeof part.role !== "string" ||
         part.role.length > 100
       ) throw new ImportError("Recipe contains an unavailable source");
+      if (part.included) groupBytes += Number(asset.size);
       for (const p of [part.firstPage, part.lastPage]) {
         if (p !== undefined && (!Number.isSafeInteger(p) || p < 1)) {
           throw new ImportError("Page numbers must be positive integers");
         }
       }
     }
+    if (groupBytes > DOCUMENT_MAX_BYTES) throw new ImportError("A paper preparation group supports 100 MB combined.", 413);
     const mc = JSON.stringify(metadata) !== JSON.stringify(r.metadata),
       rc = JSON.stringify(recipe) !== JSON.stringify(r.recipe);
     const review: RenditionReview = { ...r.review };
@@ -349,9 +361,10 @@ export async function updateImportItem(
       delete review.abstractAction;
       delete review.abstractText;
       delete review.componentHashes;
+      delete review.extractionSnapshot;
     }
     const row = (await connection.queryObject<Row>(
-      "UPDATE import_items SET metadata=$3,recipe=$4,review=$5,revision=revision+1,metadata_revision=metadata_revision+$6,recipe_revision=recipe_revision+$7,final_path=CASE WHEN $8 THEN NULL ELSE final_path END,final_sha256=CASE WHEN $8 THEN NULL ELSE final_sha256 END,abstract_candidate=CASE WHEN $8 THEN NULL ELSE abstract_candidate END,state=$9,error=NULL WHERE id=$1 AND batch_id=$2 RETURNING *",
+      "UPDATE import_items SET metadata=$3,recipe=$4,review=$5,revision=revision+1,metadata_revision=metadata_revision+$6,recipe_revision=recipe_revision+$7,final_path=CASE WHEN $8 THEN NULL ELSE final_path END,final_sha256=CASE WHEN $8 THEN NULL ELSE final_sha256 END,abstract_candidate=CASE WHEN $8 THEN NULL ELSE abstract_candidate END,abstract_diagnostics=CASE WHEN $8 THEN '{}'::jsonb ELSE abstract_diagnostics END,state=$9,error=NULL WHERE id=$1 AND batch_id=$2 RETURNING *",
       [
         itemId,
         batchId,
@@ -361,7 +374,7 @@ export async function updateImportItem(
         mc ? 1 : 0,
         rc ? 1 : 0,
         rc,
-        input.ignored ? "ignored" : "draft",
+        input.ignored ? "ignored" : !rc && r.state === "preparing" ? "preparing" : "draft",
       ],
     )).rows[0];
     if (rc || input.ignored) {
@@ -477,6 +490,7 @@ export async function reviewImportItem(
       pdfSha256: r.final_sha256,
       componentHashes: components,
       abstractAction: input.abstractAction,
+      extractionSnapshot: { candidate: r.abstract_candidate, diagnostics: r.abstract_diagnostics ?? {} },
       abstractText,
       reviewedBy: owner,
       reviewedAt: new Date().toISOString(),
@@ -497,14 +511,13 @@ export async function importAssetPath(
   preview: boolean,
 ) {
   const batch = await requireBatch(batchId, owner);
-  if (
-    batch.status === "expired" ||
-    new Date(batch.expires_at).getTime() <= Date.now()
-  ) throw new ImportError("Source retention has expired", 410);
   const asset = (await client.queryObject<Row>(
     "SELECT * FROM import_assets WHERE id=$1 AND batch_id=$2",
     [assetId, batchId],
   )).rows[0];
+  const retained=preview?asset?.retained_preview_path:asset?.retained_source_path;
+  if(retained)return {asset,path:await checkedRetainedImportPath(retained)};
+  if(batch.status==="expired"||new Date(batch.expires_at).getTime()<=Date.now())throw new ImportError("Source retention has expired",410);
   const path = preview ? asset?.preview_path : asset?.source_path;
   if (!path) throw new ImportError("Source preview is not ready", 404);
   return { asset, path: await checkedStagedPath(path) };

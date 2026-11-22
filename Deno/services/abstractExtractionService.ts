@@ -24,6 +24,66 @@ export interface PdfInspection {
   encrypted: boolean;
 }
 
+/** Use OCR only to locate a displaced abstract within one source page.
+ * Both boundaries must be unique and the interior must agree closely. Never
+ * repair individual scientific values by guessing from OCR.
+ */
+export function recoverEmbeddedAbstract(
+  ocr: AbstractCandidate,
+  pages: string[],
+): AbstractCandidate | null {
+  if (!ocr.pageStart || ocr.pageStart !== ocr.pageEnd) return null;
+  const source = pages.slice(ocr.pageStart - 1, ocr.pageEnd).join("\f");
+  const words = (text: string) => [...text.matchAll(/\p{L}[\p{L}\p{M}]*/gu)];
+  const expected = words(ocr.text);
+  const actual = words(source);
+  if (expected.length < 30) return null;
+  // A word anchor cannot establish the boundaries of leading/trailing values.
+  // Keep the flagged OCR candidate instead of silently dropping those values.
+  const expectedLast = expected.at(-1)!;
+  if (/\d/u.test(ocr.text.slice(0, expected[0].index)) ||
+    /\d/u.test(ocr.text.slice(expectedLast.index! + expectedLast[0].length))) return null;
+  const key = (word: RegExpMatchArray) => word[0].normalize("NFKC").toLocaleLowerCase();
+  const boundary = (anchor: RegExpMatchArray[]) => {
+    const matches: number[] = [];
+    for (let i = 0; i <= actual.length - anchor.length; i++) {
+      if (anchor.every((word, j) => key(word) === key(actual[i + j]))) matches.push(i);
+    }
+    return matches.length === 1 ? matches[0] : -1;
+  };
+  const first = boundary(expected.slice(0, 8));
+  const last = boundary(expected.slice(-8));
+  if (first < 0 || last < first) return null;
+  const start = actual[first].index!;
+  const finalWord = actual[last + 7];
+  const end = finalWord.index! + finalWord[0].length;
+  const trailing = source.slice(end).match(/^[.!?\p{Pe}\p{Pf}"']*/u)?.[0] ?? "";
+  const text = source.slice(start, end) + trailing;
+  if (text.length > ABSTRACT_MAX_CHARS) return null;
+  const counts = new Map<string, number>();
+  for (const word of expected) counts.set(key(word), (counts.get(key(word)) ?? 0) + 1);
+  const interior = actual.slice(first, last + 8);
+  let shared = 0;
+  for (const word of interior) {
+    const count = counts.get(key(word)) ?? 0;
+    if (count) { shared++; counts.set(key(word), count - 1); }
+  }
+  if (shared / Math.max(expected.length, interior.length) < 0.9) return null;
+  const candidate = extractAbstractFromText(`Abstract\n${text}\nKeywords:`, "pdf_text").candidate;
+  if (!candidate) return null;
+  const numericSymbols = (value: string) => JSON.stringify(
+    (value.match(/\d+(?:[.,]\d+)*(?:\s*%|\s*(?:lbs?|kg)\b)?|[=<>±−]/gu) ?? []).map(token => token.replace(/\s/gu, "")),
+  );
+  return {
+    ...candidate,
+    confidence: Math.min(candidate.confidence, ocr.confidence),
+    pageStart: ocr.pageStart,
+    pageEnd: ocr.pageEnd,
+    qualityFlags: [...new Set([...candidate.qualityFlags, ...ocr.qualityFlags]), "embedded_reading_order_recovered",
+      ...(numericSymbols(ocr.text) !== numericSymbols(candidate.text) ? ["ocr_numeric_symbol_disagreement"] : [])],
+  };
+}
+
 export const ABSTRACT_MAX_CHARS = 10_000;
 export const ABSTRACT_MAX_TEXT_OUTPUT_BYTES = 20 * 1024 * 1024;
 export const ABSTRACT_EMBEDDED_PAGE_LIMIT = 15;
@@ -31,10 +91,11 @@ export const ABSTRACT_OCR_PAGE_LIMIT = 12;
 export const ABSTRACT_JOB_TIMEOUT_MS = 180_000;
 
 const ABSTRACT_HEADINGS =
-  /^(?:abstract|abstrak|buod|executive\s+summary|summary)\s*[:.\-]?\s*$/iu;
+  /^(?:abstract|abtract|abstarct|a\s+b\s+s\s+t\s+r\s+a\s+c\s+t|abstrak|buod|executive\s+summary|summary)(?:\s*\(continued\))?\s*[:.\-]?\s*$/iu;
 const END_HEADINGS =
-  /^(?:keywords?|key\s+words?|mga\s+susing\s+salita|introduction|background\s+of\s+the\s+study|chapter\s+1|kabanata\s+1)\b/iu;
+  /^(?:keywords?|key\s+words?|mga\s+susing\s+salita|introduction|background\s+of\s+the\s+study|chapter\s+(?:[1-9]\d*|[ivx]+)|kabanata\s+1|table\s+of\s+contents|acknowledg(?:e)?ments?|dedication|references|review\s+of\s+(?:related\s+)?literature)\b/iu;
 const TOC_PATTERN = /(?:\.{3,}|…{2,})\s*\d{1,4}\s*$/u;
+const PAGE_NUMBER_PATTERN = /^(?:\d{1,4}|[ivxlcdm]{1,8})$/iu;
 
 export function normalizePdfText(value: string): string[] {
   return value
@@ -66,6 +127,7 @@ function normalizePage(value: string): string {
     }
     if (
       isStructuralHeading(previous) || isStructuralHeading(line) ||
+      PAGE_NUMBER_PATTERN.test(previous) || PAGE_NUMBER_PATTERN.test(line) ||
       /[.!?:;)]$/u.test(previous) || /^[A-Z][A-Za-z .'-]{1,80}:?$/u.test(line)
     ) {
       paragraphs.push(current);
@@ -96,7 +158,7 @@ export function extractAbstractFromText(
   );
   const pages = normalizedPages.slice(0, ABSTRACT_EMBEDDED_PAGE_LIMIT);
   const headingCandidates: Array<
-    { text: string; page: number; explicitEnd: boolean }
+    { text: string; page: number; pageEnd: number; explicitEnd: boolean; flags: string[] }
   > = [];
 
   pages.forEach((page, pageIndex) => {
@@ -106,24 +168,47 @@ export function extractAbstractFromText(
     for (let index = 0; index < lines.length; index += 1) {
       if (!ABSTRACT_HEADINGS.test(lines[index])) continue;
       const body: string[] = [];
+      const repeatedHeaders = new Set(lines.slice(0,index).map(line=>line.toLocaleLowerCase().replace(/\s+/gu," ")));
       let explicitEnd = false;
-      for (
-        let bodyIndex = index + 1;
-        bodyIndex < lines.length;
-        bodyIndex += 1
-      ) {
-        if (END_HEADINGS.test(lines[bodyIndex])) {
-          explicitEnd = true;
-          break;
+      let pageEnd = pageIndex + 1;
+      const flags: string[] = [];
+      // Bound continuation when a manuscript has no recognizable stop heading.
+      continuation: for (let nextPage = pageIndex; nextPage < Math.min(pages.length, pageIndex + 3); nextPage += 1) {
+        const paragraphs = pages[nextPage].split(/\n{2,}/u).map((line) => line.trim()).filter(Boolean);
+        if (!paragraphs.length) { flags.push("continuation_page_unreadable"); break; }
+        let pageHasBody = false;
+        for (let bodyIndex = nextPage === pageIndex ? index + 1 : 0; bodyIndex < paragraphs.length; bodyIndex += 1) {
+          let paragraph = paragraphs[bodyIndex];
+          if (nextPage > pageIndex && !pageHasBody) {
+            // Normalization can join a repeated uppercase running header to a
+            // long continuation line. Remove only the known header prefix.
+            for (const header of lines.slice(0,index).filter(line => line.length >= 6 && /^[\p{Lu}\d .,'’\-]+$/u.test(line))) {
+              if (paragraph.toLocaleLowerCase().startsWith(`${header.toLocaleLowerCase()} `)) paragraph = paragraph.slice(header.length).trim();
+            }
+          }
+          if(nextPage>pageIndex && (repeatedHeaders.has(paragraph.toLocaleLowerCase().replace(/\s+/gu," ")) || !pageHasBody && PAGE_NUMBER_PATTERN.test(paragraph))) continue;
+          if (nextPage > pageIndex && bodyIndex === 0 && paragraph.length < 90 && !/[.!?]$/u.test(paragraph) && !ABSTRACT_HEADINGS.test(paragraph)) break continuation;
+          if (END_HEADINGS.test(paragraph)) { explicitEnd = true; break continuation; }
+          if (ABSTRACT_HEADINGS.test(paragraph)) {
+            if (nextPage !== pageIndex && /continued/iu.test(paragraph)) continue;
+            break continuation;
+          }
+          body.push(paragraph);
+          pageHasBody = true;
+          pageEnd = nextPage + 1;
+          if (body.join("\n\n").length > ABSTRACT_MAX_CHARS) break continuation;
         }
-        body.push(lines[bodyIndex]);
       }
       const candidateText = body.join("\n\n").trim();
+      if (!explicitEnd) flags.push("ending_not_confirmed");
+      if (candidateText && !/[.!?][\p{Pe}\p{Pf}"']*$/u.test(candidateText)) flags.push("abrupt_ending");
       if (candidateText) {
         headingCandidates.push({
           text: candidateText,
           page: pageIndex + 1,
+          pageEnd,
           explicitEnd,
+          flags,
         });
       }
     }
@@ -147,9 +232,9 @@ export function extractAbstractFromText(
         text: boundCandidate(headingCandidate.text),
         method,
         confidence: headingCandidate.score.confidence,
-        qualityFlags: [...headingCandidate.score.flags, ...pageQualityFlags[headingCandidate.page - 1]],
+        qualityFlags: [...new Set([...headingCandidate.score.flags, ...headingCandidate.flags, ...pageQualityFlags.slice(headingCandidate.page - 1, headingCandidate.pageEnd).flat()])],
         pageStart: headingCandidate.page,
-        pageEnd: headingCandidate.page,
+        pageEnd: headingCandidate.pageEnd,
       },
     };
   }
@@ -204,7 +289,7 @@ export function scoreAbstractCandidate(
   const letters = (nonWhitespace.match(/[\p{L}]/gu) ?? []).length;
   const sentenceCount = (trimmed.match(/[.!?](?:\s|$)/gu) ?? []).length;
   const replacementCount =
-    (trimmed.match(/[\uFFFD\u0000-\u001F]/gu) ?? []).length;
+    (trimmed.match(/[\uFFFD\u0000-\u0008\u000B\u000E-\u001F]/gu) ?? []).length;
   let confidence = 0;
   const flags: string[] = [];
   if (hasHeading) confidence += 0.45;
@@ -273,6 +358,7 @@ export function isResolvedPathWithinRoot(
 }
 
 export function resolveStoredPdfPath(filePath: string): string | null {
+  if (/(?:^|[\\/])private-originals(?:[\\/]|$)/iu.test(filePath)) return null;
   const normalized = filePath.replace(/\\/gu, "/").replace(/^\/+/, "");
   if (!normalized.startsWith("storage/")) return null;
   try {

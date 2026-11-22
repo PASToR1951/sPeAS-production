@@ -10,6 +10,8 @@ import type {
 } from "./types";
 
 interface RawDocumentsResponse {
+  paperCount?: number;
+  issueCount?: number;
   documents?: Array<Record<string, unknown>>;
   totalCount?: number;
   total_count?: number;
@@ -80,6 +82,8 @@ export async function fetchDocuments(params: FetchDocumentsParams): Promise<Docu
 
   return {
     documents,
+    paperCount: payload.paperCount,
+    issueCount: payload.issueCount,
     totalCount,
     totalPages,
     currentPage,
@@ -127,6 +131,8 @@ function normalizeDocumentRecord(raw: Record<string, unknown>): DocumentRecord {
 
   return {
     id,
+    publicId: stringifyNullable(raw.public_id) ?? undefined,
+    parentIssue: raw.parent_issue as DocumentRecord["parentIssue"],
     title: String(raw.title ?? raw.document_title ?? raw.name ?? "Untitled Document"),
     description: String(raw.description ?? raw.abstract ?? ""),
     category,
@@ -163,6 +169,7 @@ export function reviewDocument(
 }
 
 export interface AbstractReviewItem {
+  originalExtraction?: { candidate: string | null; method: string | null; confidence: number | null; qualityFlags: string[]; pageStart: number | null; pageEnd: number | null; errorCode: string | null } | null;
   targetType: "document" | "compiled_foreword";
   targetId: number;
   title: string;

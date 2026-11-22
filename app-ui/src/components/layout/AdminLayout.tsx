@@ -19,6 +19,13 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
+  ArrowLeft,
+  ClipboardList,
+  FileArchive,
+  ListOrdered,
+  ScrollText,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fetchSession, fetchUserProfile, logout, type SessionResponse, type UserProfile } from "../../lib/api/auth";
@@ -38,6 +45,7 @@ import {
 interface AdminLayoutProps {
   children: ReactNode;
   allowedRoles?: WorkspaceRole[];
+  pathname: string;
 }
 
 export type WorkspaceRole = "admin";
@@ -83,7 +91,18 @@ const utilityItems: AdminNavigationItem[] = [
   { label: "View Site", href: "/index.html", icon: Home, roles: ["admin"] as WorkspaceRole[] },
 ];
 
-export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: AdminLayoutProps) {
+const settingsNavItems: AdminNavigationItem[] = [
+  { label: "Profile", href: "/admin/Components/admin_settings.html", icon: UserRound, roles: ADMIN_ONLY_ROLES },
+  { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ADMIN_ONLY_ROLES, activePaths: ["/admin/Components/search-analytics.html"] },
+  { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ADMIN_ONLY_ROLES },
+  { label: "Experience Studio", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES },
+  { label: "Role Management", href: "/admin/Components/role-management.html", icon: ShieldCheck, roles: ADMIN_ONLY_ROLES },
+  { label: "Research Agenda", href: "/admin/Components/research-agenda.html", icon: ListOrdered, roles: ADMIN_ONLY_ROLES },
+];
+
+const workspaceReturnItem: AdminNavigationItem = { label: "Back to workspace", href: "/admin/dashboard.html", icon: ArrowLeft, roles: ADMIN_ONLY_ROLES };
+
+export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathname }: AdminLayoutProps) {
   const [initialBootstrap] = useState(readWorkspaceBootstrap);
   const [session, setSession] = useState<SessionResponse | null>(initialBootstrap?.session ?? null);
   const [sessionLoaded, setSessionLoaded] = useState(Boolean(initialBootstrap));
@@ -95,6 +114,8 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [notificationSummary, setNotificationSummary] = useState<AdminNotificationSummary>({ total: 0, unread: 0, urgent: 0 });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 980px)");
@@ -215,6 +236,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES }: Admin
         contactNewCount={contactNewCount}
         role={workspaceRole}
         isMobileViewport={isMobileViewport}
+        pathname={pathname}
       />
 
       <div className="peas-admin-frame">
@@ -299,6 +321,7 @@ function AdminSidebar({
   contactNewCount,
   role,
   isMobileViewport,
+  pathname,
 }: {
   collapsed: boolean;
   mobileOpen: boolean;
@@ -306,8 +329,10 @@ function AdminSidebar({
   contactNewCount: number;
   role: WorkspaceRole;
   isMobileViewport: boolean;
+  pathname: string;
 }) {
-  const visibleNavItems = navItems.filter((item) => item.roles.includes(role));
+  const inSettings = settingsNavItems.some((item) => isNavigationItemActive(item, pathname));
+  const visibleNavItems = (inSettings ? settingsNavItems : navItems).filter((item) => item.roles.includes(role));
   const visibleUtilityItems = utilityItems.filter((item) => item.roles.includes(role));
   const showCollapsedTooltips = collapsed && !isMobileViewport;
 
@@ -328,20 +353,22 @@ function AdminSidebar({
           ) : null}
         </div>
 
-        <SidebarTooltip enabled={showCollapsedTooltips} label="Upload Document">
+        {inSettings ? <nav className="peas-admin-nav peas-admin-nav--return" aria-label="Workspace return">
+          <AdminNavLink item={workspaceReturnItem} tooltipEnabled={showCollapsedTooltips} pathname={pathname} />
+        </nav> : <SidebarTooltip enabled={showCollapsedTooltips} label="Upload Document">
           <a className="peas-admin-upload-link" href="/admin/Components/upload_document.html" aria-label="Upload Document">
             <UploadCloud className="peas-admin-upload-link__icon" aria-hidden="true" />
             <span>Upload Document</span>
           </a>
-        </SidebarTooltip>
+        </SidebarTooltip>}
 
-        <nav className="peas-admin-nav" aria-label="Workspace">
-          <small>Workspace</small>
-          {visibleNavItems.map((item) => <AdminNavLink item={item} badge={item.label === "Contact Inquiries" ? contactNewCount : 0} tooltipEnabled={showCollapsedTooltips} key={item.href} />)}
+        <nav key={inSettings ? "settings" : "workspace"} className="peas-admin-nav peas-admin-nav--sections" data-section={inSettings ? "settings" : "workspace"} aria-label={inSettings ? "Settings" : "Workspace"}>
+          <small>{inSettings ? "Settings" : "Workspace"}</small>
+          {visibleNavItems.map((item) => <AdminNavLink item={item} badge={item.label === "Contact Inquiries" ? contactNewCount : 0} tooltipEnabled={showCollapsedTooltips} pathname={pathname} key={item.href} />)}
         </nav>
 
         <nav className="peas-admin-nav peas-admin-nav--utility" aria-label="Utilities">
-          {visibleUtilityItems.map((item) => <AdminNavLink item={item} tooltipEnabled={showCollapsedTooltips} key={item.href} />)}
+          {visibleUtilityItems.map((item) => <AdminNavLink item={item} tooltipEnabled={showCollapsedTooltips} pathname={pathname} key={item.href} />)}
         </nav>
       </aside>
     </TooltipProvider>
@@ -420,10 +447,9 @@ function AdminProfileMenu({
   );
 }
 
-function AdminNavLink({ item, badge = 0, tooltipEnabled }: { item: AdminNavigationItem; badge?: number; tooltipEnabled: boolean }) {
+function AdminNavLink({ item, badge = 0, tooltipEnabled, pathname }: { item: AdminNavigationItem; badge?: number; tooltipEnabled: boolean; pathname: string }) {
   const Icon = item.icon;
-  const currentPath = normalizePath(window.location.pathname);
-  const active = [item.href, ...(item.activePaths ?? [])].some((path) => currentPath === normalizePath(path));
+  const active = isNavigationItemActive(item, pathname);
   const tooltipLabel = badge > 0 ? `${item.label}, ${badge} new inquiries` : item.label;
 
   return (
@@ -435,6 +461,10 @@ function AdminNavLink({ item, badge = 0, tooltipEnabled }: { item: AdminNavigati
       </a>
     </SidebarTooltip>
   );
+}
+
+function isNavigationItemActive(item: AdminNavigationItem, pathname: string) {
+  return [item.href, ...(item.activePaths ?? [])].some((path) => normalizePath(pathname) === normalizePath(path));
 }
 
 function SidebarTooltip({ enabled, label, children }: { enabled: boolean; label: string; children: ReactElement }) {

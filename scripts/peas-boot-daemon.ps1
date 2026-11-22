@@ -478,7 +478,7 @@ try {
     Write-Log "System startup passed local readiness and stability checks in $([math]::Round($startupStopwatch.Elapsed.TotalSeconds, 2)) seconds."
     $startupReport = New-PeasStartupReport $media $abstract $web $importWorker $readiness
     Write-Log "Detailed startup report created: $startupReport"
-    if (-not $SkipStartupReport) { Send-PeasStartupReport $startupReport }
+    if (-not $SkipStartupReport -and $env:PEAS_SKIP_STARTUP_REPORT -ne 'true') { Send-PeasStartupReport $startupReport }
 } catch {
     Write-Log "ERROR: System startup did not become ready: $($_.Exception.Message)"
     Write-DiagnosticTail 'Web stderr' (Join-Path $logs 'web.err.log')

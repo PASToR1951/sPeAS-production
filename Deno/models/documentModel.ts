@@ -18,6 +18,7 @@ export enum DocumentType {
  */
 export interface Document {
   id: number;
+  public_id?: string;
   title: string;
   description?: string;
   abstract?: string;

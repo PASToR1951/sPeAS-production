@@ -1,3 +1,5 @@
+import { AbstractSourceReview } from "../upload/AbstractSourceReview";
+import { RecordUploadReviewLink } from "../upload/UploadFileReview";
 import { useAdminIdentity } from "../../components/layout/AdminLayout";
 import { formatPublicationDate } from "../../lib/formatters/date";
 import type { PublicationDatePrecision } from "../../../../shared/imports";
@@ -14,7 +16,7 @@ import { fetchAuthors } from "../../lib/api/authors";
 import { fetchDocumentClassification, linkDocumentAuthors, updateDocumentClassification } from "../../lib/api/upload";
 import { updateCompiledDocument as updateCompiledDocumentRecord } from "../../lib/api/compiled-documents";
 import { CompiledWorkPreviewDialog } from "./CompiledWorkPreviewDialog";
-import { getErrorMessage } from "../../lib/api/http";
+import { ApiError, getErrorMessage } from "../../lib/api/http";
 import type { AuthorRecord, CategoryCount, DocumentFilterState, DocumentRecord } from "../../lib/api/types";
 import type { DocumentAuthorSelection } from "../../lib/authorSelection";
 import type { DocumentCategory } from "../../lib/constants/categories";
@@ -561,7 +563,7 @@ function AbstractReviewDialog({
                   <label htmlFor="abstract-review-text">{resolved ? "Confirmed abstract" : "Abstract to confirm"}</label>
                   {!resolved && item.candidate && draft !== item.candidate ? <Button size="sm" variant="ghost" disabled={Boolean(busyKey)} onClick={() => changeDraft(item.candidate!)}>Use extracted text</Button> : null}
                 </div>
-                <p id="abstract-review-text-help">{resolved ? "This review has been saved." : "Check that the text is complete and matches the source PDF."}</p>
+                <AbstractSourceReview item={item}/><p id="abstract-review-text-help">{resolved ? "This review has been saved." : "Check that the text is complete and matches the source PDF."}</p>
                 <Textarea
                   id="abstract-review-text"
                   aria-describedby="abstract-review-text-help abstract-review-count"
@@ -578,7 +580,7 @@ function AbstractReviewDialog({
               {item.candidate && !resolved ? <details className="peas-abstract-review-reference"><summary>View original extracted text</summary><p>{item.candidate}</p></details> : null}
               <details className="peas-abstract-review-reference"><summary>Extraction details</summary><dl>
                 <div><dt>Source</dt><dd>{{ pdf_text: "Embedded PDF text", ocr: "Scanned PDF (OCR)", manual: "Manual entry", none: "No extracted text" }[item.method]}</dd></div>
-                {item.confidence !== null ? <div><dt>Confidence</dt><dd>{Math.round(item.confidence * 100)}%</dd></div> : null}
+                {item.confidence !== null ? <div><dt>Abstract detection confidence</dt><dd>{Math.round(item.confidence * 100)}%</dd></div> : null}
                 {item.pageStart ? <div><dt>Location</dt><dd>{item.pageStart === (item.pageEnd ?? item.pageStart) ? `Page ${item.pageStart}` : `Pages ${item.pageStart}–${item.pageEnd}`}</dd></div> : null}
                 {item.errorCode ? <div><dt>Issue code</dt><dd>{item.errorCode}</dd></div> : null}
               </dl>{!resolved && ["failed", "needs_review"].includes(item.status) ? <Button variant="outline" disabled={Boolean(busyKey) || !diagnostics?.extractionReady} onClick={() => void retry(item)}><RefreshCw aria-hidden="true" /> Retry extraction</Button> : null}</details>
@@ -683,9 +685,11 @@ function EditDocumentDialog({
   const [authors, setAuthors] = useState<DocumentAuthorSelection[]>([]);
   const [classification, setClassification] = useState<DocumentClassificationEditorValue>({ topicIds: [], topicNames: [], keywords: [] });
   const [classificationLoading, setClassificationLoading] = useState(false);
+  const [classificationLoaded, setClassificationLoaded] = useState(false);
   const [authorDirectory, setAuthorDirectory] = useState<AuthorRecord[]>([]);
   const [authorDirectoryLoading, setAuthorDirectoryLoading] = useState(false);
-  const [authorDirectoryError, setAuthorDirectoryError] = useState<string | null>(null);
+  const [authorDirectoryError, setAuthorDirectoryError] = useState<"unauthorized" | "forbidden" | "unavailable" | null>(null);
+  const [authorDirectoryAttempt, setAuthorDirectoryAttempt] = useState(0);
   const initialValuesRef = useRef("");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -737,6 +741,7 @@ function EditDocumentDialog({
     initialValuesRef.current = JSON.stringify(nextValues);
 
     let active = true;
+    setClassificationLoaded(false);
     if (!document.isCompiled) {
       setClassificationLoading(true);
       void fetchDocumentClassification(document.id)
@@ -749,6 +754,7 @@ function EditDocumentDialog({
             keywords: raw.keywords.map((item) => item.name),
           };
           setClassification(loadedClassification);
+          setClassificationLoaded(true);
           initialValuesRef.current = JSON.stringify({ ...nextValues, classification: loadedClassification });
         })
         .catch(() => undefined)
@@ -778,6 +784,7 @@ function EditDocumentDialog({
     }
 
     let active = true;
+    setAuthorDirectory([]);
     setAuthorDirectoryLoading(true);
     setAuthorDirectoryError(null);
     void fetchAuthors()
@@ -785,7 +792,9 @@ function EditDocumentDialog({
         if (active) setAuthorDirectory(nextAuthors);
       })
       .catch((caughtError) => {
-        if (active) setAuthorDirectoryError(getErrorMessage(caughtError));
+        if (active) setAuthorDirectoryError(caughtError instanceof ApiError && caughtError.status === 401
+          ? "unauthorized"
+          : caughtError instanceof ApiError && caughtError.status === 403 ? "forbidden" : "unavailable");
       })
       .finally(() => {
         if (active) setAuthorDirectoryLoading(false);
@@ -794,9 +803,11 @@ function EditDocumentDialog({
     return () => {
       active = false;
     };
-  }, [document]);
+  }, [document, authorDirectoryAttempt]);
 
   const isCompiled = Boolean(document?.isCompiled);
+  const authorSessionInvalid = authorDirectoryError === "unauthorized" || authorDirectoryError === "forbidden";
+  const authorAccessPending = !isCompiled && (authorDirectoryLoading || authorSessionInvalid);
   const currentValues = JSON.stringify({ title, description, publicationDate, datePrecision, category, authors, classification, startYear, endYear, volume, issue });
   const isDirty = Boolean(document) && initialValuesRef.current !== currentValues;
 
@@ -825,7 +836,7 @@ function EditDocumentDialog({
           className="peas-document-edit-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!document || !isDirty) return;
+            if (!document || !isDirty || authorAccessPending) return;
 
             if (isCompiled) {
               onSave({
@@ -844,7 +855,7 @@ function EditDocumentDialog({
               publication_date: publicationDate || null,
               publication_date_precision: datePrecision,
               document_type: category,
-            }, authors, classification);
+            }, authors, classificationLoaded ? classification : undefined);
           }}
         >
           <div className="peas-document-edit-form__body">
@@ -925,14 +936,27 @@ function EditDocumentDialog({
                   id="edit-document-authors"
                   authors={authorDirectory}
                   value={authors}
-                  disabled={busy || authorDirectoryLoading}
+                  disabled={busy || authorDirectoryLoading || Boolean(authorDirectoryError)}
                   onAuthorCreated={(author) => setAuthorDirectory((current) => current.some((item) => String(item.id) === String(author.id)) ? current : [...current, author])}
                   onChange={setAuthors}
                 />
-                {authorDirectoryError ? <small className="peas-document-author-picker__status is-error">The author directory could not be loaded. Existing author names can still be saved.</small> : null}
+                {authorDirectoryError ? <>
+                  <small className="peas-document-author-picker__status is-error" role="alert">
+                    {authorSessionInvalid
+                      ? `${authorDirectoryError === "unauthorized" ? "Your administrator session could not be verified." : "Administrator access is required to load authors."} Sign in in a new tab, then retry here. Your edits will stay in this dialog.`
+                      : "The author directory could not be loaded. Retry to select authors. Existing author names can still be saved."}
+                  </small>
+                  <div className="peas-document-edit-form__author-recovery">
+                    {authorSessionInvalid ? <a className="peas-ui-button peas-ui-button--secondary peas-ui-button--size-sm" href="/log-in.html" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a> : null}
+                    <Button variant="secondary" size="sm" disabled={busy} onClick={() => {
+                      setAuthorDirectoryLoading(true);
+                      setAuthorDirectoryAttempt((attempt) => attempt + 1);
+                    }}><RefreshCw aria-hidden="true" /> Retry author list</Button>
+                  </div>
+                </> : null}
                 {!authors.length ? <small className="peas-document-author-picker__status is-error">Select at least one author.</small> : null}
               </div>
-              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : <DocumentClassificationEditor value={classification} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} />}
+              {classificationLoading ? <small className="peas-document-author-picker__status">Loading classification…</small> : classificationLoaded ? <DocumentClassificationEditor value={classification} disabled={busy} idPrefix="edit-document-classification" onChange={setClassification} /> : <small className="peas-document-author-picker__status" role="status">Classification could not be loaded. Existing topics and keywords will be kept.</small>}
               <label className="peas-field">
                 <span>Description</span>
                 <Textarea value={description} onChange={(event) => setDescription(event.currentTarget.value)} rows={4} />
@@ -945,7 +969,7 @@ function EditDocumentDialog({
             <Button type="button" variant="outline" disabled={busy} onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy || !isDirty || (!isCompiled && (!title.trim() || !authors.length))}>
+            <Button type="submit" disabled={busy || !isDirty || authorAccessPending || (!isCompiled && (!title.trim() || !authors.length))}>
               <Save aria-hidden="true" />
               {busy ? "Saving..." : "Save changes"}
             </Button>
@@ -995,6 +1019,7 @@ function SingularWorkPreviewDialog({
           </div>
           {document ? <a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-sm" href={`/api/documents/${document.id}/download?disposition=inline`} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" /> Open in new tab</a> : null}
         </DialogHeader>
+        {document?<RecordUploadReviewLink documentId={document.id}/>:null}
         {document ? (
           failed ? (
             notFound ? <PdfNotFoundState /> :

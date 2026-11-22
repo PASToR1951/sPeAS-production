@@ -35,6 +35,8 @@ import { servePdfRange } from "../services/pdfRangeService.ts";
 import { moveImportComponents } from "../services/importPreparationService.ts";
 import { isStoredPdfAvailable } from "../services/publicPdfService.ts";
 import { resolveStoredPdfPath } from "../services/abstractExtractionService.ts";
+import { emptyImportMetadata, validImportMetadataShape } from "../../shared/imports.ts";
+import { prepareIssueRevision, publishIssueRevision, reviewIssueRevision, revisionPreview } from "../services/issueRevisionService.ts";
 
 async function json(ctx: any): Promise<any> {
   const chunks: Uint8Array[] = [];
@@ -130,6 +132,27 @@ export const importRoutes: Route[] = [
     };
   }),
   route("GET", "/:id", (ctx, owner) => getImportBatch(ctx.params.id, owner)),
+  route("POST", "/:id/revision/prepare", (ctx, owner) => prepareIssueRevision(ctx.params.id, owner), true),
+  route("PUT", "/:id/revision/review", async (ctx, owner) => {
+    const body = await json(ctx);
+    if (body.confirm !== true || typeof body.fingerprint !== "string") throw new ImportError("Confirm the complete correction and all paper boundaries.");
+    await reviewIssueRevision(ctx.params.id, owner, body.fingerprint);
+    return { reviewed: true };
+  }, true),
+  route("GET", "/:id/revision/inline", async (ctx, owner) => { await servePdfRange(ctx, await revisionPreview(ctx.params.id, owner)); }, true),
+  route("POST", "/:id/revision/publish", async (ctx, owner) => {
+    const body = await json(ctx);
+    if (body.confirm !== true || typeof body.fingerprint !== "string") throw new ImportError("Confirm replacement of the currently published issue.");
+    await publishIssueRevision(ctx.params.id, owner, body.fingerprint);
+    return getImportBatch(ctx.params.id, owner);
+  }, true),
+  route("PUT","/:id/items/:itemId/review-notes",async(ctx,owner)=>{
+    await requireBatch(ctx.params.id,owner);
+    const notes=await json(ctx);
+    if(!validImportMetadataShape({...emptyImportMetadata(),reviewNotes:notes}))throw new ImportError("Invalid manuscript review notes.",400);
+    await client.queryArray("UPDATE import_items SET metadata=jsonb_set(metadata,'{reviewNotes}',$3::jsonb),revision=revision+1 WHERE id=$1 AND batch_id=$2",[ctx.params.itemId,ctx.params.id,JSON.stringify(notes)]);
+    return getImportBatch(ctx.params.id,owner);
+  },true),
   route("POST", "/:id/move-components", async (ctx, owner) => {
     await moveImportComponents(ctx.params.id, owner, await json(ctx));
     return getImportBatch(ctx.params.id, owner);

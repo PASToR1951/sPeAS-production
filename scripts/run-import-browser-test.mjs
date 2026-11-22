@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { cp, readFile } from "node:fs/promises";
 import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,7 @@ const env = {
   BETTER_AUTH_URL: origin,
   PEAS_BASE_URL: origin,
   IMPORT_TEST_ARTIFACTS: temporary,
+  PEAS_TEST_STATIC_ROOT: path.join(temporary, "static"),
   NEWS_MEDIA_WORKER_ENABLED: "false",
   NEWS_MEDIA_CLAMAV_ENABLED: "false",
   SMTP_HOST: "",
@@ -57,8 +58,12 @@ function start(name, args) {
   return child;
 }
 try {
-  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.admin.config.ts"], env);
-  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.public.config.ts"], env);
+  await Promise.all(["admin", "Public"].map(name => cp(path.join(root, "Deno", name), path.join(env.PEAS_TEST_STATIC_ROOT, name), {
+    recursive: true, filter: source => path.basename(source) !== "react-ui",
+  })));
+  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.admin.config.ts", "--outDir", path.join(env.PEAS_TEST_STATIC_ROOT, "admin/react-ui")], env);
+  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "app-ui/vite.public.config.ts", "--outDir", path.join(env.PEAS_TEST_STATIC_ROOT, "Public/react-ui")], env);
+  await run(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "build", "--config", "experience-studio/vite.config.ts", "--outDir", path.join(env.PEAS_TEST_STATIC_ROOT, "admin/experience-studio")], env);
   await run("deno", [
     "run",
     "--config",
@@ -134,6 +139,11 @@ try {
       "--project=desktop",
       "--workers=1",
       "--output=test-results/import-legacy",
+    ], env);
+    await run(process.execPath, [
+      path.join(root, "node_modules/@playwright/test/cli.js"),
+      "test", "-c", "experience-studio/playwright.config.ts", "--workers=1",
+      "--output=test-results/import-experience",
     ], env);
   }
 } catch (error) {

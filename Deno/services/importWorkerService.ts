@@ -11,7 +11,7 @@ import {
   verifyNativeConverterQualification,
 } from "./importStorageService.ts";
 import { assembleImportPdf, inspectImportPdf } from "./importPdfService.ts";
-import { extractAbstractFromPdfPath } from "./abstractExtractionWorkerService.ts";
+import { extractAbstractFromPdfPath, sanitizeAbstractError } from "./abstractExtractionWorkerService.ts";
 import { STORAGE_ROOT } from "../config/storage.ts";
 import { join } from "https://deno.land/std@0.200.0/path/mod.ts";
 
@@ -56,6 +56,7 @@ export async function processImportJob(job: Row): Promise<void> {
     );
     const sources = [];
     for (const part of parts) {
+      await client.queryArray("UPDATE import_jobs SET progress=$3,heartbeat_at=now() WHERE id=$1 AND lease_token=$2 AND status='processing'",[job.id,job.lease_token,JSON.stringify({phase:"converting",assetId:part.assetId,startedAt:new Date().toISOString(),completed:sources.length,total:parts.length})]);
       const asset = (await client.queryObject<Row>(
         "SELECT * FROM import_assets WHERE id=$1 AND batch_id=$2",
         [part.assetId, job.batch_id],
@@ -114,6 +115,7 @@ export async function processImportJob(job: Row): Promise<void> {
         sha256: asset.sha256,
         bytes: () => Deno.readFile(preparedPath),
       });
+      await client.queryArray("UPDATE import_jobs SET progress=$3,heartbeat_at=now() WHERE id=$1 AND lease_token=$2 AND status='processing'",[job.id,job.lease_token,JSON.stringify({phase:"component_ready",assetId:part.assetId,completed:sources.length,total:parts.length})]);
     }
     let output: {
       path: string;
@@ -121,8 +123,10 @@ export async function processImportJob(job: Row): Promise<void> {
       pages: number;
       mapping: unknown;
       candidate: unknown;
+      abstractDiagnostics: unknown;
     } | null = null;
     if (job.kind === "assemble") {
+      await client.queryArray("UPDATE import_jobs SET progress=$3,heartbeat_at=now() WHERE id=$1 AND lease_token=$2 AND status='processing'",[job.id,job.lease_token,JSON.stringify({phase:"assembling",completed:sources.length,total:parts.length})]);
       const assembled = await assembleImportPdf(item.recipe, sources);
       const path = stagingPath(job.batch_id, job.lease_token, "final.pdf");
       await Deno.writeFile(path, assembled.bytes, {
@@ -130,15 +134,20 @@ export async function processImportJob(job: Row): Promise<void> {
         mode: 0o600,
       });
       // Unavailable extraction never blocks manual abstract entry or creates a repository document.
-      const extracted = await extractAbstractFromPdfPath(path).catch(() => ({
-        candidate: null,
-      }));
+      let extractionError: string | null = null;
+      const attemptedAt = new Date().toISOString();
+      const extracted = await extractAbstractFromPdfPath(path).catch(error => {
+        extractionError = sanitizeAbstractError(error instanceof Error ? error.message : "ABSTRACT_PROCESSING_FAILED");
+        return { candidate: null };
+      });
+      const finalHash = await digestFile(path);
       output = {
         path,
-        hash: await digestFile(path),
+        hash: finalHash,
         pages: assembled.pages,
         mapping: assembled.mapping,
         candidate: extracted.candidate,
+        abstractDiagnostics: { sourceSha256: finalHash, pageCount: assembled.pages, attemptedAt, errorCode: extractionError ?? (extracted.candidate ? null : "ABSTRACT_NOT_FOUND") },
       };
     }
     await withTransaction(async (connection) => {
@@ -149,7 +158,7 @@ export async function processImportJob(job: Row): Promise<void> {
       if (!active) return;
       if (output) {
         await connection.queryArray(
-          "UPDATE import_items SET final_path=$2,final_sha256=$3,page_count=$4,page_mapping=$5,abstract_candidate=$6,review=review-'pdfSha256'-'abstractAction'-'abstractText',state='needs_review',revision=revision+1,error=NULL WHERE id=$1",
+          "UPDATE import_items SET final_path=$2,final_sha256=$3,page_count=$4,page_mapping=$5,abstract_candidate=$6,abstract_diagnostics=$7,review=review-'pdfSha256'-'abstractAction'-'abstractText'-'extractionSnapshot',state='needs_review',revision=revision+1,error=NULL WHERE id=$1",
           [
             job.item_id,
             output.path,
@@ -157,6 +166,7 @@ export async function processImportJob(job: Row): Promise<void> {
             output.pages,
             JSON.stringify(output.mapping),
             JSON.stringify(output.candidate),
+            JSON.stringify(output.abstractDiagnostics),
           ],
         );
       } else {await connection.queryArray(

@@ -54,6 +54,13 @@ function createEmptyPdf(pageCount: number) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ json: { authors: [
+    { id: "author-1", full_name: "Cj Anadon" },
+    { id: "author-2", full_name: "Another Researcher" },
+  ] } }));
+  await page.route("**/api/documents/*/classification", (route) => route.fulfill({ json: {
+    classification: { researchAgendas: [], topics: [], keywords: [], complete: false, source: "manual" },
+  } }));
   await page.route("**/api/admin/abstract-reviews?*", (route) => route.fulfill({ json: { items: [abstractReview] } }));
   await page.route("**/api/admin/abstract-reviews/diagnostics", (route) => route.fulfill({ json: { workerAvailable: true, extractionReady: true } }));
   await page.route("**/api/features/document-preparation", (route) => route.fulfill({ json: { imports: false, volumeReader: false } }));
@@ -221,7 +228,7 @@ test("review status filter updates the request and URL", async ({ page }) => {
 
   await expect(page).toHaveURL(/status=pending_review/);
   await expect(page.getByText("Pending publisher submission", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Document catalog results").getByText("Pending review", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Document catalog results").getByRole("img", { name: "Review status: Pending review" })).toBeVisible();
 });
 
 test("abstract review editor keeps typing stable when the current abstract is empty", async ({ page }) => {
@@ -234,7 +241,7 @@ test("abstract review editor keeps typing stable when the current abstract is em
   await expect(editor).toHaveValue(abstractReview.candidate!);
   await editor.focus();
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("button", { name: "Close dialog", exact: true })).toBeFocused();
+  await expect(page.locator(".peas-abstract-source summary")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(editor).toBeFocused();
   await editor.fill("Administrator-confirmed abstract");
@@ -406,6 +413,77 @@ test("action menus close before document dialogs open", async ({ page }) => {
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("menu")).toHaveCount(0);
+});
+
+for (const status of [401, 403]) {
+  test(`metadata editing preserves changes and recovers after an author-list ${status}`, async ({ page }) => {
+    let authorized = false;
+    let authorRequests = 0;
+    let classificationWrites = 0;
+    let savedAuthors: unknown;
+    let savedMetadata: unknown;
+    await page.route("**/api/authors/all*", (route) => {
+      authorRequests++;
+      return route.fulfill(authorized
+        ? { json: { authors: [{ id: "author-2", full_name: "Another Researcher" }] } }
+        : { status, json: { error: status === 401 ? "Unauthorized" : "Forbidden" } });
+    });
+    await page.route("**/document-authors", (route) => {
+      savedAuthors = route.request().postDataJSON();
+      return route.fulfill({ json: { success: true } });
+    });
+    await page.route("**/api/documents/1/classification", (route) => {
+      if (route.request().method() === "PUT") classificationWrites++;
+      return route.fulfill(status === 401 && !authorized
+        ? { status: 401, json: { error: "Unauthorized" } }
+        : { json: { classification: { researchAgendas: [], topics: [], keywords: [], complete: false, source: "manual" } } });
+    });
+    await page.route("**/api/documents/1/metadata", (route) => {
+      savedMetadata = route.request().postDataJSON();
+      return route.fulfill({ json: { success: true } });
+    });
+    await page.goto("/admin/Components/documents_list.html");
+    await page.getByRole("button", { name: "Actions for Single Thesis Sample" }).click();
+    await page.getByRole("menuitem", { name: "Edit metadata" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit Document", exact: true });
+    await expect(dialog.getByRole("alert")).toContainText(status === 401 ? "session could not be verified" : "Administrator access is required");
+    await dialog.getByLabel("Title", { exact: true }).fill("Updated published paper");
+    await expect(dialog.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    await expect(dialog.getByRole("combobox", { name: "Add author" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Remove Cj Anadon" })).toBeDisabled();
+    const signIn = dialog.getByRole("link", { name: "Sign in in a new tab" });
+    await expect(signIn).toHaveAttribute("href", "/log-in.html");
+    await expect(signIn).toHaveAttribute("target", "_blank");
+    expect(authorRequests).toBe(1);
+    expect(savedMetadata).toBeUndefined();
+    if (status === 401) await expect(dialog.getByRole("status")).toContainText("Existing topics and keywords will be kept");
+
+    authorized = true;
+    await dialog.getByRole("button", { name: "Retry author list" }).click();
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    await expect(dialog.getByLabel("Title", { exact: true })).toHaveValue("Updated published paper");
+    await expect(dialog.getByRole("list", { name: "Selected authors" })).toContainText("Cj Anadon");
+    await dialog.getByRole("combobox", { name: "Add author" }).click();
+    await dialog.getByRole("option", { name: "Another Researcher", exact: true }).click();
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(authorRequests).toBe(2);
+    expect(classificationWrites).toBe(status === 401 ? 0 : 1);
+    expect(savedAuthors).toEqual({ document_id: 1, authors: [{ full_name: "Cj Anadon" }, { id: "author-2", full_name: "Another Researcher" }] });
+    expect(savedMetadata).toMatchObject({ title: "Updated published paper" });
+  });
+}
+
+test("metadata author-list server errors offer a retry without prompting for sign-in", async ({ page }) => {
+  await page.route("**/api/authors/all*", (route) => route.fulfill({ status: 500, json: { error: "Server unavailable" } }));
+  await page.goto("/admin/Components/documents_list.html");
+  await page.getByRole("button", { name: "Actions for Single Thesis Sample" }).click();
+  await page.getByRole("menuitem", { name: "Edit metadata" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Document", exact: true });
+  await expect(dialog.getByRole("alert")).toContainText("author directory could not be loaded");
+  await expect(dialog.getByRole("link", { name: "Sign in in a new tab" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Retry author list" })).toBeEnabled();
+  await expect(dialog.getByRole("combobox", { name: "Add author" })).toBeDisabled();
 });
 
 test("compiled view opens a collection manifest without treating the parent as a PDF", async ({ page }) => {

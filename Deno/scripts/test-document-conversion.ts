@@ -10,7 +10,7 @@ Deno.env.set("BETTER_AUTH_SECRET", "conversion-integration-test-secret-only");
 const { handleFileUpload } = await import("../controllers/uploadController.ts");
 const { inspectPdfBytes } = await import("../services/abstractExtractionService.ts");
 const { convertDocumentToPdf } = await import("../services/documentConversionService.ts");
-const pdfjs = await import(pathToFileURL(join(Deno.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.mjs")).href);
+const pdfjs = await import(new URL("../../node_modules/pdfjs-dist/legacy/build/pdf.mjs", import.meta.url).href);
 const marker = "PeAS conversion integration fixture";
 const fixtures = new Map<string, Uint8Array>();
 const results: Array<Record<string, unknown>> = [];
@@ -87,6 +87,22 @@ try {
     results.push(result);
     console.log(JSON.stringify(result));
   }
+  // Mixed-format stitching must convert each source and retain the reading order.
+  const stitchedForm = new FormData();
+  for (const extension of ["docx", "pdf", "xlsx", "pptx"]) {
+    stitchedForm.append("file", new Blob([fixtures.get(extension)! as BlobPart]), `part.${extension}`);
+  }
+  stitchedForm.append("document_type", "THESIS");
+  const stitchedResponse = await app.handle(new Request("http://localhost/api/content/upload", { method: "POST", body: stitchedForm }));
+  assert(stitchedResponse);
+  const stitchedBody = await stitchedResponse.json();
+  assertEquals(stitchedResponse.status, 200, JSON.stringify(stitchedBody));
+  assertEquals(stitchedBody.details.sourceFileNames, ["part.docx", "part.pdf", "part.xlsx", "part.pptx"]);
+  const stitchedBytes = await Deno.readFile(join(root, stitchedBody.filePath.replace(/^\//, "")));
+  const stitchedPages = await verifyPdf(stitchedBytes);
+  const expectedPages = results.reduce((count, result) => ["docx", "pdf", "xlsx", "pptx"].includes(String(result.extension)) ? count + Number(result.pages) : count, 0);
+  assertEquals(stitchedPages, expectedPages, "All converted pages must appear in the stitched PDF");
+  results.push({ mixedFormatStitch: true, sources: 4, pages: stitchedPages, textPreserved: true });
   const before = [...Deno.readDirSync(join(root, "storage/thesis"))].length;
   for (const [name, content, expectedStatus] of [["fixture.exe", "unsupported", 415], ["fixture.docx", "", 422], ["fixture.pdf", "not a PDF", 422]] as const) {
     const form = new FormData();
@@ -98,6 +114,15 @@ try {
     assertEquals(response.status, expectedStatus, JSON.stringify(body));
     results.push({ name, status: response.status, rejected: true });
   }
+  for (const [name, content, expectedStatus] of [["second.exe", "unsupported", 415], ["second.docx", "", 422], ["second.pdf", "not a PDF", 422]] as const) {
+    const form = new FormData();
+    form.append("file", new Blob([fixtures.get("pdf")! as BlobPart]), "first.pdf");
+    form.append("file", new Blob([content]), name);
+    form.append("document_type", "THESIS");
+    const response = await app.handle(new Request("http://localhost/api/content/upload", { method: "POST", body: form }));
+    assert(response);
+    assertEquals(response.status, expectedStatus, JSON.stringify(await response.json()));
+  }
   assertEquals([...Deno.readDirSync(join(root, "storage/thesis"))].length, before, "Rejected uploads must not create stored files");
   // Simultaneous requests must not share a profile or overwrite one another.
   await Promise.all(["docx", "xlsx", "pptx"].map(async (extension) => {
@@ -105,7 +130,7 @@ try {
   }));
   const reportPath = Deno.env.get("CONVERSION_REPORT_PATH");
   if (reportPath) await Deno.writeTextFile(reportPath, JSON.stringify({ results, concurrentConversions: 3, passed: true }, null, 2));
-  console.log("PASS: 13 formats, 3 rejected uploads, 3 concurrent conversions; PDF text preserved.");
+  console.log("PASS: 13 formats, mixed-format stitching, 6 rejected uploads, 3 concurrent conversions; PDF text preserved.");
 } finally {
   await Deno.remove(root, { recursive: true });
 }

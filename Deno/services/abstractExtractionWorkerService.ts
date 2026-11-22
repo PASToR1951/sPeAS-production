@@ -204,7 +204,7 @@ export async function failAbstractJob(job: JobRow, errorCode: string): Promise<v
   }
 }
 
-function sanitizeAbstractError(value: string): string {
+export function sanitizeAbstractError(value: string): string {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9_:-]/gu, "_");
   if (isDependencyFailure(normalized)) {
     return "ABSTRACT_DEPENDENCY_UNAVAILABLE";

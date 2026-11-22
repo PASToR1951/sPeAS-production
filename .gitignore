@@ -33,6 +33,7 @@ node_modules/
 deno-dir/
 .cache/
 .tmp/
+tmp/
 __pycache__/
 *.pyc
 *.pyo

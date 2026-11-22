@@ -485,6 +485,7 @@ export const getAuthorProfile = async (ctx: Context) => {
       ),
       client.queryObject<{
         id: number;
+        public_id: string;
         title: string;
         document_type: string | null;
         abstract: string | null;
@@ -493,7 +494,7 @@ export const getAuthorProfile = async (ctx: Context) => {
         start_year: number | null;
         end_year: number | null;
       }>(
-        `SELECT DISTINCT d.id, d.title, d.document_type::text, d.abstract, d.description,
+        `SELECT DISTINCT d.id, d.public_id, d.title, d.document_type::text, d.abstract, d.description,
                 d.publication_date, d.start_year, d.end_year
          FROM document_authors da
          JOIN documents d ON d.id = da.document_id
@@ -587,6 +588,7 @@ export const getAuthorProfile = async (ctx: Context) => {
 
       return {
         id: Number(work.id),
+        publicId: work.public_id,
         recordType: "document" as const,
         title: String(work.title),
         category,

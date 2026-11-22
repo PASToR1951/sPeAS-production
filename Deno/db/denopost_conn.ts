@@ -1,4 +1,5 @@
 import { pool } from "../config/db.ts";
+import { normalizePublicationDates } from "../utils/publicationDate.ts";
 
 // Export a client for direct DB operations
 export const client = {
@@ -20,7 +21,9 @@ export const client = {
   ) {
     const connection = await pool.connect();
     try {
-      return await connection.queryObject<T>(text, params);
+      const result = await connection.queryObject<T>(text, params);
+      normalizePublicationDates(result.rows);
+      return result;
     } finally {
       connection.release();
     }

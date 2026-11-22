@@ -1,5 +1,12 @@
+import { ReviewNoteFields } from "./UploadFileReview";
+import { IssueRangeEditor } from "./IssueRangeEditor";
+import { IssueOutputReview } from "./IssueOutputReview";
+import { PaperBoundaryReview } from "./PaperBoundaryReview";
+import { PdfReviewThumbnails } from "./PdfReviewThumbnails";
+import { emptyUploadReview } from "../../../../shared/uploadReview";
 import {
   cloneElement,
+  useCallback,
   type ReactElement,
   type ReactNode,
   useEffect,
@@ -12,12 +19,15 @@ import {
   IMPORT_LIMITS,
   type ImportAsset,
   type ImportBatch,
+  type ImportBatchSummary,
   type ImportCollection,
   importFileKind,
   type ImportItem,
   type ImportMetadata,
   type ImportMode,
   importPathKey,
+  importValueKey,
+  importWorkspaceStatus,
   metadataErrors,
   type RecipePart,
   type RenditionReview,
@@ -33,6 +43,7 @@ import {
   updateImportPaper,
 } from "../../lib/api/imports";
 import { fetchAuthors } from "../../lib/api/authors";
+import { fetchAdminTopics } from "../../lib/api/upload";
 import type { AuthorRecord } from "../../lib/api/types";
 import { DocumentClassificationEditor } from "../../components/forms/DocumentClassificationEditor";
 import { SimplePdfReader } from "../../components/documents/SimplePdfReader";
@@ -46,6 +57,7 @@ type LocalSource = {
   group: string;
   selected: boolean;
   status: string;
+  role?: "paper" | "front_matter";
 };
 type Catalog = {
   research: Record<string, string>[];
@@ -55,12 +67,13 @@ type Catalog = {
 function recoveredPaperDraft(
   item: ImportItem,
 ): { metadata: ImportMetadata; parts: RecipePart[] } | null {
+  if (item.documentId) return null;
   try {
     const saved = JSON.parse(
       localStorage.getItem(`peas-import-edit:${item.batchId}:${item.id}`) ||
         "null",
     );
-    return saved?.revision === item.revision &&
+    return saved && (saved.revision === item.revision || Number.isSafeInteger(saved.metadataRevision) && saved.metadataRevision === item.metadataRevision && saved.recipeRevision === item.recipeRevision) &&
         Date.now() - saved.savedAt < 30 * 86400000
       ? saved
       : null;
@@ -121,15 +134,32 @@ export function ImportPreparationWorkspace(
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [selectedId, setSelectedId] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const [outputRefreshKey, setOutputRefreshKey] = useState(0);
   const [diagnostic, setDiagnostic] = useState("");
+  const [wordConversionReady, setWordConversionReady] = useState(false);
+  const [authors, setAuthors] = useState<AuthorRecord[]>([]);
+  const [topics, setTopics] = useState<Array<{ id: number; name: string }>>([]);
+  const [dirtyPapers, setDirtyPapers] = useState<Record<string, boolean>>({});
+  const [collectionDirty, setCollectionDirty] = useState(false);
+  const onPaperDirty = useCallback((id: string, dirty: boolean) => setDirtyPapers(current => current[id] === dirty ? current : { ...current, [id]: dirty }), []);
+  const unsavedPaperChanges = batch?.items.some(item => {
+    const recovered = recoveredPaperDraft(item);
+    return dirtyPapers[item.id] || !!recovered && (importValueKey(recovered.metadata) !== importValueKey(item.metadata) || importValueKey(recovered.parts) !== importValueKey(item.recipe.parts));
+  });
+  const unsavedChanges = !!unsavedPaperChanges || collectionDirty;
+  const [arrangement, setArrangement] = useState<"complete_issue" | "separate_papers">("complete_issue");
+  const completeSource = mode === "compiled" && (batch?.collection?.sourceArrangement ?? (batch?.items.length ? "separate_papers" : arrangement)) === "complete_issue";
+  useEffect(()=>{const id=new URLSearchParams(location.search).get("import_batch");if(id)void fetchImport(id).then(b=>{setBatch(b);setMode(b.mode);}).catch(e=>setError(getErrorMessage(e)));},[]);
   const [recent, setRecent] = useState<
-      Array<{ id: string; mode: string; status: string; expires_at: string }>
+      ImportBatchSummary[]
     >([]),
     [archive, setArchive] = useState(""),
     [publishConfirmed, setPublishConfirmed] = useState(false),
     [newKey, setNewKey] = useState("");
   const folderRef = useRef<HTMLInputElement>(null);
-  const action = async (fn: () => Promise<void>) => {
+  const action = async (fn: () => Promise<void>, label = "Saving changes…") => {
+    setPendingAction(label);
     setBusy(true);
     setError("");
     try {
@@ -138,6 +168,7 @@ export function ImportPreparationWorkspace(
       setError(getErrorMessage(e));
     } finally {
       setBusy(false);
+      setPendingAction("");
     }
   };
   const refresh = async (id = batch?.id) => {
@@ -145,21 +176,25 @@ export function ImportPreparationWorkspace(
       const current = await fetchImport(id);
       setBatch(current);
       setMode(current.mode);
+      setOutputRefreshKey(value => value + 1);
       return current;
     }
     return null;
   };
   useEffect(() => {
     folderRef.current?.setAttribute("webkitdirectory", "");
-    void apiFetch<{ workerAvailable: boolean; message: string }>(
+    void fetchAuthors().then(setAuthors).catch(() => undefined);
+    void fetchAdminTopics().then(setTopics).catch(() => undefined);
+    void apiFetch<{ workerAvailable: boolean; wordConversionReady: boolean; message: string }>(
       `${importBase}/diagnostics`,
-    ).then((d) =>
+    ).then((d) => {
+      setWordConversionReady(d.workerAvailable && d.wordConversionReady);
       setDiagnostic(
         d.workerAvailable
           ? d.message
           : "The preparation worker is offline. Staging and metadata review remain available.",
-      )
-    ).catch(() => undefined);
+      );
+    }).catch(() => undefined);
     void apiFetch<typeof recent>(importBase).then(setRecent).catch((e) =>
       setError(getErrorMessage(e))
     );
@@ -296,10 +331,16 @@ export function ImportPreparationWorkspace(
     };
     await Promise.all([transfer(), transfer()]);
     current = (await refresh(current.id))!;
+    if (completeSource || current.revisionTarget) {
+      setMessage("Sources attached. Assign the main issue and cover roles in collection details, then add paper ranges. File count does not determine paper count.");
+      if (failures.length) throw new Error(failures.join("\n"));
+      return;
+    }
     const groups = new Map<string, ImportAsset[]>();
     for (const source of selected) {
       const a = completed.get(source.path);
       if (!a || a.kind === "catalog") continue;
+      if (current.mode === "compiled" && source.role === "front_matter") continue;
       const group = source.group.trim();
       if (!group) {
         failures.push(`${source.path}: assign a paper group`);
@@ -395,6 +436,7 @@ export function ImportPreparationWorkspace(
         ? <p className="peas-preparation-notice" role="alert">{error}</p>
         : null}
       {message ? <p role="status">{message}</p> : null}
+      {mode === "compiled" && !batch ? <fieldset disabled={busy || sources.length > 0}><legend>How are your issue files arranged?</legend><div className="peas-preparation-actions"><label><input type="radio" name="issue-arrangement" checked={arrangement === "complete_issue"} onChange={() => setArrangement("complete_issue")} /> Upload a complete issue</label><label><input type="radio" name="issue-arrangement" checked={arrangement === "separate_papers"} onChange={() => setArrangement("separate_papers")} /> Upload separate research papers</label></div><p>Keep covers and front matter separate from paper records. Start a new workspace for a different issue.</p></fieldset> : null}
       {!batch
         ? (
           <>
@@ -432,7 +474,7 @@ export function ImportPreparationWorkspace(
                       </option>
                       {recent.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.mode} · {r.status} · {r.id.slice(0, 8)}
+                          {r.mode} · {importWorkspaceStatus(r.status, r.committedPapers, r.includedPapers)} · {r.id.slice(0, 8)}
                         </option>
                       ))}
                     </select>
@@ -449,15 +491,15 @@ export function ImportPreparationWorkspace(
                 ? "Compiled volume"
                 : batch.mode === "single"
                 ? "Single paper"
-                : "Batch workspace"} · {batch.status}
+                : "Batch workspace"} · {importWorkspaceStatus(batch.status, batch.items.filter(i => i.state !== "ignored" && i.documentId).length, batch.items.filter(i => i.state !== "ignored").length)}
             </strong>
             <span>Workspace {batch.id.slice(0, 8)}</span>
             <p>
-              Originals, component previews and source archives expire on{" "}
+              Uncommitted originals and temporary archives expire on{" "}
               <time dateTime={batch.expiresAt}>
                 {new Date(batch.expiresAt).toLocaleDateString()}
               </time>. Keep a downloaded source archive in your own storage.
-              Final repository PDFs and provenance remain in PeAS.
+              Committed source originals, component previews, repository PDFs and provenance remain in PeAS.
             </p>
             <div className="peas-preparation-actions">
               <Button
@@ -473,15 +515,18 @@ export function ImportPreparationWorkspace(
                 onClick={() =>
                   void action(async () => {
                     await refresh();
-                  })}
+                    setMessage("Workspace refreshed.");
+                  }, "Refreshing workspace…")}
               >
-                Refresh workspace
+                {pendingAction === "Refreshing workspace…" ? pendingAction : "Refresh workspace"}
               </Button>
               <Button
                 variant="outline"
                 disabled={busy}
                 onClick={() => {
                   setBatch(null);
+                  requestKey.current = crypto.randomUUID();
+                  setRecoverable(null);
                   setSources([]);
                   setSelectedId("");
                   setArchive("");
@@ -497,12 +542,12 @@ export function ImportPreparationWorkspace(
         ? (
           <section className="peas-preparation-surface">
             <h3>1. Discover and stage files</h3>
-            <p>
-              Select a folder or multiple PDF, DOC and DOCX files. An XLSX
+            {completeSource ? <p>Attach the main issue PDF and any separate cover PDF. Assign their roles in collection details, then identify each paper by its physical page range. The 100 MB per-source and prepared-output limit applies; the workspace accepts up to 500 files totaling 1 GB. Each paper group accepts up to 20 files totaling 100 MB.</p> : <p>
+              {wordConversionReady ? "Select a folder or multiple PDF, DOC and DOCX files." : "Select a folder or multiple PDF files. Word conversion is unavailable."} An XLSX
               catalog is optional. Missing manuscripts are ignored. Use the same
               group name to combine components of one paper; change it to split
               papers.
-            </p>
+            </p>}
             <div className="peas-preparation-grid">
               <Field label="Choose a folder">
                 <input
@@ -543,7 +588,8 @@ export function ImportPreparationWorkspace(
                         <small>
                           {(s.file.size / 1_000_000).toFixed(2)} MB · {s.status}
                         </small>
-                        {s.selected && importFileKind(s.path) !== "catalog"
+                        {mode === "compiled" && !completeSource && s.selected ? <Field label={`Source role for ${s.path}`}><select value={s.role || "paper"} disabled={busy} onChange={e => setSources(list => list.map((x, i) => i === index ? { ...x, role: e.target.value as LocalSource["role"] } : x))}><option value="paper">Research paper component</option><option value="front_matter">Cover or front matter (no paper record)</option></select></Field> : null}
+                        {s.selected && importFileKind(s.path) !== "catalog" && !completeSource && s.role !== "front_matter"
                           ? (
                             <Field label={`Paper group for ${s.path}`}>
                               <input
@@ -567,14 +613,14 @@ export function ImportPreparationWorkspace(
                   </ul>
                   <Button
                     disabled={busy || !sources.some((s) => s.selected)}
-                    onClick={() => void action(stage)}
+                    onClick={() => void action(stage, "Staging files…")}
                   >
-                    {busy ? "Staging…" : "Stage selected files"}
+                    {pendingAction === "Staging files…" ? pendingAction : "Stage selected files"}
                   </Button>
                 </>
               )
               : null}
-            {batch
+            {batch && !completeSource && !batch.revisionTarget
               ? (
                 <div className="peas-preparation-actions">
                   <Field label="New paper source key">
@@ -616,12 +662,15 @@ export function ImportPreparationWorkspace(
         ? (
           <CollectionEditor
             batch={batch}
+            arrangement={completeSource ? "complete_issue" : "separate_papers"}
+            onDirtyChange={setCollectionDirty}
             busy={busy}
             run={action}
             onChanged={() => refresh().then(() => undefined)}
           />
         )
         : null}
+      {batch?.mode === "compiled" && completeSource && editable && batch.collection ? <IssueRangeEditor batch={batch} busy={busy} run={action} onChanged={() => refresh().then(() => undefined)} /> : null}
       {batch?.items.length
         ? (
           <section className="peas-preparation-surface">
@@ -653,10 +702,14 @@ export function ImportPreparationWorkspace(
                   key={`${selected.id}-${selected.revision}`}
                   item={selected}
                   batch={batch}
+                  authors={authors}
+                  topics={topics}
+                  onTopicLabels={(labels) => setTopics(current => [...current.filter(topic => !labels.some(label => label.id === topic.id)), ...labels])}
                   busy={busy}
                   run={action}
                   onChanged={() => refresh().then(() => undefined)}
                   onExport={() => action(() => exportSources(selected.id))}
+                  onDirtyChange={onPaperDirty}
                 />
               )
               : null}
@@ -664,7 +717,7 @@ export function ImportPreparationWorkspace(
         )
         : null}
       {batch && editable && batch.items.length
-        ? (
+        ? batch.revisionTarget ? <section className="peas-preparation-surface"><h3>3. Review and publish the private correction</h3><p>The current published issue and its paper links remain available while you prepare this draft. Review every paper and the complete PDF. Publishing replaces all reviewed assets and metadata together using their existing record IDs.</p><IssueOutputReview key={JSON.stringify([batch.revision, batch.collection, batch.items.map(i => [i.id, i.revision, i.finalSha256])])} id={batch.revisionTarget.id} revisionBatchId={batch.id} busy={busy || unsavedChanges} run={action} onReviewed={() => { void refresh().then(current => { if (current?.revisionTarget?.published) setMessage("The reviewed issue correction and all paper assets were published together. Existing links are preserved."); }); }} /></section> : (
           <section className="peas-preparation-surface">
             <h3>3. Commit and publish</h3>
             <p>
@@ -673,7 +726,7 @@ export function ImportPreparationWorkspace(
               ready.
             </p>
             <Button
-              disabled={busy || !batch.items.some((i) => i.state === "ready")}
+              disabled={busy || unsavedChanges || !batch.items.some((i) => i.state === "ready")}
               onClick={() =>
                 void action(async () => {
                   const result = await apiFetch<
@@ -701,6 +754,7 @@ export function ImportPreparationWorkspace(
             >
               Commit reviewed papers privately
             </Button>
+            {batch.compiledDocumentId ? <IssueOutputReview id={batch.compiledDocumentId} refreshKey={outputRefreshKey} busy={busy || unsavedChanges} run={action} onReviewed={() => setPublishConfirmed(false)} /> : null}
             <Check
               label={`I approve publishing ${
                 batch.items.filter((i) => i.state !== "ignored").length
@@ -712,7 +766,7 @@ export function ImportPreparationWorkspace(
               onChange={setPublishConfirmed}
             />
             <Button
-              disabled={busy || !publishConfirmed || batch.items.some((i) =>
+              disabled={busy || unsavedChanges || !publishConfirmed || batch.items.some((i) =>
                 i.state !== "ignored" && i.state !== "committed"
               )}
               onClick={() =>
@@ -750,7 +804,8 @@ export function ImportPreparationWorkspace(
           </section>
         )
         : null}
-      {busy ? <p role="status">Saving changes…</p> : null}
+      {busy ? <p role="status">{pendingAction}</p> : null}
+      {unsavedChanges ? <p role="status">Save the paper and collection changes before preparing, committing or publishing the issue.</p> : null}
     </section>
   );
 }
@@ -762,13 +817,21 @@ function PaperPreparation({
   run,
   onChanged,
   onExport,
+  onDirtyChange,
+  authors,
+  topics,
+  onTopicLabels,
 }: {
   item: ImportItem;
   batch: ImportBatch;
   busy: boolean;
-  run: (f: () => Promise<void>) => Promise<void>;
+  run: (f: () => Promise<void>, label?: string) => Promise<void>;
   onChanged: () => Promise<void>;
   onExport: () => Promise<void>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
+  authors: AuthorRecord[];
+  topics: Array<{ id: number; name: string }>;
+  onTopicLabels: (labels: Array<{ id: number; name: string }>) => void;
 }) {
   const [metadata, setMetadata] = useState(() =>
       recoveredPaperDraft(item)?.metadata ?? item.metadata
@@ -776,11 +839,8 @@ function PaperPreparation({
     [parts, setParts] = useState(() =>
       recoveredPaperDraft(item)?.parts ?? item.recipe.parts
     ),
-    [authors, setAuthors] = useState<AuthorRecord[]>([]),
-    [authorSearch, setAuthorSearch] = useState(""),
-    [topicNames, setTopicNames] = useState(
-      item.metadata.topicIds.map((id) => `Topic ${id}`),
-    );
+    [authorSearch, setAuthorSearch] = useState("");
+  const topicNames = metadata.topicIds.map(id => topics.find(topic => topic.id === id)?.name || "Loading topic…");
   const [preview, setPreview] = useState<
       { url: string; title: string; asset?: ImportAsset } | null
     >(null),
@@ -803,20 +863,25 @@ function PaperPreparation({
       item.review.abstractText || item.abstractCandidate?.text || "",
     );
   const [moveTarget, setMoveTarget] = useState("");
-  useEffect(() => {
-    void fetchAuthors().then(setAuthors).catch(() => undefined);
-  }, []);
+  const [previewPage,setPreviewPage]=useState(1);
   const readonly = !!item.documentId || batch.status !== "draft";
-  const dirty = JSON.stringify(metadata) !== JSON.stringify(item.metadata) ||
-    JSON.stringify(parts) !== JSON.stringify(item.recipe.parts);
+  const dirty = importValueKey(metadata) !== importValueKey(item.metadata) ||
+    importValueKey(parts) !== importValueKey(item.recipe.parts);
+  useEffect(() => { onDirtyChange(item.id, dirty); }, [dirty, item.id, onDirtyChange]);
   useEffect(() => {
-    if (!dirty || readonly) return;
+    if (!dirty) {
+      try { localStorage.removeItem(`peas-import-edit:${item.batchId}:${item.id}`); } catch { /* optional local recovery */ }
+      return;
+    }
+    if (readonly) return;
     const timer = setTimeout(() => {
       try {
         localStorage.setItem(
           `peas-import-edit:${item.batchId}:${item.id}`,
           JSON.stringify({
             revision: item.revision,
+            metadataRevision: item.metadataRevision,
+            recipeRevision: item.recipeRevision,
             savedAt: Date.now(),
             metadata,
             parts,
@@ -838,8 +903,12 @@ function PaperPreparation({
     await onChanged();
   };
   const assetOf = (id: string) => batch.assets.find((a) => a.id === id);
+  const mainIssueId = batch.collection?.sourceArrangement === "complete_issue" ? batch.collection.mainAssetId : undefined;
+  const originalPart = parts.find(p => p.assetId === mainIssueId);
+  const originalRange = metadata.issueSourceRange ?? (mainIssueId && originalPart?.firstPage && originalPart?.lastPage ? { assetId: mainIssueId, firstPage: originalPart.firstPage, lastPage: originalPart.lastPage } : undefined);
   const show = (url: string, title: string, asset?: ImportAsset) => {
     setPreviewError("");
+    setPreviewPage(1);
     setPreview({ url, title, asset });
   };
   const reorder = (index: number, direction: number) => {
@@ -861,6 +930,18 @@ function PaperPreparation({
         Source key: <strong>{item.externalKey}</strong> · {item.state}
         {item.documentId ? ` · Repository document ${item.documentId}` : ""}
       </p>
+      <ImportConversionProgress batch={batch} item={item}/>
+      <ReviewNoteFields notes={metadata.reviewNotes??emptyUploadReview()} onChange={notes=>change({reviewNotes:notes})} disabled={busy}/>
+      {readonly?<Button disabled={busy || !dirty} onClick={()=>void run(async()=>{
+        const saved = await apiFetch<ImportBatch>(`${base(batch.id)}/items/${item.id}/review-notes`,{method:"PUT",json:metadata.reviewNotes??emptyUploadReview()});
+        const savedItem = saved.items.find(paper => paper.id === item.id);
+        if (!savedItem) throw new Error("The saved paper is unavailable. Reload the workspace.");
+        setMetadata(savedItem.metadata);
+        setParts(savedItem.recipe.parts);
+        try { localStorage.removeItem(`peas-import-edit:${item.batchId}:${item.id}`); } catch { /* optional local recovery */ }
+        onDirtyChange(item.id, false);
+        await onChanged();
+      }, "Saving notes…")}>Save completeness and hold notes</Button>:null}
       {item.error ? <p role="alert">{item.error}</p> : null}
       <fieldset disabled={readonly || busy}>
         <legend>Reviewed metadata</legend>
@@ -883,6 +964,8 @@ function PaperPreparation({
             >
               <option>THESIS</option>
               <option>DISSERTATION</option>
+              <option>CONFLUENCE</option>
+              <option>SYNERGY</option>
             </select>
           </Field>
           <Field label="Date precision">
@@ -916,6 +999,7 @@ function PaperPreparation({
               onChange={(e) => change({ program: e.target.value })}
             />
           </Field>
+          {batch.mode === "compiled" ? <><Field label="Printed first page (optional)"><input maxLength={32} value={metadata.printedPageRange?.first ?? ""} placeholder="Label printed in the journal" onChange={e=>change({printedPageRange:{first:e.target.value,last:metadata.printedPageRange?.last??""}})} /></Field><Field label="Printed last page (optional)"><input maxLength={32} value={metadata.printedPageRange?.last ?? ""} placeholder="Leave blank if unknown" onChange={e=>change({printedPageRange:{first:metadata.printedPageRange?.first??"",last:e.target.value}})} /></Field></> : null}
           <Field label="Major">
             <input
               value={metadata.major}
@@ -928,7 +1012,7 @@ function PaperPreparation({
           <ol>
             {metadata.authorIds.map((id, index) => (
               <li key={id}>
-                {authors.find((a) => String(a.id) === id)?.fullName || id}{" "}
+                {authors.find((a) => String(a.id) === id)?.fullName || "Loading author…"}{" "}
                 <button
                   type="button"
                   disabled={index === 0}
@@ -998,7 +1082,7 @@ function PaperPreparation({
           }}
           onChange={(value) => {
             change({ topicIds: value.topicIds, keywords: value.keywords });
-            setTopicNames(value.topicNames);
+            onTopicLabels(value.topicIds.map((id, index) => ({ id, name: value.topicNames[index] })));
           }}
           disabled={readonly || busy}
           idPrefix={`import-${item.id}`}
@@ -1041,6 +1125,12 @@ function PaperPreparation({
       </fieldset>
       <fieldset disabled={readonly || busy}>
         <legend>Included components in reading order</legend>
+        {mainIssueId ? <section aria-label="Authoritative replacement paper"><Check label="Replace this paper's original issue pages with the selected separate files" checked={!!metadata.issueReplacementConfirmed} disabled={!originalRange} onChange={confirmed => {
+          change({ issueReplacementConfirmed: confirmed, issueSourceRange: originalRange });
+          if (confirmed) setParts(ps => ps.map(p => p.assetId === mainIssueId ? { ...p, included: false } : p));
+          else if (originalRange) setParts(ps => [{ assetId: mainIssueId, included: true, role: "Paper range", firstPage: originalRange.firstPage, lastPage: originalRange.lastPage }, ...ps.filter(p => p.assetId !== mainIssueId).map(p => ({ ...p, included: false }))]);
+          setLayoutChecked(false);
+        }} />{metadata.issueReplacementConfirmed && originalRange ? <><p>The new paper PDF will replace main-source pages {originalRange.firstPage}–{originalRange.lastPage} in the complete issue. The original paper pages will not also be appended. Choose and review the authoritative replacement components below.</p><div className="peas-preparation-grid"><Field label="Original issue range first page"><input type="number" min={1} value={originalRange.firstPage} onChange={e => change({ issueSourceRange: { ...originalRange, firstPage: Number(e.target.value) } })} /></Field><Field label="Original issue range last page"><input type="number" min={1} value={originalRange.lastPage} onChange={e => change({ issueSourceRange: { ...originalRange, lastPage: Number(e.target.value) } })} /></Field></div></> : null}</section> : null}
         <p>
           Select one complete version, or choose the separate components to
           assemble. Review each converted file for missing pages, layout,
@@ -1217,7 +1307,7 @@ function PaperPreparation({
           )
           : null}
         <div className="peas-preparation-actions">
-          <Button disabled={!dirty} onClick={() => void run(save)}>
+          <Button disabled={!dirty} onClick={() => void run(save, "Saving paper changes…")}>
             Save metadata and recipe
           </Button>
           <Button
@@ -1274,7 +1364,8 @@ function PaperPreparation({
             {previewError
               ? <p role="alert">{previewError}</p>
               : (
-                <SimplePdfReader
+                <div className="peas-review-pdf"><PdfReviewThumbnails url={preview.url} onSelectPage={setPreviewPage}/><SimplePdfReader
+                  page={previewPage} onPageChange={setPreviewPage}
                   key={preview.url}
                   url={preview.url}
                   title={preview.title}
@@ -1287,7 +1378,7 @@ function PaperPreparation({
                     setPreviewError(
                       "The preview could not be loaded. Retry preparation or replace the source.",
                     )}
-                />
+                /></div>
               )}
           </section>
         )
@@ -1296,6 +1387,7 @@ function PaperPreparation({
         ? (
           <section className="peas-preparation-review">
             <h4>Final PDF review · {item.pageCount} pages</h4>
+            <PaperBoundaryReview batch={batch} item={item} onSourceLoaded={id => setOpened(old => new Set([...old, id]))} onFinalLoaded={() => setFinalSeen(true)} />
             <Button
               onClick={() =>
                 show(
@@ -1361,6 +1453,7 @@ function PaperPreparation({
                   </option>
                 </select>
               </Field>
+              {item.abstractCandidate || item.abstractDiagnostics?.sourceSha256 ? <details><summary>Original extraction evidence</summary><p>Manual correction keeps this candidate and its diagnostics with the saved review.</p><p>Method: {item.abstractCandidate?.method ?? "No candidate"} · Detection confidence: {item.abstractCandidate ? `${Math.round(item.abstractCandidate.confidence*100)}%` : "Unavailable"}</p><p>Detection confidence estimates whether this is an abstract. Verify all numbers, units and symbols against the source.</p>{item.abstractCandidate?.pageStart ? <p>Candidate physical pages in the paper PDF: {item.abstractCandidate.pageStart}–{item.abstractCandidate.pageEnd ?? item.abstractCandidate.pageStart}. These are separate from source and printed page numbers.</p> : null}{item.abstractCandidate?.qualityFlags?.length ? <ul>{item.abstractCandidate.qualityFlags.map(flag=><li key={flag}>{flag.replace(/_/g," ")}</li>)}</ul> : null}{item.abstractDiagnostics?.errorCode ? <p>Automatic extraction did not produce a confirmed abstract ({item.abstractDiagnostics.errorCode}). Review the source and enter the abstract manually; the prepared PDF and files remain saved.</p> : null}{item.abstractCandidate?.text ? <blockquote style={{whiteSpace:"pre-wrap"}}>{item.abstractCandidate.text}</blockquote> : null}</details> : null}
               {abstractAction === "accept_candidate"
                 ? (
                   <p>
@@ -1478,7 +1571,7 @@ function ObservationEntry(
 function CatalogMapping(
   { batch, run, onChanged }: {
     batch: ImportBatch;
-    run: (fn: () => Promise<void>) => Promise<void>;
+    run: (fn: () => Promise<void>, label?: string) => Promise<void>;
     onChanged: () => Promise<void>;
   },
 ) {
@@ -1682,10 +1775,12 @@ function CatalogMapping(
 }
 
 function CollectionEditor(
-  { batch, busy, run, onChanged }: {
+  { batch, busy, run, onChanged, arrangement, onDirtyChange }: {
     batch: ImportBatch;
+    arrangement: "complete_issue" | "separate_papers";
+    onDirtyChange: (dirty: boolean) => void;
     busy: boolean;
-    run: (fn: () => Promise<void>) => Promise<void>;
+    run: (fn: () => Promise<void>, label?: string) => Promise<void>;
     onChanged: () => Promise<void>;
   },
 ) {
@@ -1701,14 +1796,17 @@ function CollectionEditor(
       frontPage: 1,
       backPage: 2,
       reviewed: false,
+      sourceArrangement: arrangement,
     },
   );
   const [preview, setPreview] = useState(""),
     [previewError, setPreviewError] = useState(""),
     [seen, setSeen] = useState<Set<string>>(new Set());
+  useEffect(() => { onDirtyChange(importValueKey(collection) !== importValueKey(batch.collection)); }, [collection, batch.collection, onDirtyChange]);
   const patch = (value: Partial<ImportCollection>) =>
     setCollection({ ...collection, ...value, reviewed: false });
   const pdfs = batch.assets.filter((a) => a.kind === "pdf");
+  const orderedIds = [...collection.paperOrder ?? [], ...batch.items.filter(i => i.state !== "ignored" && !collection.paperOrder?.includes(i.id)).map(i => i.id)];
   return (
     <details className="peas-preparation-surface">
       <summary>Collection metadata, covers and foreword</summary>
@@ -1726,13 +1824,14 @@ function CollectionEditor(
               <option>SYNERGY</option>
             </select>
           </Field>
+          {batch.revisionTarget ? <Field label="Revision source arrangement"><select value={collection.sourceArrangement || "separate_papers"} onChange={e => patch({ sourceArrangement: e.target.value as "complete_issue" | "separate_papers" })}><option value="separate_papers">Separate paper files</option><option value="complete_issue">Complete issue with confirmed paper ranges</option></select></Field> : null}
           {(["startYear", "endYear", "volume", "issue"] as const).map((key) => (
             <Field key={key} label={key}>
               <input
                 type="number"
                 min={1}
-                value={collection[key]}
-                onChange={(e) => patch({ [key]: Number(e.target.value) })}
+                value={collection[key] ?? ""}
+                onChange={(e) => patch({ [key]: key === "issue" && !e.target.value ? null : Number(e.target.value) })}
               />
             </Field>
           ))}
@@ -1742,6 +1841,7 @@ function CollectionEditor(
               onChange={(e) => patch({ department: e.target.value })}
             />
           </Field>
+          {collection.sourceArrangement === "complete_issue" ? <Field label="Main issue PDF (includes front matter)"><select value={collection.mainAssetId || ""} onChange={e => patch({ mainAssetId: e.target.value })}><option value="">Choose main issue PDF</option>{pdfs.map(a => <option key={a.id} value={a.id}>{a.relativePath} · {a.pageCount} pages</option>)}</select></Field> : null}
           {(["coverAssetId", "forewordAssetId"] as const).map((key) => (
             <Field
               key={key}
@@ -1777,6 +1877,17 @@ function CollectionEditor(
             />
           </Field>
         </div>
+        {collection.sourceArrangement === "complete_issue" ? <>
+          <h4>Account for pages outside papers</h4><p>Assign inclusive physical page ranges to front matter, embedded covers or explicitly excluded material. Main-issue front matter stays in the complete PDF; do not attach the main PDF again as a foreword. If covers are embedded, choose the main PDF as the cover source.</p>
+          {(collection.pageSections ?? []).map((section, index) => <div className="peas-preparation-grid" key={index}>
+            <Field label={`Section ${index + 1} first page`}><input type="number" min={1} value={section.first} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, first: Number(e.target.value) } : s) })} /></Field>
+            <Field label={`Section ${index + 1} last page`}><input type="number" min={1} value={section.last} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, last: Number(e.target.value) } : s) })} /></Field>
+            <Field label={`Section ${index + 1} role`}><select value={section.role} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, role: e.target.value as typeof section.role } : s) })}><option value="front_matter">Front matter</option><option value="cover">Embedded cover</option><option value="excluded">Explicitly excluded</option></select></Field>
+            <Field label={`Section ${index + 1} explanation`}><input value={section.reason || ""} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, reason: e.target.value } : s) })} /></Field>
+            <Button variant="outline" onClick={() => patch({ pageSections: collection.pageSections!.filter((_, i) => i !== index) })}>Remove section {index + 1}</Button>
+          </div>)}
+          <Button variant="outline" onClick={() => patch({ pageSections: [...collection.pageSections ?? [], { first: 1, last: 1, role: "front_matter" }] })}>Add page section</Button>
+        </> : null}
         <Field label="Reviewed foreword abstract (leave blank if unavailable)">
           <textarea
             maxLength={10000}
@@ -1784,6 +1895,7 @@ function CollectionEditor(
             onChange={(e) => patch({ forewordAbstract: e.target.value })}
           />
         </Field>
+        {orderedIds.length ? <section aria-label="Issue paper order"><h4>Paper order in the complete issue</h4><ol>{orderedIds.map((id, index) => <li key={id}>{batch.items.find(i => i.id === id)?.metadata.title}<div className="peas-preparation-actions"><Button variant="outline" disabled={index === 0} onClick={() => { const next = [...orderedIds]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; patch({ paperOrder: next }); }}>Move paper {index + 1} up</Button><Button variant="outline" disabled={index === orderedIds.length - 1} onClick={() => { const next = [...orderedIds]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; patch({ paperOrder: next }); }}>Move paper {index + 1} down</Button></div></li>)}</ol></section> : null}
         <div className="peas-preparation-actions">
           {[collection.coverAssetId, collection.forewordAssetId].filter(Boolean)
             .map((id) => (
@@ -1843,7 +1955,19 @@ function CollectionEditor(
         >
           Save reviewed collection
         </Button>
+        <Button variant="outline" onClick={() => void run(async () => {
+          await apiFetch(`${base(batch.id)}/collection`, { method: "PUT", json: { revision: batch.revision, collection: { ...collection, reviewed: false } } });
+          setCollection({ ...collection, reviewed: false });
+          await onChanged();
+        })}>Save collection draft privately</Button>
       </fieldset>
     </details>
   );
+}
+
+function ImportConversionProgress({batch,item}:{batch:ImportBatch;item:ImportItem}){
+ const [now,setNow]=useState(Date.now());
+ useEffect(()=>{if(item.state!=="preparing")return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[item.state]);
+ const job=batch.jobs?.find(j=>j.itemId===item.id);
+ return <section aria-label="Per-file preparation progress"><a href={`?import_batch=${batch.id}&preparation=${batch.mode}`}>Resume this preparation job</a><ul>{item.recipe.parts.filter(p=>p.included).map(p=>{const a=batch.assets.find(a=>a.id===p.assetId);const current=job?.status==="processing"&&job.progress.assetId===p.assetId;return <li key={p.assetId}>{a?.relativePath} · {a?.previewSha256?`Ready · ${a.pageCount} pages`:current?`Converting · ${Math.max(0,Math.round((now-new Date(job.progress.startedAt||job.updatedAt).getTime())/1000))}s`:job?.status==="failed"?"Preparation stopped":"Queued"}</li>;})}</ul>{item.state==="preparing"&&job?.status==="processing"&&job.progress.phase==="assembling"?<p role="status">Assembling the selected pages and extracting the abstract…</p>:null}</section>;
 }

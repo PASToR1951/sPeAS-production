@@ -28,6 +28,5 @@ export function formatPublicationDate(value: string | null | undefined, precisio
     timeZone: "UTC",
     year: "numeric",
     ...(precision !== "year" ? { month: "short" as const } : {}),
-    ...(precision === "day" || precision === "legacy" ? { day: "numeric" as const } : {}),
   }).format(date);
 }

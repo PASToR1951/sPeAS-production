@@ -7,13 +7,17 @@ import { fileURLToPath } from "node:url";
 import net from "node:net";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temporary = await mkdtemp(path.join(tmpdir(), "peas-import-test-"));
+if (path.dirname(path.resolve(temporary)) !== path.resolve(tmpdir()) ||
+  !path.basename(temporary).startsWith("peas-import-test-")) {
+  throw new Error("Refusing to use a test directory outside the temporary root");
+}
 const pgBin = process.env.IMPORT_TEST_PG_BIN ||
   (process.platform === "darwin"
     ? "/opt/homebrew/opt/postgresql@17/bin"
     : "/usr/lib/postgresql/17/bin");
 const pg = (name) => path.join(pgBin, `${name}${process.platform === "win32" ? ".exe" : ""}`);
 const group = process.argv[2] || "integration";
-if (!["integration", "e2e", "reader"].includes(group)) {
+if (!["integration", "e2e", "reader", "public-ids"].includes(group)) {
   throw new Error("Unknown import test group");
 }
 function run(command, args, env = process.env, cwd = root) {
@@ -114,6 +118,12 @@ try {
       path.join(root, "Deno"),
     );
   }
+  if (group === "public-ids") {
+    await run("deno", ["run", "--allow-env", "--allow-net", "--allow-read",
+      "scripts/migrate.ts", "apply", "--through=0014"], env, path.join(root, "Deno"));
+    await run(pg("psql"), ["-v", "ON_ERROR_STOP=1", "-f",
+      path.join(root, "Deno/integration/publicDocumentIds.fixture.sql")], env);
+  }
   for (let i = 0; i < 2; i++) {
     await run(
       "deno",
@@ -134,7 +144,7 @@ try {
     await run("node", [
       "scripts/run-import-browser-test.mjs",
       temporary,
-      ...(group === "reader" ? ["--grep", "@volume-reader"] : []),
+      ...(group === "reader" ? ["--grep", "@volume-reader"] : process.argv.slice(3)),
     ], env);
   } else {await run(
       "deno",
@@ -145,7 +155,7 @@ try {
         "--allow-read",
         "--allow-write",
         "--allow-run",
-        "integration/importPreparation.integration.ts",
+        group === "public-ids" ? "integration/publicDocumentIds.integration.ts" : "integration/importPreparation.integration.ts",
       ],
       env,
       path.join(root, "Deno"),

@@ -5,10 +5,11 @@ import type {
 } from "../../../../shared/imports";
 import { apiFetch, getErrorMessage } from "../../lib/api/http";
 import { SimplePdfReader } from "./SimplePdfReader";
+import { IssuePaperOrder } from "./IssuePaperOrder";
 import "../../styles/document-preparation.css";
 
 export function VolumeContentsReader(
-  { id, administrator = false }: { id: string; administrator?: boolean },
+  { id, administrator = false, resolutionOnly = false, onMembershipResolved }: { id: string; administrator?: boolean; resolutionOnly?: boolean; onMembershipResolved?: () => void },
 ) {
   const [contents, setContents] = useState<PublicVolumeContents | null>(null);
   const [paperId, setPaperId] = useState(() =>
@@ -23,6 +24,8 @@ export function VolumeContentsReader(
     [pdfError, setPdfError] = useState(""),
     [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [orderDirty, setOrderDirty] = useState(false), [orderBusy, setOrderBusy] = useState(false);
   const [membership, setMembership] = useState<VolumeMembershipReview | null>(
     null,
   );
@@ -83,7 +86,7 @@ export function VolumeContentsReader(
     [],
   );
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || resolutionOnly) return;
     const params = new URLSearchParams(location.search);
     const version = params.get("version");
     const missing = paperId && String(selected.id) !== paperId;
@@ -101,7 +104,7 @@ export function VolumeContentsReader(
         selected.version,
         true,
       );}
-  }, [selected, paperId, page, writeLocation]);
+  }, [selected, paperId, page, writeLocation, resolutionOnly]);
   useEffect(() => {
     const restore = () => {
       const p = new URLSearchParams(location.search);
@@ -127,29 +130,6 @@ export function VolumeContentsReader(
     writeLocation(paper.id, 1, paper.version);
     if (matchMedia("(max-width: 736px)").matches) setOpen(false);
   };
-  const reorder = async (direction: number) => {
-    if (!contents || index < 0) return;
-    const papers = [...contents.papers];
-    [papers[index], papers[index + direction]] = [
-      papers[index + direction],
-      papers[index],
-    ];
-    try {
-      const updated = await apiFetch<PublicVolumeContents>(
-        `${base}/${id}/contents`,
-        {
-          method: "PUT",
-          json: {
-            revision: contents.revision,
-            paperIds: papers.map((p) => p.id),
-          },
-        },
-      );
-      setContents(updated);
-    } catch (e) {
-      setError(getErrorMessage(e));
-    }
-  };
   const resolveMembership = async () => {
     if (!membership || !confirmed) return;
     try {
@@ -169,16 +149,18 @@ export function VolumeContentsReader(
       setMembership(null);
       setError("");
       setRefresh((v) => v + 1);
+      onMembershipResolved?.();
     } catch (e) {
       setError(getErrorMessage(e));
     }
   };
+  if (resolutionOnly && !membership) return null;
   return (
     <section
       className="peas-volume-reader"
       aria-label="Read papers in this collection"
     >
-      <header>
+      {!resolutionOnly ? <header>
         <h2>Read this collection</h2>
         <button
           type="button"
@@ -188,7 +170,8 @@ export function VolumeContentsReader(
         >
           {open ? "Hide" : "Show"} contents
         </button>
-      </header>
+        {administrator ? <button type="button" disabled={orderDirty || orderBusy} onClick={() => setEditingOrder(value => !value)}>{editingOrder ? "Back to reading" : "Edit paper order"}</button> : null}
+      </header> : null}
       {error
         ? (
           <p role="alert">
@@ -260,7 +243,7 @@ export function VolumeContentsReader(
       {contents && !contents.papers.length
         ? <p>No published papers are available in this collection.</p>
         : null}
-      <div
+      {resolutionOnly ? null : editingOrder ? <IssuePaperOrder id={id} onDirtyChange={setOrderDirty} onBusyChange={setOrderBusy} onSaved={() => setRefresh(value => value + 1)} /> : <div
         className={`peas-volume-reader__layout${open ? "" : " is-collapsed"}`}
       >
         {open
@@ -287,6 +270,7 @@ export function VolumeContentsReader(
                         ? "true"
                         : undefined}
                       onClick={() => select(paper)}
+                      title={paper.title}
                     >
                       <span>{paper.position}. {paper.title}</span>
                       <small>
@@ -340,26 +324,6 @@ export function VolumeContentsReader(
                   Next paper
                 </button>
               </div>
-              {administrator
-                ? (
-                  <div className="peas-preparation-actions">
-                    <button
-                      type="button"
-                      disabled={index <= 0}
-                      onClick={() => void reorder(-1)}
-                    >
-                      Move paper earlier
-                    </button>
-                    <button
-                      type="button"
-                      disabled={index >= (contents?.papers.length ?? 0) - 1}
-                      onClick={() => void reorder(1)}
-                    >
-                      Move paper later
-                    </button>
-                  </div>
-                )
-                : null}
               {selected.hasPdf && !pdfError
                 ? (
                   <SimplePdfReader
@@ -368,6 +332,7 @@ export function VolumeContentsReader(
                       encodeURIComponent(selected.version)
                     }`}
                     title={selected.title}
+                    preferenceKey={`volume-${id}`}
                     page={page}
                     onPageChange={(n) =>
                       writeLocation(selected.id, n, selected.version)}
@@ -422,7 +387,7 @@ export function VolumeContentsReader(
             </article>
           )
           : null}
-      </div>
+      </div>}
     </section>
   );
 }

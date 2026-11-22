@@ -11,6 +11,8 @@ const ADMIN_LINKS = [
   "Contact Inquiries",
 ];
 
+const SETTINGS_LINKS = ["Profile", "Operational Reports", "System Logs", "Experience Studio", "Role Management", "Research Agenda"];
+
 test.beforeEach(async ({ page }) => {
   await mockAdminIdentity(page);
   await page.route("**/api/categories", (route) => route.fulfill({ json: [] }));
@@ -63,11 +65,15 @@ test("admin can clear the current notifications without touching their source re
   await expect(page.getByRole("button", { name: "Notifications", exact: true })).toBeVisible();
 });
 
-test("classification management keeps mobile agenda actions contained", async ({ page }) => {
-  await page.route("**/api/admin/research-agendas", (route) => route.fulfill({ json: [
-    { id: 1, name: "Paulinian Spirituality/Identity and its impact to international community and global partnerships", isActive: true, sortOrder: 1, documentCount: 0, primaryDocumentCount: 0 },
-    { id: 2, name: "Paulinian Mission / Vision / Philosophy / Goals", isActive: true, sortOrder: 2, documentCount: 0, primaryDocumentCount: 0 },
-  ] }));
+test("research agenda lives in Settings and keeps mobile actions contained", async ({ page }) => {
+  let agendaRequests = 0;
+  await page.route("**/api/admin/research-agendas", (route) => {
+    agendaRequests += 1;
+    return route.fulfill({ json: [
+      { id: 1, name: "Paulinian Spirituality/Identity and its impact to international community and global partnerships", isActive: true, sortOrder: 1, documentCount: 0, primaryDocumentCount: 0 },
+      { id: 2, name: "Paulinian Mission / Vision / Philosophy / Goals", isActive: true, sortOrder: 2, documentCount: 0, primaryDocumentCount: 0 },
+    ] });
+  });
   await page.route("**/api/admin/topics?*", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/admin/keywords", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/admin/classification/summary", (route) => route.fulfill({ json: { missingDocuments: 5, pendingMigration: 0 } }));
@@ -76,10 +82,24 @@ test("classification management keeps mobile agenda actions contained", async ({
   await page.setViewportSize({ width: 400, height: 783 });
   await page.goto("/admin/Components/classification-management.html");
   await expect(page.getByRole("heading", { name: "Classification Management" })).toBeVisible();
+  await expect(page.getByText("public documents missing required classification")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Topics", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keywords", exact: true })).toBeVisible();
+  await expect(page.getByLabel("New agenda name")).toHaveCount(0);
+  expect(agendaRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Research Agenda" }).click();
+  await expect(page.locator(".peas-admin-sidebar")).not.toHaveClass(/is-mobile-open/);
+  await expect(page).toHaveURL(/\/admin\/Components\/research-agenda\.html$/);
+  await expect(page.getByRole("heading", { name: "Research Agenda", exact: true })).toBeVisible();
+  await page.reload();
   await expect(page.getByText("Paulinian Spirituality/Identity", { exact: false })).toBeVisible();
 
   const metrics = await page.evaluate(() => {
-    const header = document.querySelector<HTMLElement>(".peas-classification-management > .peas-admin-page-header")!;
+    const header = document.querySelector<HTMLElement>(".peas-research-agenda-management > .peas-admin-page-header")!;
     const actions = [...document.querySelectorAll<HTMLElement>(".peas-classification-row__actions")].map((element) => {
       const box = element.getBoundingClientRect();
       return { left: box.left, right: box.right };
@@ -94,6 +114,14 @@ test("classification management keeps mobile agenda actions contained", async ({
   expect(metrics.headerPosition).toBe("static");
   expect(metrics.actions.every((action) => action.left >= 0 && action.right <= 400)).toBe(true);
   expect(metrics.scrollWidth).toBeLessThanOrEqual(400);
+
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Research Agenda" })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", { name: "Back to workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back, Admin" })).toBeVisible();
+  await expect(page.locator(".peas-admin-sidebar")).not.toHaveClass(/is-mobile-open/);
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link")).toHaveText(ADMIN_LINKS);
 });
 
 test("admin shell uses solid surfaces and an accessible profile menu", async ({ page }) => {
@@ -142,13 +170,13 @@ test("admin shell uses solid surfaces and an accessible profile menu", async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test("admin routes keep one shell, identity, and navigation set", async ({ page }) => {
+test("admin routes preserve the shell while switching between workspace and Settings", async ({ page }) => {
   await page.goto("/admin/Components/documents_list.html");
   await expect(page.getByText("Admin M User", { exact: true })).toBeVisible();
   await expect(page.getByText("Administrator", { exact: true })).toBeVisible();
   await expect(page.getByText("Guest", { exact: true })).toHaveCount(0);
 
-  const navigation = page.getByRole("navigation", { name: "Workspace" });
+  const navigation = page.getByRole("navigation", { name: "Workspace", exact: true });
   await expect(navigation.getByRole("link")).toHaveText(ADMIN_LINKS);
   await page.locator(".peas-admin-shell").evaluate((element) => element.setAttribute("data-shell-instance", "preserved"));
 
@@ -161,12 +189,25 @@ test("admin routes keep one shell, identity, and navigation set", async ({ page 
 
   await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
   await expect(page.locator(".peas-admin-shell")).toHaveAttribute("data-shell-instance", "preserved");
+  const settingsNavigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  await expect(settingsNavigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
+  await expect(settingsNavigation.getByRole("link", { name: "Profile", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(navigation).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Upload Document" })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Back to workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back, Admin" })).toBeVisible();
+  await expect(navigation.getByRole("link")).toHaveText(ADMIN_LINKS);
+  await expect(page.locator(".peas-admin-shell")).toHaveAttribute("data-shell-instance", "preserved");
+  await page.goBack();
+  await expect(settingsNavigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
+  await page.goForward();
   await expect(navigation.getByRole("link")).toHaveText(ADMIN_LINKS);
 });
 
-test("reports and system logs live in Settings instead of the sidebar", async ({ page }) => {
+test("Settings sidebar keeps reports selected on their nested pages", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 670 });
   await page.goto("/admin/dashboard.html");
   const sidebar = page.locator(".peas-admin-sidebar");
@@ -174,8 +215,16 @@ test("reports and system logs live in Settings instead of the sidebar", async ({
   await expect(sidebar.getByRole("link", { name: "System Logs" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
-  await expect(page.locator(".peas-settings-tool-card").filter({ hasText: "Operational Reports" })).toBeVisible();
-  await expect(page.locator(".peas-settings-tool-card").filter({ hasText: "System Logs" })).toBeVisible();
+  const settingsNavigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  await expect(settingsNavigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
+  await settingsNavigation.getByRole("link", { name: "Operational Reports" }).click();
+  await expect(page.getByRole("heading", { name: "Operational Reports", exact: true })).toBeVisible();
+  await expect(settingsNavigation.getByRole("link", { name: "Operational Reports" })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", { name: "Search Analytics", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Search Analytics", exact: true })).toBeVisible();
+  await expect(settingsNavigation.getByRole("link", { name: "Operational Reports" })).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(settingsNavigation.getByRole("link", { name: "Operational Reports" })).toHaveAttribute("aria-current", "page");
 });
 
 test("contact inquiry drawer has animated open and close states", async ({ page }) => {
@@ -219,41 +268,40 @@ test("contact inquiry drawer has animated open and close states", async ({ page 
 test("settings remains available from the administrator profile menu", async ({ page }) => {
   await page.goto("/admin/Components/admin_settings.html");
 
-  const tools = page.locator(".peas-settings-tool-card");
-  await expect(tools).toHaveCount(4);
-  await expect(tools).toHaveText([
-    /Operational Reports.*Review repository inventory, archive activity, and category distribution.*Open/s,
-    /System Logs.*Review security events, repository activity, and administrator changes.*Open/s,
-    /Experience Studio.*Manage the content and presentation of the public PeAS experience.*Open/s,
-    /Role Management.*Review administrator accounts and revoke active sessions.*Open/s,
-  ]);
-  await expect(tools.nth(0)).toHaveAttribute("href", "/admin/Components/reports.html");
-  await expect(tools.nth(1)).toHaveAttribute("href", "/admin/Components/admin_logs.html");
-  await expect(tools.nth(2)).toHaveAttribute("href", "/admin/Components/experience-studio.html");
-  await expect(tools.nth(3)).toHaveAttribute("href", "/admin/Components/role-management.html");
+  const settingsNavigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  await expect(settingsNavigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
+  await expect(settingsNavigation.getByRole("link", { name: "Experience Studio" })).toHaveAttribute("href", "/admin/Components/experience-studio.html");
+  await expect(page.locator(".peas-settings-tool-card")).toHaveCount(0);
 
   const navigation = page.getByRole("navigation", { name: "Utilities" });
   await expect(navigation.getByRole("link", { name: "Settings" })).toHaveCount(0);
   await expect(navigation.getByRole("button", { name: "Logout" })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Operational Reports" })).toHaveCount(0);
 
-  await tools.nth(0).click();
+  await settingsNavigation.getByRole("link", { name: "Operational Reports" }).click();
   await expect(page).toHaveURL(/\/admin\/Components\/reports\.html$/);
   await expect(page.getByRole("heading", { name: "Operational Reports" })).toBeVisible();
 
   await page.getByRole("button", { name: "Open profile menu for Admin M User" }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
-  await tools.nth(3).click();
+  await settingsNavigation.getByRole("link", { name: "Role Management" }).click();
   await expect(page).toHaveURL(/\/admin\/Components\/role-management\.html$/);
   await expect(page.getByRole("heading", { name: "Administrator Accounts" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open profile menu for Admin M User" })).toBeVisible();
 });
 
-test("settings contains administrator profile and workspace tools", async ({ page }) => {
+test("Settings shows profile content with accessible collapsed section links", async ({ page }) => {
   await page.goto("/admin/Components/admin_settings.html");
+  await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
   await expect(page.getByText("Profile picture", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Administration tools" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Role Management/ })).toBeVisible();
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  const navigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  await expect(navigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
+  await navigation.getByRole("link", { name: "Research Agenda" }).focus();
+  await expect(page.getByRole("tooltip", { name: "Research Agenda", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Back to workspace" }).focus();
+  await expect(page.getByRole("tooltip", { name: "Research Agenda", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tooltip", { name: "Back to workspace", exact: true })).toBeVisible();
 });
 
 test("collapsed navigation identifies icon-only controls with tooltips", async ({ page }) => {
@@ -274,6 +322,7 @@ test("collapsed navigation identifies icon-only controls with tooltips", async (
 
   const dashboard = page.getByRole("link", { name: "Dashboard" });
   await dashboard.focus();
+  await expect(page.getByRole("tooltip", { name: "Upload Document", exact: true })).toHaveCount(0);
   await expect(page.getByRole("tooltip")).toHaveText("Dashboard");
 
   await page.getByRole("button", { name: "Expand sidebar" }).press("Enter");

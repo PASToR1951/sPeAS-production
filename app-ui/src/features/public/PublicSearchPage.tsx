@@ -263,6 +263,7 @@ export function PublicSearchPage() {
             <div>
               <span>{loading ? "Searching the archive" : `${totalCount} ${totalCount === 1 ? "record" : "records"} found`}</span>
               <h2 id="public-results-title">{resultLabel}</h2>
+              {result?.paperCount !== undefined && result.issueCount !== undefined ? <p>{result.paperCount} {result.paperCount === 1 ? "paper" : "papers"} · {result.issueCount} {result.issueCount === 1 ? "issue" : "issues"}</p> : null}
               <p>{sort === "latest" ? "Newest publications appear first." : "Oldest publications appear first."}</p>
             </div>
             <div className="peas-public-results-actions">

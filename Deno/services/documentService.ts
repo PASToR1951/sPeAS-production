@@ -1,5 +1,6 @@
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { getDocumentClassification, getDocumentClassifications, type DocumentClassification } from "./documentClassificationService.ts";
+import { publicIssueContext } from "./issueRenditionService.ts";
 
 // Define interfaces for our data structures
 export interface DocumentOptions {
@@ -20,7 +21,10 @@ export interface DocumentOptions {
 }
 
 export interface Document {
+  parent_issue?: { id: string; label: string } | null;
+  is_public?: boolean;
   id: number;
+  public_id?: string;
   title: string;
   description: string;
   abstract?: string | null;
@@ -61,6 +65,8 @@ interface Topic {
 }
 
 export interface DocumentsResponse {
+  paperCount?: number;
+  issueCount?: number;
   documents: Document[];
   totalCount: number;
   totalPages: number;
@@ -75,6 +81,7 @@ interface ChildDocumentsResponse {
 // Add interface for compiled document
 export interface CompiledDocument {
   id: number;
+  public_id?: string;
   title?: string;
   start_year?: number;
   end_year?: number;
@@ -163,6 +170,7 @@ export async function fetchDocuments(
         d.title ILIKE $${paramIndex} OR 
         d.description ILIKE $${paramIndex} OR
         d.abstract ILIKE $${paramIndex} OR
+        EXISTS (SELECT 1 FROM compiled_documents parent WHERE parent.id=d.compiled_parent_id AND CONCAT_WS(' ',parent.category,'Vol. '||parent.volume,'No. '||parent.issue_number,'AY '||parent.start_year||'-'||parent.end_year,parent.department) ILIKE $${paramIndex}) OR
         EXISTS (
           SELECT 1 FROM authors a 
           JOIN document_authors da ON a.id = da.author_id
@@ -249,7 +257,7 @@ export async function fetchDocuments(
       : "";
     let compiledSearchWhereClause = '';
     if (search) {
-      compiledSearchWhereClause = `AND EXISTS (
+      compiledSearchWhereClause = `AND (CONCAT_WS(' ',cd.category,'Vol. '||cd.volume,'No. '||cd.issue_number,'AY '||cd.start_year||'-'||cd.end_year,cd.department) ILIKE $${searchParamIndex} OR EXISTS (
         SELECT 1
         FROM documents child
         LEFT JOIN document_authors child_da ON child_da.document_id = child.id
@@ -272,7 +280,7 @@ export async function fetchDocuments(
             OR (child_topic.status = 'approved' AND child_topic.normalized_name ILIKE $${searchParamIndex})
             OR child_keyword.normalized_term ILIKE $${searchParamIndex}
           )
-      )`;
+      ))`;
     }
     const compiledAgendaWhereClause = agenda
       ? typedAgendaId === null
@@ -383,7 +391,7 @@ export async function fetchDocuments(
       combinedDocsQuery += `
         -- Regular documents that are not children of compilations
         SELECT 
-          d.id, 
+          d.id, d.public_id,
             COALESCE(d.title, 'Untitled Document')::TEXT as title,
             COALESCE(d.description, '')::TEXT as description,
           d.publication_date, d.publication_date_precision,
@@ -402,12 +410,13 @@ export async function fetchDocuments(
               WHERE cdi.compiled_document_id = d.id
             )::BIGINT as child_count,
             d.deleted_at,
-            d.review_status
+            d.review_status, d.is_public
         FROM 
           documents d
         WHERE 
             -- Only include documents without compiled_parent_id for main document list
-            d.compiled_parent_id IS NULL
+            ${publicOnly && (search || keyword || topic || agenda || docTypes === "single") ? "TRUE" : "d.compiled_parent_id IS NULL"}
+            ${publicOnly ? "AND (d.compiled_parent_id IS NULL OR EXISTS(SELECT 1 FROM compiled_documents p WHERE p.id=d.compiled_parent_id AND p.deleted_at IS NULL AND p.review_status='approved' AND NOT p.contents_needs_resolution))" : ""}
             -- Exclude archived documents
             AND d.deleted_at IS NULL
             ${publicOnly ? "AND d.is_public IS TRUE" : ""}
@@ -435,7 +444,7 @@ export async function fetchDocuments(
       combinedDocsQuery += `
         -- Compiled documents from the compiled_documents table directly
         SELECT
-          cd.id,
+          cd.id, cd.public_id,
           CONCAT(
             COALESCE(cd.category, 'COMPILED'),
             CASE
@@ -465,7 +474,7 @@ export async function fetchDocuments(
             WHERE cdi.compiled_document_id = cd.id
           )::BIGINT as child_count,
           cd.deleted_at,
-          cd.review_status
+          cd.review_status, (cd.review_status='approved') AS is_public
         FROM 
           compiled_documents cd
         WHERE 
@@ -499,11 +508,13 @@ export async function fetchDocuments(
     const fullQuery = `
       ${combinedDocsQuery}
       count_query AS (
-        SELECT COUNT(*) as total_count FROM combined_docs
+        SELECT COUNT(*) as total_count, COUNT(*) FILTER (WHERE is_compiled=false) AS paper_count, COUNT(*) FILTER (WHERE is_compiled=true) AS issue_count FROM combined_docs
       )
       SELECT 
         cd.*,
-        (SELECT total_count FROM count_query) as total_count
+        (SELECT total_count FROM count_query) as total_count,
+        (SELECT paper_count FROM count_query) as paper_count,
+        (SELECT issue_count FROM count_query) as issue_count
       FROM 
         combined_docs cd
       ORDER BY 
@@ -589,6 +600,7 @@ export async function fetchDocuments(
       // Create base document object
       const doc: Document = {
         id: row.id,
+        public_id: row.public_id,
         title: row.title || 'Untitled Document',
         description: row.description || '',
         publication_date: row.publication_date ? new Date(row.publication_date) : null,
@@ -604,9 +616,11 @@ export async function fetchDocuments(
         start_year: row.start_year ? parseInt(String(row.start_year), 10) : undefined,
         end_year: row.end_year ? parseInt(String(row.end_year), 10) : undefined,
         review_status: row.review_status || "approved",
+        is_public: row.is_public === true,
       };
       
       // Also add deleted_at explicitly for use in filtering
+      if (publicOnly && !doc.is_compiled && doc.parent_compiled_id) doc.parent_issue = await publicIssueContext(doc.id);
       (doc as any).deleted_at = row.deleted_at;
       
       // Log if this document has deleted_at set
@@ -706,6 +720,8 @@ export async function fetchDocuments(
     
     return {
       documents,
+      paperCount: Number((result.rows[0] as any)?.paper_count ?? 0),
+      issueCount: Number((result.rows[0] as any)?.issue_count ?? 0),
       totalCount,
       totalPages,
       currentPage: page,
@@ -1088,6 +1104,7 @@ export async function getCompiledDocument(compiledDocId: number): Promise<Compil
     // Create a complete CompiledDocument object including all fields
     const compiledDoc: CompiledDocument = {
       id: typeof row.id === 'bigint' ? Number(row.id) : row.id as number,
+      public_id: row.public_id as string,
       title: row.title as string,
       start_year: row.start_year as number | undefined,
       end_year: row.end_year as number | undefined,

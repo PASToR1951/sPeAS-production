@@ -9,6 +9,8 @@ import { documentEditRoutes } from "./documentEditRoutes.ts";
 import { paperRoutes } from "./paperRoutes.ts";
 import { importRoutes } from "./importRoutes.ts";
 import { volumeContentsRoutes } from "./volumeContentsRoutes.ts";
+import { issueRenditionRoutes } from "./issueRenditionRoutes.ts";
+import { withPublicDocumentId } from "../services/publicDocumentIdService.ts";
 // author routes are now handled directly in server.ts
 
 // Define the route interface
@@ -46,6 +48,9 @@ const apiDocumentRoutes = documentRoutes.map(route => {
   console.log(`Mapping route: ${route.path} → ${newPath}`);
   return {
     ...route,
+    handler: /^\/(guest|public)\/documents\/:id(?:\/|$)/.test(route.path)
+      ? withPublicDocumentId(route.handler, "document")
+      : route.handler,
     path: newPath
   };
 });
@@ -63,6 +68,9 @@ const apiCompiledDocumentRoutes = compiledDocumentRoutes.map(route => {
   console.log(`Mapping route: ${route.path} → ${newPath}`);
   return {
     ...route,
+    handler: /^\/(guest|public)\/compiled-documents\/:id(?:\/|$)/.test(route.path)
+      ? withPublicDocumentId(route.handler, "compiled")
+      : route.handler,
     path: newPath
   };
 });
@@ -96,6 +104,7 @@ export const routes: Route[] = [
   ...permissionsRoutes,
   ...importRoutes,
   ...volumeContentsRoutes,
+  ...issueRenditionRoutes,
   ...apiDocumentRoutes, // Use the mapped API document routes
   ...apiPaperRoutes,
   ...apiCompiledDocumentRoutes, // Use the mapped API compiled document routes

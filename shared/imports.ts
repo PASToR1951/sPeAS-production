@@ -1,4 +1,5 @@
 /** Shared preparation contract. Source pages are physical, one-based PDF pages. */
+import type { UploadReviewNotes } from "./uploadReview.ts";
 export const IMPORT_LIMITS = {
   sourceBytes: 100_000_000,
   finalBytes: 100_000_000,
@@ -10,7 +11,27 @@ export const IMPORT_LIMITS = {
   retentionDays: 30,
 } as const;
 export type PublicationDatePrecision = "year" | "month" | "day" | "legacy";
+/** JSONB may reorder object keys; review/draft equality must preserve values, not serialization order. */
+export function importValueKey(value: unknown): string {
+  return JSON.stringify(value, (_key, child) => child && typeof child === "object" && !Array.isArray(child) ? Object.fromEntries(Object.keys(child).sort().map(key => [key, child[key]])) : child) ?? "undefined";
+}
 export type ImportMode = "single" | "compiled" | "batch";
+export interface ImportBatchSummary {
+  id: string;
+  mode: ImportMode;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  committedPapers: number;
+  includedPapers: number;
+}
+export function importWorkspaceStatus(status: string, committed: number, included: number): string {
+  if (status !== "draft") return status.charAt(0).toUpperCase() + status.slice(1);
+  if (!committed) return "Draft";
+  return committed === included
+    ? "Saved privately · pending review"
+    : `Partly saved privately (${committed} of ${included} papers)`;
+}
 export type ImportState =
   | "draft"
   | "preparing"
@@ -21,8 +42,12 @@ export type ImportState =
   | "ignored"
   | "expired";
 export interface ImportMetadata {
+  printedPageRange?: { first: string; last: string };
+  issueSourceRange?: { assetId: string; firstPage: number; lastPage: number };
+  issueReplacementConfirmed?: boolean;
+  reviewNotes?: UploadReviewNotes;
   title: string;
-  documentType: "THESIS" | "DISSERTATION";
+  documentType: "THESIS" | "DISSERTATION" | "CONFLUENCE" | "SYNERGY";
   publicationDate: string;
   datePrecision: PublicationDatePrecision;
   authorIds: string[];
@@ -52,6 +77,7 @@ export interface PageMapping {
   finalLast: number;
 }
 export interface RenditionReview {
+  extractionSnapshot?: { candidate: ImportItem["abstractCandidate"]; diagnostics: Record<string, unknown> };
   metadataRevision?: number;
   pdfSha256?: string;
   componentHashes?: Record<string, string>;
@@ -75,6 +101,7 @@ export interface ImportAsset {
   error: string | null;
 }
 export interface ImportItem {
+  abstractDiagnostics?: { sourceSha256?: string; attemptedAt?: string; errorCode?: string | null; pageCount?: number };
   id: string;
   batchId: string;
   externalKey: string;
@@ -89,12 +116,14 @@ export interface ImportItem {
   pageCount: number | null;
   pageMapping: PageMapping[];
   abstractCandidate:
-    | { text: string; method: string; confidence: number }
+    | { text: string; method: string; confidence: number; qualityFlags?: string[]; pageStart?: number | null; pageEnd?: number | null }
     | null;
   documentId: number | null;
   error: string | null;
 }
 export interface ImportBatch {
+  revisionTarget?: { id: number; baseFingerprint: string; published: boolean } | null;
+  jobs?: { id: string; itemId: string; status: string; progress: { assetId?: string; phase?: string; startedAt?: string; completed?: number; total?: number }; updatedAt: string }[];
   id: string;
   mode: ImportMode;
   status: string;
@@ -108,11 +137,15 @@ export interface ImportBatch {
   items: ImportItem[];
 }
 export interface ImportCollection {
+  sourceArrangement?: "complete_issue" | "separate_papers";
+  mainAssetId?: string;
+  pageSections?: import("./issuePreparation.ts").IssuePageSection[];
+  paperOrder?: string[];
   category: "CONFLUENCE" | "SYNERGY";
   startYear: number;
   endYear: number;
   volume: number;
-  issue: number;
+  issue: number | null;
   department: string;
   coverAssetId: string;
   frontPage: number;
@@ -219,7 +252,11 @@ export function validImportMetadataShape(
   const text = (v: unknown, max: number) =>
     typeof v === "string" && v.length <= max;
   return text(m.title, 255) && text(m.publicationDate, 10) &&
-    ["THESIS", "DISSERTATION"].includes(m.documentType) &&
+    (m.printedPageRange === undefined || (!!m.printedPageRange && text(m.printedPageRange.first,32) && text(m.printedPageRange.last,32))) &&
+    (m.issueReplacementConfirmed === undefined || typeof m.issueReplacementConfirmed === "boolean") &&
+    (m.issueSourceRange === undefined || (!!m.issueSourceRange && typeof m.issueSourceRange.assetId === "string" && /^[0-9a-f-]{36}$/i.test(m.issueSourceRange.assetId) && Number.isSafeInteger(m.issueSourceRange.firstPage) && m.issueSourceRange.firstPage > 0 && Number.isSafeInteger(m.issueSourceRange.lastPage) && m.issueSourceRange.lastPage >= m.issueSourceRange.firstPage)) &&
+    (m.reviewNotes === undefined || (m.reviewNotes && ["unchecked","complete","missing_sections"].includes(m.reviewNotes.completeness) && ["none","source_error","incomplete_sources","browser_interruption","suspected_conversion","confirmed_defect"].includes(m.reviewNotes.issueKind) && text(m.reviewNotes.remarks,10000) && text(m.reviewNotes.holdReason,2000) && typeof m.reviewNotes.layoutReviewed === "boolean")) &&
+    ["THESIS", "DISSERTATION", "CONFLUENCE", "SYNERGY"].includes(m.documentType) &&
     ["year", "month", "day"].includes(m.datePrecision) &&
     Array.isArray(m.authorIds) && m.authorIds.length <= 100 &&
     m.authorIds.every((id) =>
@@ -239,10 +276,11 @@ export function validImportMetadataShape(
 }
 export function metadataErrors(m: ImportMetadata): string[] {
   const errors: string[] = [];
+  if (m.printedPageRange && Boolean(m.printedPageRange.first.trim()) !== Boolean(m.printedPageRange.last.trim())) errors.push("Enter both printed page labels, or leave both blank when unknown.");
   if (!m.title?.trim() || m.title.length > 255) {
     errors.push("Title is required (up to 255 characters)");
   }
-  if (!["THESIS", "DISSERTATION"].includes(m.documentType)) {
+  if (!["THESIS", "DISSERTATION", "CONFLUENCE", "SYNERGY"].includes(m.documentType)) {
     errors.push("Choose the original thesis or dissertation type");
   }
   try {

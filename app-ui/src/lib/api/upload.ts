@@ -2,8 +2,10 @@ import { ApiError, apiFetch } from "./http";
 import type { DocumentAuthorReference, DocumentAuthorSelection } from "../authorSelection";
 import type { UploadCompiledDocumentPayload, UploadSingleDocumentPayload } from "./types";
 import type { DocumentClassification } from "./types";
+import type { UploadJob } from "../../../../shared/uploadReview";
 
 export interface UploadedFileResult {
+  uploadJobId?: string;
   message?: string;
   filePath: string;
   originalName?: string;
@@ -21,6 +23,7 @@ export interface UploadedFileResult {
 }
 
 export interface UploadTransferProgress {
+  job?: UploadJob;
   loaded: number;
   total: number;
   percent: number;
@@ -61,38 +64,71 @@ export function uploadDocumentFile(formData: FormData) {
   });
 }
 
-export function uploadFile(file: File, options: { storagePath: string; documentType: string; category?: string; isForeword?: boolean; isCover?: boolean }, onProgress?: (progress: UploadTransferProgress) => void) {
+export async function uploadFile(file: File | File[], options: { storagePath: string; documentType: string; category?: string; isForeword?: boolean; isCover?: boolean; reviewContext?: string }, onProgress?: (progress: UploadTransferProgress) => void) {
+  const files = Array.isArray(file) ? file : [file];
+  {
+    try {
+      const capabilities = await apiFetch<{ stitching?: boolean; uploadReview?: boolean }>("/api/content/upload/capabilities", { cache: "no-store" });
+      if (!capabilities.uploadReview || files.length>1&&!capabilities.stitching) throw new Error("Preparation is unavailable.");
+    } catch {
+      throw new Error(`${files.length>1?"Document stitching":"Converted-PDF review"} is temporarily unavailable. Your selected files are preserved; try again after the service update.`);
+    }
+  }
+  const totalBytes = files.reduce((total, source) => total + source.size, 0);
   const formData = new FormData();
-  formData.append("file", file);
+  for (const source of files) formData.append("file", source);
   formData.append("storagePath", options.storagePath);
   formData.append("document_type", options.documentType);
   if (options.category) formData.append("category", options.category);
   if (options.isForeword) formData.append("is_foreword", "true");
   if (options.isCover) formData.append("is_cover", "true");
+  if (options.reviewContext) formData.append("review_context",options.reviewContext);
 
   return new Promise<UploadedFileResult>((resolve, reject) => {
     const request = new XMLHttpRequest();
+    const jobId=crypto.randomUUID();
     request.open("POST", "/api/content/upload");
+    request.setRequestHeader("X-Upload-Id",jobId);
     request.withCredentials = true;
+    const timer=window.setInterval(()=>{
+      void apiFetch<UploadJob>(`/api/content/upload/jobs/${jobId}`).then(job=>onProgress?.({loaded:totalBytes,total:totalBytes,percent:100,job})).catch(()=>undefined);
+    },1500);
+    const cleanup=()=>window.clearInterval(timer);
     request.upload.addEventListener("progress", (event) => {
-      const total = event.lengthComputable ? event.total : file.size;
+      const total = event.lengthComputable ? event.total : totalBytes;
       const loaded = Math.min(event.loaded, total || event.loaded);
       const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
       onProgress?.({ loaded, total, percent });
     });
     request.addEventListener("load", () => {
+      cleanup();
       const payload = parseUploadResponse(request.responseText);
       if (request.status >= 200 && request.status < 300) {
-        onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+        const queued=payload as {uploadJobId?:string;job?:UploadJob};
+        if(request.status===202 && queued.uploadJobId) {
+          void waitForUploadJob(queued.uploadJobId,onProgress).then(resolve,reject);
+          return;
+        }
+        onProgress?.({ loaded: totalBytes, total: totalBytes, percent: 100 });
         resolve(payload as UploadedFileResult);
         return;
       }
       reject(new ApiError(uploadErrorMessage(payload, request.statusText), request.status, payload));
     });
-    request.addEventListener("error", () => reject(new Error("The document upload was interrupted. Check your connection and try again.")));
-    request.addEventListener("abort", () => reject(new Error("The document upload was cancelled.")));
+    request.addEventListener("error", () => { cleanup(); reject(new Error(`The document upload was interrupted. Resume its saved review from the upload queue (${jobId}).`)); });
+    request.addEventListener("abort", () => { cleanup(); reject(new Error("The document upload was cancelled.")); });
     request.send(formData);
   });
+}
+
+async function waitForUploadJob(id:string,onProgress?: (progress:UploadTransferProgress)=>void):Promise<UploadedFileResult> {
+  for (;;) {
+    const job=await apiFetch<UploadJob>(`/api/content/upload/jobs/${id}`);
+    onProgress?.({loaded:0,total:0,percent:100,job});
+    if(job.state==="ready" && job.result) return job.result;
+    if(job.state==="failed") throw new Error(job.error||"Conversion failed. Retry from the saved upload review.");
+    await new Promise(resolve=>window.setTimeout(resolve,1500));
+  }
 }
 
 function parseUploadResponse(text: string): unknown {

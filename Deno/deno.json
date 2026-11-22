@@ -41,7 +41,7 @@
     "imports:worker": "deno run --allow-env --allow-read --allow-write --allow-net --allow-run=soffice,/usr/local/bin/peas-convert-word,pdfinfo,pdftotext,pdftoppm,tesseract import-worker.ts"
   },
   "imports": {
-    "zod": "npm:zod@4.4.3",
+    "zod": "npm:zod@4.6.6",
     "better-auth": "npm:better-auth@1.6.23",
     "better-auth/plugins": "npm:better-auth@1.6.23/plugins",
     "better-auth/api": "npm:better-auth@1.6.23/api",

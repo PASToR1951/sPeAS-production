@@ -45,13 +45,17 @@ function requireEnv(name: string): string {
 }
 
 // Create a connection pool
+const poolSize = Number(Deno.env.get("DB_POOL_SIZE") ?? 20);
+if (!Number.isSafeInteger(poolSize) || poolSize < 1 || poolSize > 100) {
+  throw new Error("DB_POOL_SIZE must be an integer between 1 and 100");
+}
 export const pool = new Pool({
   user: requireEnv("PGUSER"),
   password: requireEnv("PGPASSWORD"),
   database: requireEnv("PGDATABASE"),
   hostname: Deno.env.get("PGHOST") ?? env.PGHOST ?? "localhost",
   port: Number(Deno.env.get("PGPORT") ?? env.PGPORT) || 5432,
-}, 20); // Maximum number of connections
+}, poolSize);
 
 // Test the connection
 try {

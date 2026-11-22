@@ -16,11 +16,19 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
     name: "Prepare a compiled volume",
     exact: true,
   }).click();
+  await page.getByRole("radio", {
+    name: "Upload separate research papers",
+    exact: true,
+  }).check();
   await page.getByLabel("Choose multiple files", { exact: true }).setInputFiles(
     ["body.pdf", "appendix.pdf", "covers.pdf", "front.pdf", "catalog.xlsx"].map(
       (name) => path.join(artifacts!, name),
     ),
   );
+  for (const name of ["covers.pdf", "front.pdf"]) {
+    await page.getByLabel(`Source role for ${name}`, { exact: true })
+      .selectOption("front_matter");
+  }
   await page.getByRole("button", { name: "Stage selected files", exact: true })
     .click();
   await expect(page.getByLabel("Paper to prepare", { exact: true }))
@@ -58,15 +66,7 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
     (await page.request.get(`/api/admin/import-batches/${batchId}`)).json();
   let batch = await getBatch();
   for (const name of ["covers", "front"]) {
-    const item = batch.items.find((i) => i.metadata.title === name)!;
-    await page.getByLabel("Paper to prepare", { exact: true }).selectOption(
-      item.id,
-    );
-    await page.getByRole("button", { name: "Ignore this paper", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Include this paper", exact: true }),
-    ).toBeVisible();
+    expect(batch.items.some((i) => i.metadata.title === name)).toBe(false);
   }
   const collection = page.locator("details").filter({
     has: page.locator("summary", {
@@ -192,7 +192,9 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
         }),
       ).toBeDisabled();
       const pending = await getBatch();
-      const anonymous = await page.context().browser()!.newContext({ storageState: { cookies: [], origins: [] } });
+      const anonymous = await page.context().browser()!.newContext({
+        storageState: { cookies: [], origins: [] },
+      });
       expect(
         (await anonymous.request.get(
           `/api/public/compiled-documents/${pending.compiledDocumentId}/contents`,
@@ -201,6 +203,32 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
       await anonymous.close();
     }
   }
+  const completeReview = page.getByRole("region", {
+    name: "Complete issue review",
+    exact: true,
+  });
+  await completeReview.getByRole("button", {
+    name: "Prepare complete issue",
+    exact: true,
+  }).click();
+  batch = await getBatch();
+  const completePages = batch.items.filter((i) => i.documentId).reduce(
+    (sum, i) => sum + (i.pageCount ?? 0),
+    0,
+  ) + 3;
+  await expect(
+    completeReview.getByRole("spinbutton", {
+      name: "Page number",
+      exact: true,
+    }),
+  ).toHaveAttribute("max", String(completePages));
+  await completeReview.getByRole("checkbox", {
+    name: /I checked the complete PDF against the source/,
+  }).check();
+  await completeReview.getByRole("button", {
+    name: "Save complete issue review",
+    exact: true,
+  }).click();
   await page.getByRole("checkbox", {
     name: "I approve publishing 2 included papers and this compiled volume.",
   }).check();
@@ -214,11 +242,21 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
     ),
   ).toBeVisible();
   batch = await getBatch();
-  const anonymous = await page.context().browser()!.newContext({ storageState: { cookies: [], origins: [] } });
+  const anonymous = await page.context().browser()!.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
   const response = await anonymous.request.get(
     `/api/public/compiled-documents/${batch.compiledDocumentId}/contents`,
   );
   expect(response.status()).toBe(200);
+  const completeDownload = await anonymous.request.get(
+    `/api/public/compiled-documents/${batch.compiledDocumentId}/complete/download`,
+  );
+  expect(completeDownload.status()).toBe(200);
+  expect(completeDownload.headers()["content-disposition"]).toContain(
+    "attachment",
+  );
+  expect(completeDownload.headers()["cache-control"]).toContain("no-store");
   const contents = await response.json();
   expect(
     contents.papers.map((

@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "overrides": {
+    "zod": "4.6.6"
+  }
+}

@@ -71,12 +71,32 @@ test("@reporting dashboard controls fill the mobile header without overflow", as
   expect(metrics.scrollWidth).toBeLessThanOrEqual(400);
 });
 
-test("@reporting normalizes an invalid range and keeps the shell within the viewport", async ({ page }) => {
+test("@reporting normalizes an invalid range and keeps the report header readable across widths", async ({ page }) => {
   await mockAdmin(page);
   await page.goto("/admin/Components/reports.html?range=not-a-range");
   await expect(page).toHaveURL(/range=30d/);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
+  for (const width of [1440, 1280, 1100, 1024, 981, 980, 900, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const metrics = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>(".peas-reports-page > .peas-admin-page-header")!;
+      const title = header.querySelector("h1")!;
+      const box = header.getBoundingClientRect();
+      const controls = [...header.querySelectorAll<HTMLElement>(".peas-report-actions > a, .peas-report-actions > button")];
+      return {
+        titleLines: title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight),
+        headerHeight: box.height,
+        controlsContained: controls.every((control) => {
+          const bounds = control.getBoundingClientRect();
+          return bounds.left >= box.left && bounds.right <= box.right;
+        }),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    expect(metrics.titleLines, `Title at ${width}px`).toBeLessThanOrEqual(2.1);
+    expect(metrics.headerHeight, `Header at ${width}px`).toBeLessThan(320);
+    expect(metrics.controlsContained, `Controls at ${width}px`).toBe(true);
+    expect(metrics.overflow, `Overflow at ${width}px`).toBeLessThanOrEqual(1);
+  }
 });
 
 test("@reporting range changes are restored by browser history", async ({ page }) => {

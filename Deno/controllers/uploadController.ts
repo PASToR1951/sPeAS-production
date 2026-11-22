@@ -1,4 +1,5 @@
-import { convertDocumentToPdf, DocumentConversionError } from "../services/documentConversionService.ts";
+import { DocumentConversionError } from "../services/documentConversionService.ts";
+import { stitchDocumentsToPdf } from "../services/documentStitchingService.ts";
 // Upload controller for handling file uploads
 
 import { Context } from "../deps.ts";
@@ -91,6 +92,7 @@ export async function handleFileUpload(
     }
 
     if (isProfilePicture) {
+      if (data.files.length > 1) throw new DocumentConversionError("Choose one profile picture.", 400);
       // Handle profile picture upload
       return await handleProfilePictureUpload(file, ctx, uploaderHash);
     }
@@ -142,6 +144,9 @@ export async function handleFileUpload(
         )) ||
       data.fields.is_foreword === "true";
     const isCoverUpload = data.fields.is_cover === "true";
+    if (isCoverUpload && data.files.length > 1) {
+      throw new DocumentConversionError("Choose one cover PDF so its front and back page selections remain valid.", 400);
+    }
     if (isForewordUpload && isCoverUpload) {
       ctx.response.status = 400;
       ctx.response.body = { error: "A PDF cannot be uploaded as both a foreword and a cover" };
@@ -230,10 +235,25 @@ export async function handleFileUpload(
 
     // Save file
     const sourceName = getUploadedFileName(file);
-    const sourceBytes = file.content ?? (file.filename ? await Deno.readFile(file.filename) : undefined);
-    if (!sourceBytes) throw new DocumentConversionError("The uploaded document could not be read.");
-    const pdf = await convertDocumentToPdf(sourceName, sourceBytes);
-    const pdfName = sourceName.replace(/\.[^.]+$/, "") + ".pdf";
+    const sources = data.files.length ? data.files : [file];
+    const reviewId = ctx.request.headers.get("X-Upload-Id");
+    if (policy.documentOnly && reviewId) {
+      const {prepareUpload}=await import("../services/uploadReviewService.ts");
+      const job = await prepareUpload(reviewId, String(ctx.state.user.id), await Promise.all(sources.map(async source => ({
+        name: getUploadedFileName(source),
+        content: source.content ?? (source.filename ? await Deno.readFile(source.filename) : new Uint8Array()),
+      }))), { documentType, category, storagePath, uploaderHash, reviewContext: data.fields.review_context?.slice(0,200) });
+      ctx.response.status = job.state === "ready" ? 200 : 202;
+      ctx.response.headers.set("Cache-Control", "no-store");
+      ctx.response.body = job.state === "ready" ? job.result : { uploadJobId: job.id, job };
+      return;
+    }
+    const pdf = await stitchDocumentsToPdf(await Promise.all(sources.map(async (source) => {
+      const content = source.content ?? (source.filename ? await Deno.readFile(source.filename) : undefined);
+      if (!content) throw new DocumentConversionError("The uploaded document could not be read.");
+      return { name: getUploadedFileName(source), content };
+    })));
+    const pdfName = sourceName.replace(/\.[^.]+$/, "") + (sources.length > 1 ? "-stitched.pdf" : ".pdf");
     if (saveOptions.originalName) saveOptions.originalName = saveOptions.originalName.replace(/\.[^.]+$/, "") + ".pdf";
     const fileResult = await saveFile({ originalName: pdfName, content: pdf, type: "application/pdf" }, storagePath, saveOptions);
 
@@ -311,6 +331,7 @@ export async function handleFileUpload(
         fullPath: fileResult.path,
         storagePath: storagePath,
         originalFileName: getUploadedFileName(file),
+        sourceFileNames: sources.map(getUploadedFileName),
         documentType: documentType,
       },
     };
@@ -363,6 +384,7 @@ export async function handleFileUpload(
 }
 
 function uploadFailureStatus(message: string): number {
+  if (/too many files/iu.test(message)) return 400;
   if (
     /maximum size|maxfilesize|max file size|too large|entity too large|size limit|exceed(?:ed|s)?(?: the)? limit/iu
       .test(message)

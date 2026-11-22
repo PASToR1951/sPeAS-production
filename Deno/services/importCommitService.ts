@@ -1,5 +1,6 @@
 import { resolve } from "https://deno.land/std@0.200.0/path/mod.ts";
 import { client, withTransaction } from "../db/denopost_conn.ts";
+import { publicationHold } from "../../shared/uploadReview.ts";
 import { STORAGE_ROOT } from "../config/storage.ts";
 import {
   type BatchItemResult,
@@ -23,8 +24,10 @@ import {
   touchBatch,
 } from "./importPreparationService.ts";
 import { normalizeClassificationTerm } from "../../shared/classification.ts";
+import { retainImportSources } from "./retainedImportService.ts";
+import { currentIssueRendition, validateBatchIssueRanges } from "./issueRenditionService.ts";
 
-async function persistPdf(
+export async function persistPdf(
   source: string,
   name: string,
   hash: string,
@@ -50,7 +53,7 @@ async function persistPdf(
   }
   return `storage/imports/${name}-${hash}.pdf`;
 }
-async function writeClassification(
+export async function writeClassification(
   connection: ImportConnection,
   id: number,
   m: ImportMetadata,
@@ -94,20 +97,21 @@ export async function saveImportCollection(
   revision: number,
   collection: ImportCollection,
 ) {
-  if (
+  if (!collection || typeof collection.reviewed !== "boolean" || JSON.stringify(collection).length > 100_000 || !["CONFLUENCE", "SYNERGY"].includes(collection.category)) throw new ImportError("Invalid collection details.");
+  if (collection.reviewed && (
     !["CONFLUENCE", "SYNERGY"].includes(collection?.category) ||
     ![
       collection.startYear,
       collection.endYear,
       collection.volume,
-      collection.issue,
       collection.frontPage,
       collection.backPage,
     ].every((n) => Number.isSafeInteger(n) && n > 0) ||
+    (collection.issue !== null && (!Number.isSafeInteger(collection.issue) || collection.issue < 1)) ||
     collection.startYear > collection.endYear || collection.startYear < 1000 ||
     collection.endYear > 9999 || collection.department?.length > 255 ||
     collection.forewordAbstract && collection.forewordAbstract.length > 10_000
-  ) throw new ImportError("Complete the collection details");
+  )) throw new ImportError("Complete the collection details");
   return withTransaction(async (connection) => {
     const batch = await requireBatch(batchId, owner, connection, true);
     requireEditable(batch);
@@ -122,25 +126,28 @@ export async function saveImportCollection(
     }
     const cover = (await connection.queryObject<Row>(
       "SELECT * FROM import_assets WHERE id=$1 AND batch_id=$2 AND kind='pdf'",
-      [collection.coverAssetId, batchId],
+      [collection.coverAssetId || null, batchId],
     )).rows[0];
-    if (
+    if (collection.reviewed && (
       !cover || cover.page_count < 2 ||
       collection.frontPage > cover.page_count ||
       collection.backPage > cover.page_count ||
       collection.frontPage === collection.backPage
-    ) {
+    )) {
       throw new ImportError(
         "Choose distinct front and back pages from a cover PDF with at least two pages",
       );
     }
-    if (collection.forewordAssetId) {
+    if (collection.reviewed && collection.forewordAssetId) {
       const foreword = (await connection.queryObject<Row>(
         "SELECT id FROM import_assets WHERE id=$1 AND batch_id=$2 AND kind='pdf'",
         [collection.forewordAssetId, batchId],
       )).rows[0];
       if (!foreword) throw new ImportError("Choose an available foreword PDF");
     }
+    if (collection.sourceArrangement && !["complete_issue", "separate_papers"].includes(collection.sourceArrangement)) throw new ImportError("Choose a source arrangement.");
+    if (collection.pageSections && (!Array.isArray(collection.pageSections) || collection.pageSections.length > 500)) throw new ImportError("Too many page sections.");
+    if (collection.paperOrder && (!Array.isArray(collection.paperOrder) || collection.paperOrder.length > 100 || new Set(collection.paperOrder).size !== collection.paperOrder.length || collection.paperOrder.some(id => typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)))) throw new ImportError("Choose distinct papers in publication order.");
     await connection.queryArray(
       "UPDATE import_batches SET collection=$2 WHERE id=$1",
       [batchId, JSON.stringify(collection)],
@@ -226,12 +233,14 @@ export async function commitImportItem(
   itemId: string,
   owner: string,
 ): Promise<number> {
+  if ((await client.queryObject("SELECT batch_id FROM issue_revisions WHERE batch_id=$1", [batchId])).rows.length) throw new ImportError("Prepare and publish this private correction from its revision review. Existing catalog records remain unchanged until then.", 409);
   // Copy first; the transaction only references a verified, immutable rendition.
   const snapshot = (await client.queryObject<Row>(
     "SELECT * FROM import_items WHERE id=$1 AND batch_id=$2",
     [itemId, batchId],
   )).rows[0];
   await requireBatch(batchId, owner);
+  await validateBatchIssueRanges(batchId);
   if (!snapshot) throw new ImportError("Paper not found", 404);
   if (snapshot.document_id) return Number(snapshot.document_id);
   if (!itemIsReady(itemDto(snapshot))) {
@@ -244,6 +253,7 @@ export async function commitImportItem(
     itemId,
     snapshot.final_sha256,
   );
+  await retainImportSources(batchId,(snapshot.recipe as PreparationRecipe).parts.map(p=>p.assetId));
   return withTransaction(async (connection) => {
     const batch = await requireBatch(batchId, owner, connection, true);
     requireEditable(batch);
@@ -285,6 +295,8 @@ export async function commitImportItem(
       throw new ImportError("A selected author is no longer available");
     }
     const parent = await ensureCollection(connection, batch, owner);
+    const order = (batch.collection as ImportCollection | null)?.paperOrder;
+    if (parent && order?.length && !order.includes(itemId)) throw new ImportError("Review the issue's paper order in collection details before committing this paper.");
     const abstractSource = r.abstractAction === "save_manual"
       ? "manual"
       : r.abstractAction === "accept_candidate"
@@ -317,9 +329,11 @@ export async function commitImportItem(
     }
     await writeClassification(connection, id, m, owner);
     if (parent) {
+      // Inserting compiled_parent_id already creates membership via a trigger.
+      // Apply the reviewed position to that existing row as well.
       await connection.queryArray(
-        "INSERT INTO compiled_document_items(compiled_document_id,document_id,position) SELECT $1,$2,coalesce(max(position),0)+1 FROM compiled_document_items WHERE compiled_document_id=$1 ON CONFLICT(compiled_document_id,document_id) DO NOTHING",
-        [parent, id],
+        "INSERT INTO compiled_document_items(compiled_document_id,document_id,position) SELECT $1,$2,coalesce($3::int,coalesce(max(position),0)+1) FROM compiled_document_items WHERE compiled_document_id=$1 ON CONFLICT(compiled_document_id,document_id) DO UPDATE SET position=EXCLUDED.position WHERE $3::int IS NOT NULL AND compiled_document_items.position IS DISTINCT FROM EXCLUDED.position",
+        [parent, id, order?.length ? order.indexOf(itemId) + 1 : null],
       );
     }
     await connection.queryArray(
@@ -428,7 +442,14 @@ export async function publishImportBatch(
       batch.mode === "compiled" &&
       (!batch.compiled_document_id || !batch.collection?.reviewed)
     ) throw new ImportError("Review the collection covers and foreword");
+    if (batch.mode === "compiled" && !await currentIssueRendition(Number(batch.compiled_document_id))) {
+      throw new ImportError("Prepare and review the complete issue PDF before publishing its papers.", 409);
+    }
     const ids = papers.map((p) => p.document_id);
+    for (const paper of papers) {
+      const notes=paper.metadata.reviewNotes;
+      if(notes) { const hold=publicationHold({...notes,layoutReviewed:!!paper.review.pdfSha256}); if(hold)throw new ImportError(`${paper.metadata.title}: ${hold}`); }
+    }
     const documents = (await connection.queryObject<Row>(
       "SELECT id,title,publication_date::text AS publication_date,publication_date_precision,document_type,file_path,pages,is_public,review_status,abstract,abstract_source,content_sha256,original_program,original_major,deleted_at,compiled_parent_id FROM documents WHERE id=ANY($1::int[]) FOR UPDATE",
       [ids],

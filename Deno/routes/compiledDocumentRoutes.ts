@@ -17,6 +17,8 @@ import { compilationAbstractsResolved, forceCompilationPrivateForAbstract, listU
 import { recordRepositoryActivity } from "../services/operationalReportingService.ts";
 import { getCompiledPreviewManifest } from "../services/compiledPreviewService.ts";
 import { applyPublicPdfHeaders, isStoredPdfAvailable, publicPdfFileName, readStoredPdf } from "../services/publicPdfService.ts";
+import { bindCompiledUploadReviews, compiledUploadPublicationHold, getUploadJob } from "../services/uploadReviewService.ts";
+import { currentIssueRendition, issueDownloadAvailable, paperPrintedPages } from "../services/issueRenditionService.ts";
 
 const requireDocumentUpload = requireCapability("documents:upload");
 const requireDocumentReview = requireCapability("documents:review");
@@ -85,7 +87,7 @@ function removeCompiledFileFields(value: any): any {
 
 // Compiled Document route handlers
 const createCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
-    const bodyParser = await ctx.request.body({type: "json"});
+    const bodyParser = await ctx.request.body({ type: "json" });
     const body = await bodyParser.value;
     const actorId = String(ctx.state.user.id);
     const actorRole = String(ctx.state.user.role);
@@ -96,66 +98,114 @@ const createCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
         return;
     }
 
-    body.compiledDoc.uploaded_by = actorId;
-    if (actorRole === "publisher") {
-        body.compiledDoc.review_status = "pending_review";
-        body.compiledDoc.reviewed_by = null;
-        body.compiledDoc.reviewed_at = null;
-    } else {
-        body.compiledDoc.review_status = body.compiledDoc.review_status === "pending_review"
-            ? "pending_review"
-            : "approved";
-        if (body.compiledDoc.review_status === "approved") {
-            body.compiledDoc.reviewed_by = actorId;
-            body.compiledDoc.reviewed_at = new Date().toISOString();
-        }
-    }
-    
-    // Convert context to Request
-    const request = new Request(ctx.request.url.toString(), {
-        method: "POST",
-        headers: ctx.request.headers,
-        body: JSON.stringify(body)
-    });
-    
-    const response = await handleCreateCompiledDocument(request);
-    
-    // Convert Response back to context
-    ctx.response.status = response.status;
-    ctx.response.headers = response.headers;
-    const responseBody = await response.json();
-    ctx.response.body = responseBody;
-
-    // A direct API caller may create and link child studies in the same
-    // request. Re-evaluate the complete abstract gate after the transaction
-    // has linked those children so an approved parent cannot briefly expose
-    // unresolved studies.
-    if (response.ok && responseBody?.id) {
-        try {
-            if (!await compilationAbstractsResolved(Number(responseBody.id))) {
-                await forceCompilationPrivateForAbstract(Number(responseBody.id));
+    const execute = async () => {
+        body.compiledDoc.uploaded_by = actorId;
+        const uploadJobIds = body.compiledDoc.upload_job_ids;
+        if (uploadJobIds !== undefined) {
+            if (!Array.isArray(uploadJobIds) || uploadJobIds.length > 2) {
+                ctx.response.status = 400;
+                ctx.response.body = { error: "Invalid publication source reviews." };
+                return;
             }
-        } catch {
-            // The approval endpoint remains authoritative; if the gate cannot
-            // be evaluated here, leave the record for administrator review.
-            await forceCompilationPrivateForAbstract(Number(responseBody.id)).catch(() => undefined);
+            const jobs = await Promise.all(uploadJobIds.map((id) => getUploadJob(String(id), actorId)));
+            const existing = jobs.find((j) => j.compiledDocumentId)?.compiledDocumentId;
+            if (existing) {
+                if (jobs.some((j) => j.compiledDocumentId && j.compiledDocumentId !== existing)) {
+                    ctx.response.status = 409;
+                    ctx.response.body = { error: "These sources belong to different saved publications." };
+                    return;
+                }
+                ctx.response.status = 200;
+                ctx.response.body = (await client.queryObject(
+                    "SELECT * FROM compiled_documents WHERE id=$1 AND deleted_at IS NULL",
+                    [existing],
+                )).rows[0];
+                return;
+            }
+            const expected = [body.compiledDoc.cover_file_path, body.compiledDoc.foreword].filter(Boolean);
+            if (jobs.some((j) => j.state !== "ready" || !expected.includes(j.result?.filePath))) {
+                ctx.response.status = 409;
+                ctx.response.body = { error: "Prepare the publication files before saving." };
+                return;
+            }
+            body.compiledDoc.review_status = "pending_review";
         }
-    }
+        if (actorRole === "publisher") {
+            body.compiledDoc.review_status = "pending_review";
+            body.compiledDoc.reviewed_by = null;
+            body.compiledDoc.reviewed_at = null;
+        } else {
+            body.compiledDoc.review_status = body.compiledDoc.review_status === "pending_review"
+                ? "pending_review"
+                : "approved";
+            if (body.compiledDoc.review_status === "approved") {
+                body.compiledDoc.reviewed_by = actorId;
+                body.compiledDoc.reviewed_at = new Date().toISOString();
+            }
+        }
 
-    if (response.ok && responseBody?.id) {
-        await SystemLogsModel.createLog({
-            log_type: "document",
-            user_id: actorId,
-            username: actorId,
-            action: actorRole === "publisher" ? "compilation_submitted_for_review" : "compilation_created",
-            details: {
-                role: actorRole,
-                category: body.compiledDoc.category,
-                reviewStatus: body.compiledDoc.review_status,
-            },
-            related_id: String(responseBody.id),
-        }).catch(() => undefined);
-    }
+        // Convert context to Request
+        const request = new Request(ctx.request.url.toString(), {
+            method: "POST",
+            headers: ctx.request.headers,
+            body: JSON.stringify(body),
+        });
+
+        const response = await handleCreateCompiledDocument(request);
+
+        // Convert Response back to context
+        ctx.response.status = response.status;
+        ctx.response.headers = response.headers;
+        const responseBody = await response.json();
+        if (response.ok && responseBody?.id && uploadJobIds) {
+            await bindCompiledUploadReviews(uploadJobIds, actorId, Number(responseBody.id));
+        }
+        ctx.response.body = responseBody;
+
+        // A direct API caller may create and link child studies in the same
+        // request. Re-evaluate the complete abstract gate after the transaction
+        // has linked those children so an approved parent cannot briefly expose
+        // unresolved studies.
+        if (response.ok && responseBody?.id) {
+            try {
+                if (!await compilationAbstractsResolved(Number(responseBody.id))) {
+                    await forceCompilationPrivateForAbstract(Number(responseBody.id));
+                }
+            } catch {
+                // The approval endpoint remains authoritative; if the gate cannot
+                // be evaluated here, leave the record for administrator review.
+                await forceCompilationPrivateForAbstract(Number(responseBody.id)).catch(() => undefined);
+            }
+        }
+
+        if (response.ok && responseBody?.id) {
+            await SystemLogsModel.createLog({
+                log_type: "document",
+                user_id: actorId,
+                username: actorId,
+                action: actorRole === "publisher"
+                    ? "compilation_submitted_for_review"
+                    : "compilation_created",
+                details: {
+                    role: actorRole,
+                    category: body.compiledDoc.category,
+                    reviewStatus: body.compiledDoc.review_status,
+                },
+                related_id: String(responseBody.id),
+            }).catch(() => undefined);
+        }
+    };
+    const keys =
+        (Array.isArray(body.compiledDoc.upload_job_ids) ? body.compiledDoc.upload_job_ids.slice(0, 2) : [])
+            .map(String).sort();
+    if (keys.length) {
+        await withTransaction(async (connection) => {
+            for (const key of keys) {
+                await connection.queryArray("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [key]);
+            }
+            await execute();
+        });
+    } else await execute();
 };
 
 const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
@@ -206,6 +256,7 @@ const getCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
             ...responseBody,
             foreword_download_available: await isStoredPdfAvailable(responseBody?.foreword),
             cover_download_available: await isStoredPdfAvailable(responseBody?.cover_file_path),
+            complete_download_available: await issueDownloadAvailable(numericId),
         }
         : responseBody;
     ctx.response.body = isLimitedRoute ? removeCompiledFileFields(publicResponse) : publicResponse;
@@ -339,6 +390,7 @@ const reviewCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
 
     const reviewerId = String(ctx.state.user.id);
     const publish = decision === "approved" && body.publish === true;
+    if(decision==="approved") {const hold=await compiledUploadPublicationHold(id);if(hold){ctx.response.status=422;ctx.response.body={error:hold};return;}}
     if (decision === "approved") {
         const importWorkspace = await client.queryObject<{ id: string }>(
             "SELECT b.id FROM import_batches b WHERE b.compiled_document_id=$1 AND b.status='draft' LIMIT 1", [id]);
@@ -350,6 +402,12 @@ const reviewCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
     }
 
     if (decision === "approved") {
+        const managedSources = await client.queryObject("SELECT id FROM upload_review_jobs WHERE compiled_document_id=$1 LIMIT 1", [id]);
+        if (managedSources.rows.length && !await currentIssueRendition(id)) {
+            ctx.response.status = 422;
+            ctx.response.body = { error: "Prepare and review the complete issue PDF before publishing." };
+            return;
+        }
         if (!await compilationAbstractsResolved(id)) {
             ctx.response.status = 422;
             ctx.response.body = {
@@ -665,15 +723,17 @@ const getCompiledDocumentChildren = async (ctx: RouterContext<any, any, any>) =>
                 keywords: classification.keywords.map((keyword) => keyword.name),
                 research_agenda: classification.researchAgendas.map((agenda) => agenda.name).join(", "),
                 download_available: await isStoredPdfAvailable(row.file_path),
+                printed_page_range: await paperPrintedPages(documentId),
             };
         }));
 
         ctx.response.body = administratorPreview
             ? enrichedRows
             : (await Promise.all(enrichedRows.map(async (row: Record<string, any>) => await canViewDocument(undefined, row.id) ? {
-                id: row.id, title: row.title, abstract: row.abstract, publication_date: row.publication_date_text,
+                id: row.id, public_id: row.public_id, title: row.title, abstract: row.abstract, publication_date: row.publication_date_text,
                 publication_date_precision: row.publication_date_precision, document_type: row.document_type,
                 pages: row.pages, classification: row.classification, topics: row.topics, keywords: row.keywords,
+                printed_page_range: row.printed_page_range,
                 download_available: row.download_available,
                 authors: row.authors.map((author: Record<string, unknown>) => ({ id: String(author.id), full_name: String(author.full_name) })),
               } : null))).filter(Boolean);

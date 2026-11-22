@@ -11,6 +11,7 @@ import {
   ABSTRACT_OCR_PAGE_LIMIT,
   extractAbstractFromText,
   inspectPdfBytes,
+  recoverEmbeddedAbstract,
 } from "./abstractExtractionService.ts";
 import type {
   AbstractPdfRequest,
@@ -99,7 +100,20 @@ export async function runAbstractPdfRequest(
     }
     const embedded =
       extractAbstractFromText(pages.join("\f"), "pdf_text").candidate;
-    if (embedded) return { pageCount, candidate: embedded };
+    if (embedded && /^\p{Ll}/u.test(embedded.text)) {
+      embedded.qualityFlags.push("reading_order_needs_review");
+      embedded.confidence = Math.min(embedded.confidence, 0.45);
+    }
+    // Detached drop capitals can leave a lowercase introduction at the start of
+    // a candidate when PDF text objects have the wrong reading order. Try the
+    // rendered order for that case or an unreadable continuation. Unmapped glyphs
+    // alone retain their diagnostic flag without replacing otherwise useful text.
+    if (
+      embedded && !/^\p{Ll}/u.test(embedded.text) &&
+      !embedded.qualityFlags.some((flag) =>
+        flag === "continuation_page_unreadable"
+      )
+    ) return { pageCount, candidate: embedded };
 
     try {
       ocr = await createOcrWorker(directory, request.languages);
@@ -142,10 +156,15 @@ export async function runAbstractPdfRequest(
         page.close();
       }
     }
+    const recognized = extractAbstractFromText(recognizedPages.join("\f"), "ocr").candidate;
+    const recovered = recognized ? recoverEmbeddedAbstract(recognized, pages) : null;
+    if (recognized) {
+      recognized.qualityFlags.push("ocr_transcription_requires_review");
+      recognized.confidence = Math.min(recognized.confidence, 0.95);
+    }
     return {
       pageCount,
-      candidate:
-        extractAbstractFromText(recognizedPages.join("\f"), "ocr").candidate,
+      candidate: recovered ?? recognized ?? embedded,
     };
   } finally {
     try {

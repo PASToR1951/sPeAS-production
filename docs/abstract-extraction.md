@@ -59,8 +59,26 @@ or edits them. Extraction does not approve or publish a document.
 Blank pages retain their physical page numbers. An isolated numeric/Roman page
 footer is removed from the selected text. The existing abstract-heading and
 confidence rules remain in use; this change does not infer or generate abstracts.
-Those rules still select one page per candidate, so a multi-page abstract needs
-editorial checking. The page limits are unchanged.
+Heading-based selection follows up to three physical pages, stopping at the next
+recognized section. `ABTRACT`, `ABSTARCT`, and spaced abstract headings are
+recognized only as standalone headings. Unconfirmed/abrupt endings and unreadable
+continuation pages are flagged for source review. If an embedded candidate has
+an unreadable continuation page, OCR is attempted before falling back to the
+flagged embedded text. The search page limits are unchanged.
+
+When OCR locates a single-page abstract displaced in the embedded text stream,
+the extractor can recover the embedded wording using unique opening/closing
+word anchors and at least 90% interior word agreement. Ambiguous boundaries,
+multi-page reading order, and leading/trailing numerical values retain the OCR
+fallback for review. The recovered candidate flags numerical/symbol differences
+against OCR and preserves the source's printed values, including apparent source
+errors. OCR-only candidates carry a transcription-review flag and detection
+confidence is capped at 95%; this score does not verify transcription accuracy.
+
+The administrator can view source pages beside the editor. Manually correcting
+the candidate supersedes its job without clearing its extraction method;
+original text, confidence, flags, page range, and failure details remain available
+as extraction history. Retry and manual entry operate on the stored PDF.
 
 Reserved Unicode noncharacters from unmapped PDF glyphs are replaced with a word
 boundary. Affected candidate pages carry `non_text_characters_removed` so a

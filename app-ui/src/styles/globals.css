@@ -1382,6 +1382,7 @@ body.peas-editor-open { overflow: hidden; }
 .peas-document-author-picker__hint { color: #718078; font-size: .72rem; margin: 0; }
 .peas-document-author-picker__status { color: #718078; font-size: .72rem; line-height: 1.4; }
 .peas-document-author-picker__status.is-error { color: #b42318; }
+.peas-document-edit-form__author-recovery { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .peas-document-tag-editor { display: grid; gap: 8px; }
 .peas-document-tag-editor__input { position: relative; }
 .peas-document-tag-editor__chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -3038,8 +3039,9 @@ body:has([id^="react-"][id$="-admin-root"]) {
 .peas-agenda-option:has(input:disabled) { cursor: not-allowed; opacity: .6; }
 .peas-classification-editor__group { border: 0; display: grid; gap: 9px; margin: 0; padding: 0; }
 .peas-classification-editor__group legend { font-size: .95rem; font-weight: 800; padding: 0; }
-.peas-classification-management { display: grid; gap: 22px; }
-.peas-classification-summary { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.peas-classification-management,
+.peas-research-agenda-management { display: grid; gap: 22px; }
+.peas-classification-summary { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .peas-classification-summary > div { background: var(--card, #fff); border: 1px solid var(--border, #d7e1db); border-radius: 14px; display: grid; gap: 3px; padding: 16px; }
 .peas-classification-summary strong { font-size: 1.5rem; }
 .peas-classification-summary span { color: var(--muted-foreground, #66756d); font-size: .78rem; }
@@ -4539,17 +4541,22 @@ body:has([id^="react-"][id$="-admin-root"]) {
   width: 100%;
 }
 
-.peas-simple-pdf-reader { background: #252525; border-radius: var(--radius); display: grid; grid-template-rows: 48px minmax(0, 1fr); height: 100%; min-height: 0; overflow: hidden; width: 100%; }
-.peas-simple-pdf-reader__toolbar { align-items: center; background: #303030; color: #f8fafc; display: flex; gap: 8px; overflow-x: auto; padding: 7px 10px; scrollbar-width: thin; }
+.peas-simple-pdf-reader { background: var(--surface-muted); border-radius: var(--radius); display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; width: 100%; container-type: inline-size; }
+.peas-simple-pdf-reader__toolbar { align-items: center; background: var(--surface); color: var(--foreground); display: flex; flex: none; flex-wrap: wrap; gap: 8px 14px; padding: 8px; }
+.peas-simple-pdf-reader__group { align-items: center; display: flex; flex: none; gap: 4px; white-space: nowrap; }
 .peas-simple-pdf-reader__toolbar button { align-items: center; background: transparent; border: 0; border-radius: 6px; color: inherit; cursor: pointer; display: inline-flex; height: 32px; justify-content: center; min-width: 32px; padding: 0 8px; }
-.peas-simple-pdf-reader__toolbar button:hover:not(:disabled), .peas-simple-pdf-reader__toolbar button:focus-visible { background: #4a4a4a; outline: none; }
+.peas-simple-pdf-reader .peas-simple-pdf-reader__toolbar button { flex: none; min-height: 36px; min-width: 32px; padding: 0 8px; text-align: center; white-space: nowrap; overflow-wrap: normal; }
+.peas-simple-pdf-reader__toolbar button:hover:not(:disabled) { background: var(--secondary); }
+.peas-simple-pdf-reader .peas-simple-pdf-reader__toolbar :focus-visible { outline: 3px solid var(--primary); outline-offset: -3px; }
 .peas-simple-pdf-reader__toolbar button:disabled { cursor: not-allowed; opacity: .38; }
 .peas-simple-pdf-reader__toolbar svg { height: 18px; width: 18px; }
 .peas-simple-pdf-reader__toolbar label { align-items: center; display: inline-flex; gap: 6px; }
-.peas-simple-pdf-reader__toolbar input { background: #1f1f1f; border: 1px solid #555; border-radius: 4px; color: #fff; height: 30px; text-align: center; width: 48px; }
+.peas-simple-pdf-reader__toolbar input { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 4px; color: inherit; height: 32px; padding: 0 2px; text-align: center; width: 48px; }
 .peas-simple-pdf-reader__toolbar output { min-width: 48px; text-align: center; }
-.peas-simple-pdf-reader__divider { background: #606060; height: 26px; margin: 0 4px; width: 1px; }
-.peas-simple-pdf-reader__stage { align-items: center; display: flex; justify-content: center; min-height: 0; overflow: auto; padding: 24px; }
+.peas-simple-pdf-reader__stage { align-items: flex-start; display: flex; flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+.peas-simple-pdf-reader__stage .peas-pdf-page { margin: auto; }
+.peas-simple-pdf-reader:fullscreen { border-radius: 0; height: 100dvh; width: 100vw; max-height: none; }
+@container (max-width: 480px) { .peas-simple-pdf-reader__toolbar { gap: 6px 8px; } }
 .peas-simple-pdf-reader__stage canvas { background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.3); display: block; max-width: none; }
 
 .peas-pdf-dialog__fallback {
@@ -11353,3 +11360,13 @@ body:has(#react-public-root) {
     min-width: 0;
   }
 }
+/* Issue actions share existing surfaces; long titles and controls wrap on phones. */
+.peas-issue-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-block: 20px; }
+.peas-issue-actions > * { min-height: 44px; max-width: 100%; white-space: normal; }
+.peas-issue-filter { display: grid; gap: 8px; margin-block: 16px; font-weight: 600; }
+.peas-issue-filter input { width: 100%; min-width: 0; min-height: 44px; background: var(--surface-muted); color: inherit; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.peas-document-child-card h3 a { color: inherit; overflow-wrap: anywhere; }
+.peas-document-child-card .peas-document-child-card__section-label,
+.peas-document-child-card .peas-document-child-card__metadata dt { color: var(--foreground); }
+.peas-issue-actions :focus-visible, .peas-document-child-card a:focus-visible, .peas-issue-filter input:focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; }
+@media (max-width: 600px) { .peas-issue-actions { flex-direction: column; align-items: stretch; } .peas-document-child-card__actions { flex-wrap: wrap; } }

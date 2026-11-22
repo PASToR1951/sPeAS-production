@@ -99,7 +99,9 @@ export interface DocumentClassification {
 }
 
 export interface DocumentRecord {
+  parentIssue?: { id: string; label: string } | null;
   id: number;
+  publicId?: string;
   title: string;
   description: string;
   category: DocumentCategory;
@@ -143,6 +145,8 @@ export interface PaginationState {
 }
 
 export interface DocumentsPageResult extends PaginationState {
+  paperCount?: number;
+  issueCount?: number;
   documents: DocumentRecord[];
 }
 

@@ -26,7 +26,7 @@ await client.queryArray(
   "INSERT INTO topics(name,normalized_name,status) VALUES('Synthetic education','synthetic education','approved')",
 );
 for (
-  const [name, count] of [["front.pdf", 1], ["body.pdf", 3], [
+  const [name, count] of [["issue-main.pdf", 8], ["front.pdf", 1], ["body.pdf", 3], [
     "appendix.pdf",
     2,
   ], ["covers.pdf", 2]] as const

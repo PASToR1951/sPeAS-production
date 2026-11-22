@@ -4,6 +4,7 @@ import { resolveStoredPdfPath, sha256File } from "./abstractExtractionService.ts
 import { isAbstractTooLong, normalizeManualAbstract, type AbstractJobStatus, type AbstractSource } from "./abstractWorkflowService.ts";
 
 export interface AbstractReviewItem {
+  originalExtraction?: { candidate: string | null; method: string | null; confidence: number | null; qualityFlags: string[]; pageStart: number | null; pageEnd: number | null; errorCode: string | null } | null;
   targetType: "document" | "compiled_foreword";
   targetId: number;
   title: string;
@@ -140,7 +141,7 @@ export async function applyAbstractReview(
       } else {
         await connection.queryArray(
           `UPDATE abstract_extraction_jobs
-           SET status = 'superseded', is_current = FALSE, method = NULL, review_action = $2,
+           SET status = 'superseded', is_current = FALSE, review_action = $2,
                reviewed_by = $3, reviewed_at = CURRENT_TIMESTAMP,
                locked_at = NULL, locked_by = NULL, updated_at = CURRENT_TIMESTAMP
            WHERE id = $1 AND is_current IS TRUE`,
@@ -214,6 +215,9 @@ async function buildReviewItem(input: {
   updatedAt: Date | string;
 }): Promise<AbstractReviewItem> {
   const job = await getCurrentJob(input.targetType, input.targetId);
+  const historical = !job ? (await client.queryObject<JobRow>(
+    `SELECT * FROM abstract_extraction_jobs WHERE ${input.targetType === "document" ? "document_id" : "compiled_document_id"}=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [input.targetId],
+  )).rows[0] : null;
   const status: AbstractReviewItem["status"] = job?.status ?? (normalizeManualAbstract(input.currentAbstract) ? "accepted" : "unavailable");
   const method: AbstractReviewItem["method"] = input.source === "manual"
     ? "manual"
@@ -224,6 +228,7 @@ async function buildReviewItem(input: {
         : "none";
   return {
     targetType: input.targetType,
+    originalExtraction: historical ? {candidate:historical.candidate_text,method:historical.method,confidence:historical.confidence==null?null:Number(historical.confidence),qualityFlags:parseQualityFlags(historical.quality_flags),pageStart:historical.page_start,pageEnd:historical.page_end,errorCode:historical.last_error_code} : null,
     targetId: input.targetId,
     title: input.title,
     documentType: input.documentType,

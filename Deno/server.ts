@@ -102,6 +102,11 @@ import {
 // -----------------------------
 const PORT = Deno.env.get("PORT") || 80;
 const HOST = Deno.env.get("HOST") || "0.0.0.0";
+// The isolated browser harness builds into its temporary directory. Never let
+// those builds replace assets served by a native deployment from this checkout.
+const STATIC_ROOT = Deno.env.get("DENO_ENV") === "test" && Deno.env.get("PEAS_TEST_STATIC_ROOT")
+  ? resolve(Deno.env.get("PEAS_TEST_STATIC_ROOT")!)
+  : Deno.cwd();
 const LEGACY_PUBLIC_RELEASE_ID = getLegacyPublicReleaseId();
 const PROTECTED_DOCUMENT_FILE_PREFIXES = [
   "/storage/thesis/",
@@ -112,6 +117,7 @@ const PROTECTED_DOCUMENT_FILE_PREFIXES = [
   "/storage/compiled/",
   "/storage/documents/",
   "/storage/imports/",
+  "/storage/private-originals/",
   "/storage/files/",
   "/storage/uploads/",
   "/files/",
@@ -358,7 +364,7 @@ app.use(async (ctx, next) => {
   try {
     const publicPath = ctx.request.url.pathname.replace(/^\/components(\/|$)/i, "/Components$1");
     await ctx.send({
-      root: `${Deno.cwd()}/Public`,
+      root: `${STATIC_ROOT}/Public`,
       path: publicPath,
       index: "index.html",
     });
@@ -378,7 +384,7 @@ app.use(async (ctx, next) => {
     try {
       const adminPath = ctx.request.url.pathname.replace("/icons/Category-icons/", "/icons/category-icons/");
       await ctx.send({
-        root: `${Deno.cwd()}`,
+        root: STATIC_ROOT,
         path: adminPath,
         index: "dashboard.html",
       });

@@ -1,11 +1,11 @@
 import { formatPublicationDate } from "../../lib/formatters/date";
-import { Archive, CalendarDays, ChevronDown, ChevronRight, Eye, ListTree, Pencil, UserRound } from "lucide-react";
+import { Archive, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Eye, Globe, ListTree, LockKeyhole, Pencil, UserRound, XCircle, type LucideIcon } from "lucide-react";
 import { getCategoryMeta } from "../../lib/constants/categories";
 import { formatYearRange } from "../../lib/formatters/date";
 import type { DocumentRecord } from "../../lib/api/types";
 import { Button } from "../ui/button";
 import { PeasActionMenu } from "../navigation/PeasActionMenu";
-import { PeasStatusBadge } from "../data-display/PeasStatusBadge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { PeasInlineSpinner } from "../feedback/PeasStates";
 import { CategoryIcon } from "./CategoryIcon";
 
@@ -34,12 +34,12 @@ export function PeasDocumentCard({ document, onPreview, onEdit, onArchive }: Doc
       </div>
 
       <div className="peas-document-card__detail" aria-label="Document details">
-        <span className="peas-document-card__detail-label">Published</span>
+        <span className="peas-document-card__detail-label">Publication date</span>
         <span className="peas-document-card__publication"><CalendarDays aria-hidden="true" />{formatPublicationDate(document.publicationDate, document.datePrecision)}</span>
       </div>
 
       <div className="peas-document-card__status">
-        <PeasStatusBadge status={document.reviewStatus} />
+        <DocumentStatusIcons document={document} />
       </div>
 
       <div className="peas-document-card__actions">
@@ -107,8 +107,7 @@ export function PeasCompiledDocumentCard({
         </button>
 
         <div className="peas-compiled-card__detail">
-          <span className="peas-document-card__detail-label">Collection status</span>
-          <PeasStatusBadge status={document.reviewStatus} />
+          <DocumentStatusIcons document={document} />
         </div>
 
         <div className="peas-document-card__actions">
@@ -160,6 +159,49 @@ export function PeasCompiledDocumentCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+const REVIEW_STATUS_ICONS = {
+  approved: { label: "Approved", icon: CheckCircle2, tone: "green" },
+  pending_review: { label: "Pending review", icon: Clock3, tone: "gold" },
+  rejected: { label: "Rejected", icon: XCircle, tone: "rose" },
+} as const;
+
+function DocumentStatusIcons({ document }: { document: DocumentRecord }) {
+  const isPublic = document.reviewStatus === "approved" && document.isPublic !== false;
+  const review = REVIEW_STATUS_ICONS[document.reviewStatus];
+
+  return (
+    <TooltipProvider delayDuration={180}>
+      <div className="peas-document-status-icons">
+        <DocumentStatusIcon
+          label={isPublic ? "Public" : "Private"}
+          kind="Visibility"
+          icon={isPublic ? Globe : LockKeyhole}
+          tone={isPublic ? "blue" : "slate"}
+        />
+        <DocumentStatusIcon label={review.label} kind="Review status" icon={review.icon} tone={review.tone} />
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function DocumentStatusIcon({ label, kind, icon: Icon, tone }: {
+  label: string;
+  kind: "Visibility" | "Review status";
+  icon: LucideIcon;
+  tone: "blue" | "slate" | "green" | "gold" | "rose";
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`peas-ui-badge peas-ui-badge--${tone} peas-document-status-icon`} role="img" aria-label={`${kind}: ${label}`} tabIndex={0}>
+          <Icon aria-hidden="true" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" collisionPadding={12}>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

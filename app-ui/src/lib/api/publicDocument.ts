@@ -15,9 +15,10 @@ export function getPublicDocumentErrorStatus(error: unknown) {
 }
 
 export async function fetchPublicDocumentDetail(id: string, compiled: boolean) {
+  const reference = encodeURIComponent(id);
   const path = compiled
-    ? `/api/guest/compiled-documents/${id}`
-    : `/api/guest/documents/${id}`;
+    ? `/api/guest/compiled-documents/${reference}`
+    : `/api/guest/documents/${reference}`;
   // React detail pages use exactly one canonical metadata endpoint. Compatibility
   // aliases remain server-side only, so a failed request cannot trigger a second
   // request that might record a duplicate readership event.
@@ -32,7 +33,7 @@ export async function fetchPublicDocumentDetail(id: string, compiled: boolean) {
 async function fetchChildren(id: string, record: LooseRecord): Promise<LooseRecord[]> {
   const embedded = record.children ?? record.child_documents ?? record.contained_documents;
   if (Array.isArray(embedded)) return embedded as LooseRecord[];
-  const path = `/api/guest/compiled-documents/${id}/children`;
+  const path = `/api/guest/compiled-documents/${encodeURIComponent(id)}/children`;
   try {
     const payload = await fetchCanonical(path);
     if (Array.isArray(payload)) return payload;
@@ -42,7 +43,7 @@ async function fetchChildren(id: string, record: LooseRecord): Promise<LooseReco
 }
 
 async function fetchAuthors(id: string): Promise<PublicAuthorReference[]> {
-  const path = `/api/guest/documents/${id}/authors`;
+  const path = `/api/guest/documents/${encodeURIComponent(id)}/authors`;
   try {
     const payload = await fetchCanonical(path);
     if (!Array.isArray(payload.authors)) return [];

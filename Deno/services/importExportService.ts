@@ -1,4 +1,5 @@
 import { Zip, ZipPassThrough } from "npm:fflate@0.8.2";
+import { checkedRetainedImportPath } from "./retainedImportService.ts";
 import { withTransaction } from "../db/denopost_conn.ts";
 import {
   assetDto,
@@ -21,10 +22,6 @@ export async function exportImportSources(
   // The batch lock also prevents retention cleanup while streaming the archive.
   return withTransaction(async (connection) => {
     const batch = await requireBatch(batchId, owner, connection, true);
-    if (
-      batch.status === "expired" ||
-      new Date(batch.expires_at).getTime() <= Date.now()
-    ) throw new ImportError("Source retention has expired", 410);
     const items = (await connection.queryObject<Row>(
       "SELECT * FROM import_items WHERE batch_id=$1 AND ($2::uuid IS NULL OR id=$2)",
       [batchId, itemId || null],
@@ -37,7 +34,9 @@ export async function exportImportSources(
       "SELECT * FROM import_assets WHERE batch_id=$1 AND ($2::boolean OR id=ANY($3::uuid[]) OR kind='catalog') ORDER BY relative_path",
       [batchId, !itemId, ids],
     )).rows;
+    if((batch.status==="expired"||new Date(batch.expires_at).getTime()<=Date.now())&&assets.some(a=>!a.retained_source_path))throw new ImportError("Uncommitted source retention has expired",410);
     const id = crypto.randomUUID(), path = stagingPath(batchId, `${id}.zip`);
+    await Deno.mkdir(stagingPath(batchId),{recursive:true,mode:0o700});
     const output = await Deno.open(path, {
       write: true,
       createNew: true,
@@ -58,7 +57,7 @@ export async function exportImportSources(
     });
     try {
       for (const asset of assets) {
-        const source = await checkedStagedPath(asset.source_path);
+        const source = asset.retained_source_path ? await checkedRetainedImportPath(asset.retained_source_path) : await checkedStagedPath(asset.source_path);
         if (await digestFile(source) !== asset.sha256) {
           throw new ImportError(
             "Source integrity check failed; archive was not created",

@@ -25,6 +25,10 @@ const routes: Record<string, AdminRoute> = {
     title: "Classification Management | PeAS Admin",
     Component: lazyNamed(() => import("./features/classification/ClassificationManagementPage"), "ClassificationManagementPage"),
   },
+  "/admin/Components/research-agenda.html": {
+    title: "Research Agenda | PeAS Admin",
+    Component: lazyNamed(() => import("./features/settings/ResearchAgendaManagementPage"), "ResearchAgendaManagementPage"),
+  },
   "/admin/Components/upload_document.html": {
     title: "Upload Document | PeAS",
     allowedRoles: ADMIN_ROLES,
@@ -76,7 +80,7 @@ const routes: Record<string, AdminRoute> = {
     Component: lazyNamed(() => import("./features/logs/SystemLogsPage"), "SystemLogsPage"),
   },
   "/admin/Components/admin_settings.html": {
-    title: "Settings | PeAS Admin",
+    title: "Profile | PeAS Admin",
     Component: lazyNamed(() => import("./features/settings/AdminSettingsPage"), "AdminSettingsPage"),
   },
 };
@@ -116,7 +120,7 @@ function AdminApplication() {
 
   const Page = route.Component;
   return (
-    <AdminLayout allowedRoles={route.allowedRoles}>
+    <AdminLayout allowedRoles={route.allowedRoles} pathname={pathname}>
       <Suspense fallback={<div className="peas-admin-route-loading"><PeasLoadingState /></div>}>
         <Page />
       </Suspense>

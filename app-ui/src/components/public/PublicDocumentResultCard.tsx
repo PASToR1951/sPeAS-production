@@ -24,7 +24,7 @@ export function PublicDocumentResultCard({
   const basePath = document.isCompiled
     ? "/pages/guest-compiled.html"
     : "/pages/guest-single.html";
-  const href = `${basePath}?id=${encodeURIComponent(String(document.id))}`;
+  const href = `${basePath}?id=${encodeURIComponent(document.publicId || String(document.id))}`;
 
   if (variant === "search") {
     return (
@@ -39,12 +39,13 @@ export function PublicDocumentResultCard({
 
         <div className="peas-public-search-result-card__content">
           <div className="peas-public-search-result-card__labels">
-            <span>{category.label}</span>
+            <span>{category.label} · {document.isCompiled ? "Issue" : "Paper"}</span>
             {document.isCompiled && document.childCount > 0 ? (
               <small><Files aria-hidden="true" /> {document.childCount} {document.childCount === 1 ? "work" : "works"}</small>
             ) : null}
           </div>
           <h3>{document.title}</h3>
+          {document.parentIssue ? <p>From {document.parentIssue.label}</p> : null}
           {showDescription && document.description ? <em>{document.description}</em> : null}
           <div className="peas-public-search-result-card__meta">
             <span><UserRound aria-hidden="true" /> {document.authorsText}</span>
