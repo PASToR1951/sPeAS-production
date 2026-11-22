@@ -264,9 +264,6 @@
 
 .peas-overview__active-icon {
   align-items: center;
-  background: color-mix(in srgb, var(--overview-primary) 11%, white);
-  border-radius: 14px;
-  color: var(--overview-primary);
   display: inline-flex;
   height: 46px;
   justify-content: center;
