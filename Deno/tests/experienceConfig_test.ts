@@ -200,13 +200,18 @@ Deno.test("hero keeps four stable slideshow slots while accepting replacements",
 Deno.test("fixed quick-link destinations and agenda vocabulary cannot be changed", () => {
   const input = structuredClone(defaultExperienceConfig) as any;
   const quickLinks = input.pages.landing.data.content.find((block: any) => block.type === "QuickLinksBlock");
-  quickLinks.props.links = [{ label: "Changed", description: "Changed", href: "javascript:alert(1)" }];
+  quickLinks.props.links[0] = { label: "Changed", description: "Changed", href: "javascript:alert(1)" };
+  quickLinks.props.links.push({ label: "FAQ", href: "/faq.html" });
   const agenda = input.pages.landing.data.content.find((block: any) => block.type === "ResearchAgendaBlock");
   agenda.props.items = [{ text: "Legacy item must not be retained" }];
   const migrated = migrateExperienceConfigToV6(input);
   const nextQuickLinks = migrated.pages.landing.data.content.find((block) => block.type === "QuickLinksBlock")!;
   const nextAgenda = migrated.pages.landing.data.content.find((block) => block.type === "ResearchAgendaBlock")!;
-  assertEquals((nextQuickLinks.props.links as any[])[0].href, "#mission");
+  assertEquals((nextQuickLinks.props.links as { href: string }[]).map(({ href }) => href), [
+    "#mission",
+    "#org-chart",
+    "#research-agenda",
+  ]);
   assertEquals(nextAgenda.props.items, undefined);
 });
 

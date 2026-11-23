@@ -443,11 +443,6 @@ export const defaultExperienceConfig: ExperienceConfig = {
                   href: "#research-agenda",
                   description: "Twenty focus areas aligned with national priorities and global development goals.",
                 },
-                {
-                  label: "FAQ",
-                  href: "/faq.html",
-                  description: "Find quick answers about searching, access, reading, and support.",
-                },
               ],
             },
           },
