@@ -1,3 +1,4 @@
+import { ExperienceCanvasText } from "./ExperienceCanvasText";
 import { ArrowRight } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 import CardSwap, { CardSwapCard } from "../CardSwap/CardSwap";
@@ -75,7 +76,8 @@ function normalizeOverviewProps(input: PeasOverviewProps): typeof DEFAULT_OVERVI
   };
 }
 
-export function PeasOverview(props: PeasOverviewProps) {
+export function PeasOverview(props: PeasOverviewProps & { canvasMode?: boolean }) {
+  const canvasMode = props.canvasMode ?? false;
   const overview = normalizeOverviewProps(props);
   const [activePillar, setActivePillar] = useState<PeasOverviewPillarId>("preserve");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -100,12 +102,12 @@ export function PeasOverview(props: PeasOverviewProps) {
   };
 
   return (
-    <section className="peas-overview" aria-labelledby="peas-overview-title">
+    <section className="peas-overview" data-experience-section={canvasMode ? "OverviewBlock" : undefined} aria-labelledby="peas-overview-title">
       <div className="peas-overview__layout">
         <div className="peas-overview__copy">
-          <span className="peas-overview__eyebrow">{overview.eyebrow}</span>
-          <h2 id="peas-overview-title">{overview.title}</h2>
-          <p>{overview.summary}</p>
+          <span className="peas-overview__eyebrow"><ExperienceCanvasText enabled={canvasMode} block="OverviewBlock" field="eyebrow" label="Text above the PeAS overview title" value={overview.eyebrow} /></span>
+          <h2 id="peas-overview-title"><ExperienceCanvasText enabled={canvasMode} block="OverviewBlock" field="title" label="PeAS overview title" value={overview.title} /></h2>
+          <p><ExperienceCanvasText enabled={canvasMode} block="OverviewBlock" field="summary" label="PeAS overview summary" value={overview.summary} multiline /></p>
           <a className="peas-overview__cta" href={overview.ctaHref}>
             {overview.ctaLabel}
             <ArrowRight aria-hidden="true" />
@@ -129,7 +131,7 @@ export function PeasOverview(props: PeasOverviewProps) {
                 verticalDistance={12}
                 width="100%"
               >
-                {overview.pillars.map((pillar) => {
+                {overview.pillars.map((pillar, index) => {
                   const selected = pillar.id === active.id;
                   return (
                     <CardSwapCard
@@ -144,7 +146,7 @@ export function PeasOverview(props: PeasOverviewProps) {
                     >
                       <span className="peas-overview__active-icon"><PeasSystemLogo className="peas-overview__system-logo" /></span>
                       <span className="peas-overview__active-label">{pillar.label}</span>
-                      <p>{pillar.description}</p>
+                      <p><ExperienceCanvasText enabled={canvasMode && selected} block="OverviewBlock" field={`pillars.${index}.description`} label={`${pillar.label} description`} value={pillar.description} multiline /></p>
                     </CardSwapCard>
                   );
                 })}

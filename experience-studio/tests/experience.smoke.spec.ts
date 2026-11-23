@@ -23,12 +23,13 @@ test("public experience API and runtime pages load", async ({ page, request, bas
   await expect(page.locator("#react-public-root")).toBeVisible();
   await expect(page.locator(".peas-public-navbar")).toBeVisible();
   await expect(page.locator("#public-home-title")).toBeVisible();
+  await expect(page.locator(".peas-canvas-text")).toHaveCount(0);
   await expectNoCriticalA11yViolations(page);
 
   await page.goto("/log-in.html");
   await expect(page.locator("#react-public-root")).toBeVisible();
-  await expect(page.locator("#school-id")).toBeVisible();
-  await expect(page.locator("#password")).toBeVisible();
+  await expect(page.getByLabel("Username", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expectNoCriticalA11yViolations(page);
 });
 
@@ -86,9 +87,10 @@ async function mockStudio(page: Page) {
 
 async function openMission(page: Page) {
   await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
-  await expect(page.getByText("PeAS manages the footer across the website.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Footer/ })).toHaveCount(0);
-  await page.getByRole("button", { name: /^Our mission/ }).click();
+  await expect(page.frameLocator("iframe").locator(".peas-public-hero__image.is-active")).toBeVisible();
+  const section = page.getByLabel("Section", { exact: true });
+  await expect(section.getByRole("option", { name: "Footer" })).toHaveCount(0);
+  await section.selectOption("RichTextBlock");
 }
 
 test("experience studio exits to Settings for clean and unsaved sessions", async ({ page }) => {
@@ -113,40 +115,42 @@ test("experience studio exits to Settings for clean and unsaved sessions", async
   await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
 });
 
-test("the editor previews, saves, and reviews changes across pages", async ({ page }) => {
+test("the live canvas edits, saves, and reviews changes across pages", async ({ page }) => {
   const studio = await mockStudio(page);
   await page.goto(studioUrl);
   await expect(page.getByRole("heading", { name: "Which page do you want to update?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /sign.in page/i })).toHaveCount(0);
   await expect(page.locator("iframe")).toHaveCount(0);
-  await openMission(page);
-  await expect(page.getByRole("heading", { name: "Our mission" })).toBeFocused();
+  await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
+  const canvas = page.frameLocator("iframe");
+  const mission = canvas.getByRole("textbox", { name: "Mission title" });
   const title = page.getByRole("textbox", { name: "Title", exact: true });
-  await title.fill("A clearer mission");
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
-  const preview = page.frameLocator("iframe");
-  const heading = preview.getByRole("heading", { name: "A clearer mission" });
-  await expect(heading).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Draft preview" })).toBeFocused();
+  await mission.fill("A clearer");
+  await mission.press("End");
+  await mission.pressSequentially(" mission");
+  await expect(mission).toHaveText("A clearer mission");
+  await expect(page.getByLabel("Section", { exact: true })).toHaveValue("RichTextBlock");
+  await expect(title).toHaveValue("A clearer mission");
+  await title.fill("Our research mission");
+  await expect(mission).toHaveText("Our research mission");
   for (const [device, width] of [["desktop", 1440], ["tablet", 820], ["mobile", 390]] as const) {
     await page.getByLabel("Preview width").selectOption(device);
-    await expect.poll(() => heading.evaluate(() => window.innerWidth)).toBe(width);
-    const nav = preview.getByRole("navigation", { name: "Public navigation", includeHidden: true });
+    await expect.poll(() => mission.evaluate(() => window.innerWidth)).toBe(width);
+    const nav = canvas.locator(".peas-public-navlinks");
     if (device === "desktop") await expect(nav).toBeVisible();
     else await expect(nav).toBeHidden();
   }
   expect(studio.saveRequests()).toBe(0);
-  await page.getByRole("button", { name: "Back to editing" }).click();
-  await expect(title).toBeFocused();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("status")).toHaveText("Draft saved");
+  await expect(page.getByRole("status", { name: "Draft status" })).toHaveText("Draft saved");
 
   await page.getByRole("button", { name: "Website pages", exact: true }).click();
   await expect(page.getByRole("button", { name: /Continue editing Home page/ })).toBeVisible();
   await page.getByRole("button", { name: /^Frequently asked questions/ }).click();
-  await page.getByText("Getting started", { exact: true }).click();
-  await page.getByText("What is PeAS and what can I find here?", { exact: true }).click();
+  await canvas.getByRole("button", { name: /Preview answer to What is PeAS/ }).click();
+  const canvasAnswer = canvas.getByRole("textbox", { name: "FAQ answer", exact: true });
   const answer = page.getByRole("textbox", { name: "Answer", exact: true });
-  await answer.fill("");
+  await canvasAnswer.fill("");
   await page.getByRole("button", { name: "Save draft" }).click();
   await page.getByRole("button", { name: /FAQ answers/ }).click();
   await expect(answer).toBeFocused();
@@ -156,7 +160,7 @@ test("the editor previews, saves, and reviews changes across pages", async ({ pa
   await expect(page.getByRole("button", { name: "Questions and answers", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeEnabled();
   await page.getByRole("button", { name: "Publish changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Changes published");
+  await expect(page.getByRole("status", { name: "Draft status" })).toContainText("Changes published");
   expect(studio.publishRequests()).toBe(1);
 });
 
@@ -164,11 +168,14 @@ test("publish blockers link to the exact field and stale drafts cannot publish",
   const studio = await mockStudio(page);
   await page.goto(studioUrl);
   await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
-  await page.getByRole("button", { name: /^Welcome message and photos/ }).click();
-  await page.getByText("Welcome slideshow", { exact: false }).click();
-  const description = page.getByPlaceholder("Describe slideshow photo 1");
+  const canvas = page.frameLocator("iframe");
+  await canvas.getByRole("button", { name: "Edit photos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Welcome slideshow" })).toBeFocused();
+  await page.getByRole("button", { name: "Show slideshow photo 2" }).click();
+  await expect(canvas.getByRole("button", { name: "Show background photo 2" })).toHaveAttribute("aria-pressed", "true");
+  const description = page.getByPlaceholder("Describe slideshow photo 2");
   await page.route("**/api/admin/experience/assets", (route) => route.fulfill({
-    json: { asset: { file_path: "/Components/images/2.jpg" } },
+    json: { asset: { file_path: "/Components/images/1.jpg" } },
   }));
   await page.locator('input[type="file"]').first().setInputFiles({
     name: "cover.png",
@@ -176,13 +183,14 @@ test("publish blockers link to the exact field and stale drafts cannot publish",
     buffer: Buffer.from("fixture"),
   });
   await expect(description).toHaveValue("");
+  await expect(canvas.locator(".peas-public-hero__image.is-active")).toHaveAttribute("src", "/Components/images/1.jpg");
   await page.getByRole("button", { name: "Review changes" }).click();
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeDisabled();
-  await page.getByRole("button", { name: /Slideshow photo 1 needs a description/ }).click();
+  await page.getByRole("button", { name: /Slideshow photo 2 needs a description/ }).click();
   await expect(description).toBeFocused();
   await description.fill("Students collaborating in the library");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("status")).toHaveText("Draft saved");
+  await expect(page.getByRole("status", { name: "Draft status" })).toHaveText("Draft saved");
   studio.changeDraftInAnotherTab();
   await page.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Publish changes" }).click();

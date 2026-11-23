@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const EXPERIENCE_SCHEMA_VERSION = 6;
+export const EXPERIENCE_EDITABLE_PAGES = ["landing", "faq"] as const;
+export type ExperiencePageKey = typeof EXPERIENCE_EDITABLE_PAGES[number];
 
 export const EXPERIENCE_COMPONENT_TYPES = [
   "AnnouncementBanner",
@@ -512,7 +514,7 @@ export const defaultExperienceConfig: ExperienceConfig = {
     },
     login: {
       title: "PeAS Login",
-      description: "The configurable login experience.",
+      description: "PeAS staff sign in.",
       data: {
         root: { props: { title: "PeAS Login" } },
         content: [
@@ -522,16 +524,16 @@ export const defaultExperienceConfig: ExperienceConfig = {
               id: "login-shell-current",
               brandText: "Paulinian electronic\nArchiving System (PeAS)",
               logoUrl: "/Components/images/peas_logo.png",
-              title: "Welcome back",
-              subtitle: "Please enter your details to access the PeAS.",
-              schoolIdLabel: "School ID",
-              schoolIdPlaceholder: "Enter your School ID",
+              title: "PeAS staff sign in",
+              subtitle: "For authorized PeAS staff and administrators.",
+              schoolIdLabel: "Username",
+              schoolIdPlaceholder: "Enter your username",
               passwordLabel: "Password",
               passwordPlaceholder: "Enter your password",
               submitLabel: "Sign in",
               forgotPasswordLabel: "Forgot Password?",
               forgotPasswordTitle: "Forgot Password?",
-              forgotPasswordSubtitle: "No worries, we'll send you reset instructions.",
+              forgotPasswordSubtitle: "We will send reset instructions to your administrator email.",
               backgroundImageUrl: "/Components/images/spud_facade.jpg",
               graphicLogoUrl: "/Components/images/spud_logo_s.png",
               footerText: "PeAS. All Rights Reserved. L. Rovira Rd, Bantayan, Dumaguete, Negros Oriental.",
@@ -716,10 +718,6 @@ const EDITABLE_STRING_FIELDS: Record<string, readonly string[]> = {
   ImageFeatureBlock: ["eyebrow", "title", "body", "imageUrl", "imageAlt", "caption"],
   ResearchAgendaBlock: ["eyebrow", "title", "body", "imageUrl", "imageAlt"],
   CtaBlock: ["title", "body", "label"],
-  LoginShellBlock: [
-    "brandText", "title", "subtitle", "forgotPasswordTitle", "forgotPasswordSubtitle",
-    "footerText", "backgroundImageUrl", "graphicLogoUrl", "logoUrl",
-  ],
 };
 
 /**
@@ -739,7 +737,7 @@ export function migrateExperienceConfigToV6(input: unknown): ExperienceConfig {
     : defaultExperienceConfig.title;
   if (typeof source.updatedAt === "string") output.updatedAt = source.updatedAt;
 
-  for (const pageKey of ["landing", "login", "faq"] as const) {
+  for (const pageKey of EXPERIENCE_EDITABLE_PAGES) {
     const sourcePage = asRecord(asRecord(asRecord(source.pages)[pageKey]));
     const sourceData = asRecord(sourcePage.data);
     const sourceBlocks = Array.isArray(sourceData.content) ? sourceData.content.map(asRecord) : [];
@@ -930,8 +928,6 @@ function faqItemMatches(item: Record<string, unknown>, expected: FaqSeedItem): b
   return item.id === expected.id && item.question === expected.question && item.answer === expected.answer;
 }
 
-export type ExperiencePageKey = keyof ExperienceConfig["pages"];
-
 export type ExperiencePublishIssue = {
   page: ExperiencePageKey;
   block: string;
@@ -941,7 +937,7 @@ export type ExperiencePublishIssue = {
 
 export function getExperiencePublishIssues(config: ExperienceConfig): ExperiencePublishIssue[] {
   const issues: ExperiencePublishIssue[] = [];
-  for (const page of ["landing", "login", "faq"] as const) {
+  for (const page of EXPERIENCE_EDITABLE_PAGES) {
     for (const block of config.pages[page].data.content) {
       const props = asRecord(block.props);
       const add = (field: string, message: string) => issues.push({ page, block: block.type, field, message });

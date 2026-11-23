@@ -24,7 +24,7 @@ const links = [
 
 const repositoryLink = { label: "Browse Repository", href: "/pages/searchResultsPage.html" };
 
-export function PublicNavbar() {
+export function PublicNavbar({ canvasMode = false }: { canvasMode?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const suppressSearchFocusRef = useRef(false);
@@ -90,7 +90,7 @@ export function PublicNavbar() {
   }, []);
 
   return (
-    <header className={`peas-public-navbar${alwaysGreen || scrolled ? " is-scrolled" : ""}`}>
+    <header inert={canvasMode} className={`peas-public-navbar${alwaysGreen || scrolled ? " is-scrolled" : ""}`}>
       <a className="peas-public-brand" href="/index.html" aria-label="PeAS home">
         <img src="/Components/images/spud_logo_s.png" alt="" />
         <span>

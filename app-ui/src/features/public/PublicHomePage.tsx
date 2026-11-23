@@ -20,11 +20,12 @@ import { fetchPublicHomeData, fetchPublicResearchAgendas, keywordSearchUrl, sear
 import { fetchPublishedNews, type NewsPost } from "../../lib/api/news";
 import { CATEGORY_ORDER, getCategoryMeta, type DocumentCategory } from "../../lib/constants/categories";
 import { experienceBlockProps, usePublicExperience } from "../../lib/api/experience";
+import { ExperienceCanvasText, sendCanvasMessage } from "../../components/public/ExperienceCanvasText";
 
 export function PublicHomePage() {
   const [data, setData] = useState<PublicHomeData | null>(null);
   const { session } = usePublicSession();
-  const { config } = usePublicExperience("landing");
+  const { config, canvasMode } = usePublicExperience("landing");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("All");
   const [loading, setLoading] = useState(true);
@@ -108,24 +109,35 @@ export function PublicHomePage() {
     : undefined;
 
   useEffect(() => {
-    setActiveHeroImage(0);
-  }, [heroImageSignature]);
+    if (!canvasMode) setActiveHeroImage(0);
+  }, [canvasMode, heroImageSignature]);
 
   useEffect(() => {
-    if (heroSlideshowPaused || displayedHeroImages.length <= 1) return;
+    if (!canvasMode) return;
+    const showPhoto = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== window.location.origin || event.data?.type !== "experience-show-photo") return;
+      const index = event.data.index;
+      if (Number.isInteger(index) && index >= 0 && index < displayedHeroImages.length) setActiveHeroImage(index);
+    };
+    window.addEventListener("message", showPhoto);
+    return () => window.removeEventListener("message", showPhoto);
+  }, [canvasMode, displayedHeroImages.length]);
+
+  useEffect(() => {
+    if (canvasMode || heroSlideshowPaused || displayedHeroImages.length <= 1) return;
     const interval = window.setInterval(() => {
       setActiveHeroImage((current) => (current + 1) % displayedHeroImages.length);
     }, 7000);
     return () => window.clearInterval(interval);
-  }, [displayedHeroImages.length, heroImageSignature, heroSlideshowPaused]);
+  }, [canvasMode, displayedHeroImages.length, heroImageSignature, heroSlideshowPaused]);
 
   const submitSearch = useCallback(() => {
-    window.location.href = searchResultsUrl(query, category);
-  }, [category, query]);
+    if (!canvasMode) window.location.href = searchResultsUrl(query, category);
+  }, [canvasMode, category, query]);
 
   return (
-    <PublicPageShell pageClassName="peas-public-home-page">
-      <section className="peas-public-hero" aria-labelledby="public-home-title">
+    <PublicPageShell canvasMode={canvasMode} pageClassName="peas-public-home-page">
+      <section className="peas-public-hero" data-experience-section={canvasMode ? "HeroBlock" : undefined} aria-labelledby="public-home-title">
         <div className="peas-public-hero__images" aria-label="Featured research photos" aria-live="off">
           {displayedHeroImages.map((image, index) => (
             <img
@@ -140,7 +152,7 @@ export function PublicHomePage() {
         <div className="peas-public-hero__overlay" />
         <motion.div
           className="peas-public-hero__content"
-          initial={{ opacity: 0, y: 18 }}
+          initial={canvasMode ? false : { opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
         >
@@ -149,14 +161,15 @@ export function PublicHomePage() {
               <img className="peas-public-hero-logo-mark" src="/Components/images/spud_logo_s.png" alt="St. Paul University Dumaguete logo" />
               <img className="peas-public-hero-logo-mark" src="/Components/images/peas.png" alt="PeAS system logo" />
             </span>
-            {hero.eyebrow ? <span className="peas-public-hero-eyebrow">{String(hero.eyebrow)}</span> : null}
+            {hero.eyebrow || canvasMode ? <span className="peas-public-hero-eyebrow"><ExperienceCanvasText enabled={canvasMode} block="HeroBlock" field="eyebrow" label="Text above the welcome title" value={String(hero.eyebrow || "")} /></span> : null}
           </div>
-          <h1 id="public-home-title">{String(hero.title || "Office of Research & Publications")}</h1>
+          <h1 id="public-home-title"><ExperienceCanvasText enabled={canvasMode} block="HeroBlock" field="title" label="Welcome title" value={String(hero.title || "Office of Research & Publications")} /></h1>
           <p>
-            {String(hero.body || "Explore PeAS, the university repository for research activities, initiatives, theses, dissertations, journals, and scholarly work.")}
+            <ExperienceCanvasText enabled={canvasMode} block="HeroBlock" field="body" label="Welcome text" value={String(hero.body || "Explore PeAS, the university repository for research activities, initiatives, theses, dissertations, journals, and scholarly work.")} multiline />
           </p>
           <form
             className="peas-public-hero-search"
+            inert={canvasMode}
             onSubmit={(event) => {
               event.preventDefault();
               markPendingSearch(query, "home");
@@ -209,24 +222,31 @@ export function PublicHomePage() {
                   aria-label={`Show background photo ${index + 1}`}
                   aria-pressed={index === activeHeroImage}
                   className={index === activeHeroImage ? "is-active" : ""}
-                  onClick={() => setActiveHeroImage(index)}
+                  onClick={() => {
+                    setActiveHeroImage(index);
+                    if (canvasMode) sendCanvasMessage({ type: "experience-canvas-photo", index });
+                  }}
                   key={`${image.url}-control-${index}`}
                 />
               ))}
             </span>
-            <button
+            {canvasMode ? (
+              <button className="peas-canvas-photo-button" type="button" onClick={() => sendCanvasMessage({ type: "experience-canvas-photo", index: activeHeroImage, open: true })}>
+                Edit photos
+              </button>
+            ) : <button
               type="button"
               className="peas-public-hero-slideshow-toggle"
               aria-label={heroSlideshowPaused ? "Play background slideshow" : "Pause background slideshow"}
               onClick={() => setHeroSlideshowPaused((paused) => !paused)}
             >
               {heroSlideshowPaused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-            </button>
+            </button>}
           </div>
         ) : null}
       </section>
 
-      <PeasOverview {...overview} />
+      <PeasOverview {...overview} canvasMode={canvasMode} />
 
       <section className="peas-public-band peas-public-news-preview" aria-labelledby="home-news-title">
         <div className="peas-public-news-preview__head">
@@ -323,10 +343,10 @@ export function PublicHomePage() {
       </section>
 
       {quickLinkItems.length ? (
-        <section className="peas-public-quick-links" aria-labelledby="quick-links-title">
+        <section className="peas-public-quick-links" data-experience-section={canvasMode ? "QuickLinksBlock" : undefined} aria-labelledby="quick-links-title">
           <div className="peas-public-section-head">
             <span>Explore</span>
-            <h2 id="quick-links-title">{String(quickLinks.title || "Explore PeAS")}</h2>
+            <h2 id="quick-links-title"><ExperienceCanvasText enabled={canvasMode} block="QuickLinksBlock" field="title" label="Explore PeAS title" value={String(quickLinks.title || "Explore PeAS")} /></h2>
           </div>
           <div>
             {quickLinkItems.map((item, index) => (
@@ -343,8 +363,8 @@ export function PublicHomePage() {
                   className="peas-public-quick-link"
                   href={String(item.href || ["#mission", "#org-chart", "#research-agenda"][index] || "#")}
                 >
-                  <strong>{item.label}</strong>
-                  <span>{item.description}</span>
+                  <strong><ExperienceCanvasText enabled={canvasMode} block="QuickLinksBlock" field={`links.${index}.label`} label={`Quick link ${index + 1} text`} value={String(item.label || "")} /></strong>
+                  <span><ExperienceCanvasText enabled={canvasMode} block="QuickLinksBlock" field={`links.${index}.description`} label={`Quick link ${index + 1} description`} value={String(item.description || "")} /></span>
                 </a>
               </BorderGlow>
             ))}
@@ -352,12 +372,12 @@ export function PublicHomePage() {
         </section>
       ) : null}
 
-      <section className="peas-public-split" id="mission" aria-labelledby="mission-title">
+      <section className="peas-public-split" id="mission" data-experience-section={canvasMode ? "RichTextBlock" : undefined} aria-labelledby="mission-title">
         <div className="peas-public-section-head">
           <span>Mission</span>
-          <h2 id="mission-title">{String(mission.title || "Research in service of community")}</h2>
+          <h2 id="mission-title"><ExperienceCanvasText enabled={canvasMode} block="RichTextBlock" field="title" label="Mission title" value={String(mission.title || "Research in service of community")} /></h2>
           <p>
-            {String(mission.body || "The office supports faculty and student research that advances knowledge, promotes ethical inquiry, and responds to the needs of the populations we serve.")}
+            <ExperienceCanvasText enabled={canvasMode} block="RichTextBlock" field="body" label="Mission text" value={String(mission.body || "The office supports faculty and student research that advances knowledge, promotes ethical inquiry, and responds to the needs of the populations we serve.")} multiline />
           </p>
         </div>
         <div className="peas-public-feature-list">
@@ -424,20 +444,20 @@ export function PublicHomePage() {
         </div>
       </section>
 
-      <section className="peas-public-media-section" id="org-chart" aria-labelledby="org-title">
+      <section className="peas-public-media-section" id="org-chart" data-experience-section={canvasMode ? "ImageFeatureBlock" : undefined} aria-labelledby="org-title">
         <div className="peas-public-section-head">
           <span>Office Structure</span>
-          <h2 id="org-title">{String(organization.title || "Research and publications team")}</h2>
-          <p>{String(organization.body || "The unit coordinating research activity, publication support, and institutional scholarly output.")}</p>
+          <h2 id="org-title"><ExperienceCanvasText enabled={canvasMode} block="ImageFeatureBlock" field="title" label="Organizational chart title" value={String(organization.title || "Research and publications team")} /></h2>
+          <p><ExperienceCanvasText enabled={canvasMode} block="ImageFeatureBlock" field="body" label="Organizational chart introduction" value={String(organization.body || "The unit coordinating research activity, publication support, and institutional scholarly output.")} multiline /></p>
         </div>
-        <OrgChart roles={organizationRoles} />
+        <OrgChart roles={organizationRoles} canvasMode={canvasMode} />
       </section>
 
-      <section className="peas-public-band" id="research-agenda" aria-labelledby="agenda-title">
+      <section className="peas-public-band" id="research-agenda" data-experience-section={canvasMode ? "ResearchAgendaBlock" : undefined} aria-labelledby="agenda-title">
         <div className="peas-public-section-head">
           <span>Focus Areas</span>
-          <h2 id="agenda-title">{String(agenda.title || "Research Agenda")}</h2>
-          <p>{String(agenda.body || "Twenty priority areas guide faculty and student research across identity, education, technology, wellness, sustainability, and partnerships.")}</p>
+          <h2 id="agenda-title"><ExperienceCanvasText enabled={canvasMode} block="ResearchAgendaBlock" field="title" label="Research agenda title" value={String(agenda.title || "Research Agenda")} /></h2>
+          <p><ExperienceCanvasText enabled={canvasMode} block="ResearchAgendaBlock" field="body" label="Research agenda introduction" value={String(agenda.body || "Twenty priority areas guide faculty and student research across identity, education, technology, wellness, sustainability, and partnerships.")} multiline /></p>
         </div>
         {researchAgendaError ? <div className="peas-public-empty" role="alert"><FileSearch aria-hidden="true" /><div><strong>{researchAgendaError}</strong><p>The official list is managed in the database. Try again to reload it.</p><Button variant="outline" onClick={loadResearchAgendas}>Retry</Button></div></div> : researchAgendas.length === 0 ? <div className="peas-public-empty"><FileSearch aria-hidden="true" /><div><strong>No active research agendas</strong><p>Administrators have not published an active official list yet.</p></div></div> : <div className="peas-public-agenda">
           {researchAgendas.map((item, index) => (
@@ -472,10 +492,10 @@ export function PublicHomePage() {
         </section>
       ) : null}
 
-      <section className="peas-public-contact-cta" aria-labelledby="public-contact-cta-title">
+      <section className="peas-public-contact-cta" data-experience-section={canvasMode ? "CtaBlock" : undefined} aria-labelledby="public-contact-cta-title">
         <Grainient className="peas-public-contact-cta__shader" color1="#0b5c47" color2="#087658" color3="#043e32" timeSpeed={0.12} warpStrength={0.55} warpFrequency={3.2} warpSpeed={0.35} warpAmplitude={90} rotationAmount={70} noiseScale={1.3} grainAmount={0.025} grainScale={1.5} contrast={1.05} saturation={0.9} zoom={1.1} />
-        <div className="peas-public-contact-cta__content"><span>Connect</span><h2 id="public-contact-cta-title">{String(contactCta.title || "Contact the Office of Research & Publications")}</h2><p>{String(contactCta.body || "Questions about research, publications, or repository access? Send the office an inquiry.")}</p></div>
-        <SpecularButton href="/contact.html" className="peas-public-contact-cta__button">{String(contactCta.label || "Get in touch")}</SpecularButton>
+        <div className="peas-public-contact-cta__content"><span>Connect</span><h2 id="public-contact-cta-title"><ExperienceCanvasText enabled={canvasMode} block="CtaBlock" field="title" label="Contact invitation title" value={String(contactCta.title || "Contact the Office of Research & Publications")} /></h2><p><ExperienceCanvasText enabled={canvasMode} block="CtaBlock" field="body" label="Contact invitation text" value={String(contactCta.body || "Questions about research, publications, or repository access? Send the office an inquiry.")} multiline /></p></div>
+        <SpecularButton href="/contact.html" className="peas-public-contact-cta__button"><ExperienceCanvasText enabled={canvasMode} block="CtaBlock" field="label" label="Contact button text" value={String(contactCta.label || "Get in touch")} /></SpecularButton>
       </section>
       <div className="peas-public-contact-transition" aria-hidden="true" />
     </PublicPageShell>

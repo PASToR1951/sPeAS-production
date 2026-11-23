@@ -5,22 +5,15 @@ import { InteractiveImageDistortion } from "../../components/public/InteractiveI
 import { Button } from "../../components/ui/button";
 import { getErrorMessage } from "../../lib/api/http";
 import { completePasswordSetup, logout, requestPasswordReset, safeSameOriginRedirect, signInUsername } from "../../lib/api/auth";
-import { experienceBlockProps, usePublicExperience } from "../../lib/api/experience";
 
 import { isStaffRole, STAFF_WORKSPACE } from "../../../../shared/staffRoles";
 
 const FACADE_IMAGE_URL = "/Components/images/spud_facade.jpg";
-const LEGACY_LOGIN_IMAGES = new Set([
-  "/Components/images/1.jpg",
-  "/Components/images/office-20of-20research-20-26-20publications.png",
-]);
-const LEGACY_PASSWORD_PLACEHOLDERS = new Set(["••••••••", "********"]);
+const UNIVERSITY_LOGO_URL = "/Components/images/spud_logo_s.png";
 
 export function PublicLoginPage() {
-  const { config, canvasMode } = usePublicExperience("login");
-  const content = experienceBlockProps(config, "login", "LoginShellBlock");
   const [mode, setMode] = useState<"login" | "forgot" | "setup">(() => new URLSearchParams(location.search).has("setup") ? "setup" : "login");
-  const [schoolId, setSchoolId] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,11 +26,10 @@ export function PublicLoginPage() {
 
   const submitLogin = async (event: FormEvent) => {
     event.preventDefault();
-    if (canvasMode) return;
-    if (!schoolId.trim() || !password) return setNotice({ kind: "error", text: "Enter your username or School ID and password." });
+    if (!username.trim() || !password) return setNotice({ kind: "error", text: "Enter your username and password." });
     setBusy("password"); setNotice(null);
     try {
-      const session = await signInUsername(schoolId, password);
+      const session = await signInUsername(username, password);
       if (session.user.passwordSetupRequired) {
         setMode("setup");
         return;
@@ -55,7 +47,6 @@ export function PublicLoginPage() {
 
   const submitSetup = async (event: FormEvent) => {
     event.preventDefault();
-    if (canvasMode) return;
     if (newPassword !== confirmPassword) return setNotice({ kind: "error", text: "The new passwords must match." });
     setBusy("password"); setNotice(null);
     try {
@@ -71,7 +62,6 @@ export function PublicLoginPage() {
 
   const submitForgot = async (event: FormEvent) => {
     event.preventDefault();
-    if (canvasMode) return;
     if (!email.trim()) return setNotice({ kind: "error", text: "Enter your registered email address." });
     setBusy("forgot"); setNotice(null);
     try { await requestPasswordReset(email); setNotice({ kind: "success", text: "If this administrator email is registered, a reset link has been sent." }); }
@@ -79,15 +69,6 @@ export function PublicLoginPage() {
     finally { setBusy(null); }
   };
 
-  const configuredImageUrl = String(content.backgroundImageUrl || "");
-  const backgroundImageUrl = !configuredImageUrl || LEGACY_LOGIN_IMAGES.has(configuredImageUrl)
-    ? FACADE_IMAGE_URL
-    : configuredImageUrl;
-  const configuredPasswordPlaceholder = String(content.passwordPlaceholder || "");
-  const passwordPlaceholder = !configuredPasswordPlaceholder || LEGACY_PASSWORD_PLACEHOLDERS.has(configuredPasswordPlaceholder)
-    ? "Enter your password"
-    : configuredPasswordPlaceholder;
-  const universityLogoUrl = String(content.graphicLogoUrl || "/Components/images/spud_logo_s.png");
   const noticeId = notice ? "peas-login-notice" : undefined;
 
   return <AuthShell showHomeLink={false}><section className="peas-login-page">
@@ -95,16 +76,16 @@ export function PublicLoginPage() {
       <div className="peas-login-panel__content">
         <a className="peas-login-brand" href="/index.html" aria-label="Return to PeAS home">
           <span className="peas-login-brand__logos" aria-hidden="true">
-            <img src={String(content.logoUrl || "/Components/images/peas_logo.png")} alt="" />
-            <img src={universityLogoUrl} alt="" />
+            <img src="/Components/images/peas_logo.png" alt="" />
+            <img src={UNIVERSITY_LOGO_URL} alt="" />
           </span>
-          <span>{String(content.brandText || "Paulinian electronic\nArchiving System (PeAS)")}</span>
+          <span>{"Paulinian electronic\nArchiving System (PeAS)"}</span>
         </a>
 
         <div className="peas-login-heading">
           {mode === "forgot" ? <button className="peas-login-back" type="button" onClick={() => { setMode("login"); setNotice(null); }}><ArrowLeft aria-hidden="true" /> Back to sign in</button> : null}
-          <h1>{String(mode === "forgot" ? content.forgotPasswordTitle || "Forgot Password?" : mode === "setup" ? "Set your password" : "PeAS staff sign in")}</h1>
-          <p>{String(mode === "forgot" ? content.forgotPasswordSubtitle || "We will send reset instructions to your administrator email." : mode === "setup" ? "Choose a new password with at least 14 characters." : "For authorized PeAS staff and administrators.")}</p>
+          <h1>{mode === "forgot" ? "Forgot Password?" : mode === "setup" ? "Set your password" : "PeAS staff sign in"}</h1>
+          <p>{mode === "forgot" ? "We will send reset instructions to your administrator email." : mode === "setup" ? "Choose a new password with at least 14 characters." : "For authorized PeAS staff and administrators."}</p>
         </div>
 
         {notice ? <div id={noticeId} className={`peas-login-notice is-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"} aria-live="polite">
@@ -114,25 +95,25 @@ export function PublicLoginPage() {
 
         {mode === "login" ? <form className="peas-login-form" onSubmit={submitLogin} noValidate aria-describedby={noticeId}>
           <div className="peas-login-field">
-            <label htmlFor="school-id">{String(content.schoolIdLabel === "School ID" ? "Username or School ID" : content.schoolIdLabel || "Username or School ID")}</label>
+            <label htmlFor="username">Username</label>
             <input
-              id="school-id"
+              id="username"
               autoCapitalize="none"
               autoComplete="username"
-              placeholder={"Enter your username or School ID"}
+              placeholder="Enter your username"
               spellCheck={false}
-              value={schoolId}
-              onChange={(event) => setSchoolId(event.currentTarget.value)}
+              value={username}
+              onChange={(event) => setUsername(event.currentTarget.value)}
             />
           </div>
           <div className="peas-login-field">
-            <label htmlFor="password">{String(content.passwordLabel || "Password")}</label>
+            <label htmlFor="password">Password</label>
             <div className="peas-login-password">
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
-                placeholder={passwordPlaceholder}
+                placeholder="Enter your password"
                 value={password}
                 onChange={(event) => setPassword(event.currentTarget.value)}
               />
@@ -141,12 +122,12 @@ export function PublicLoginPage() {
               </button>
             </div>
             <button className="peas-login-forgot" type="button" onClick={() => { setMode("forgot"); setNotice(null); }}>
-              {String(content.forgotPasswordLabel || "Forgot password?")}
+              Forgot password?
             </button>
           </div>
-          <Button className="peas-login-submit" disabled={busy !== null || canvasMode} size="lg" type="submit">
+          <Button className="peas-login-submit" disabled={busy !== null} size="lg" type="submit">
             {busy === "password" ? <LoaderCircle className="peas-spin" aria-hidden="true" /> : null}
-            {busy === "password" ? "Signing in…" : String(content.submitLabel || "Sign in")}
+            {busy === "password" ? "Signing in…" : "Sign in"}
           </Button>
         </form> : mode === "setup" ? <form className="peas-login-form" onSubmit={submitSetup} aria-describedby={noticeId}>
           <div className="peas-login-field">
@@ -161,7 +142,7 @@ export function PublicLoginPage() {
             <label htmlFor="setup-confirm">Confirm new password</label>
             <input id="setup-confirm" type="password" autoComplete="new-password" required value={confirmPassword} onChange={event => setConfirmPassword(event.currentTarget.value)} />
           </div>
-          <Button type="submit" disabled={busy !== null || canvasMode}>Save password</Button>
+          <Button type="submit" disabled={busy !== null}>Save password</Button>
           <Button type="button" variant="outline" disabled={busy !== null} onClick={() => {
             void logout().finally(() => window.location.replace("/log-in.html"));
           }}>Sign out</Button>
@@ -179,19 +160,19 @@ export function PublicLoginPage() {
               onChange={(event) => setEmail(event.currentTarget.value)}
             />
           </div>
-          <Button className="peas-login-submit" disabled={busy !== null || canvasMode} size="lg" type="submit">
+          <Button className="peas-login-submit" disabled={busy !== null} size="lg" type="submit">
             {busy === "forgot" ? <LoaderCircle className="peas-spin" aria-hidden="true" /> : null}
             {busy === "forgot" ? "Sending…" : "Send reset instructions"}
           </Button>
         </form>}
 
-        <small className="peas-login-footer">{String(content.footerText || "PeAS. All Rights Reserved.")}</small>
+        <small className="peas-login-footer">PeAS. All Rights Reserved. L. Rovira Rd, Bantayan, Dumaguete, Negros Oriental.</small>
       </div>
     </div>
     <aside className="peas-login-art" aria-label="St. Paul University Dumaguete campus">
-      <InteractiveImageDistortion src={backgroundImageUrl} />
+      <InteractiveImageDistortion src={FACADE_IMAGE_URL} />
       <div className="peas-login-art__scrim" />
-      <img className="peas-login-art__seal" src={universityLogoUrl} alt="" />
+      <img className="peas-login-art__seal" src={UNIVERSITY_LOGO_URL} alt="" />
       <div className="peas-login-art__caption">
         <div>
           <span>St. Paul University Dumaguete</span>

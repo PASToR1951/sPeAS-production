@@ -1373,8 +1373,10 @@ test("login uses paired branding and a centered university seal on the campus fa
                 props: {
                   title: "Welcome back",
                   subtitle: "Sign in to access PeAS.",
-                  passwordPlaceholder: "••••••••",
-                  backgroundImageUrl: "/Components/images/1.jpg",
+                  schoolIdLabel: "School ID",
+                  passwordLabel: "Passcode",
+                  passwordPlaceholder: "Use your legacy passcode",
+                  backgroundImageUrl: "/Components/images/2.jpg",
                 },
               }],
             },
@@ -1385,7 +1387,7 @@ test("login uses paired branding and a centered university seal on the campus fa
   }));
 
   await page.goto("/log-in.html");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "PeAS staff sign in" })).toBeVisible();
   await expect(page.locator(".peas-login-art__image")).toHaveAttribute("src", "/Components/images/spud_facade.jpg");
   const distortionCanvas = page.locator(".peas-login-art__canvas");
   await expect(distortionCanvas).toHaveCount(1);
@@ -1423,7 +1425,8 @@ test("login uses paired branding and a centered university seal on the campus fa
   expect(sealLayout.centerOffsetY).toBeLessThanOrEqual(1);
   expect(sealLayout.width).toBeGreaterThanOrEqual(testInfo.project.name !== "pixel-7" ? 160 : 80);
   await expect(page.locator(".peas-auth-home")).toHaveCount(0);
-  await expect(page.locator("#password")).toHaveAttribute("placeholder", "Enter your password");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("placeholder", "Enter your password");
+  await expect(page.getByLabel("Username", { exact: true })).toHaveAttribute("placeholder", "Enter your username");
   await expect(page.locator(".peas-login-form button[type='submit']")).toHaveCount(1);
 
   const viewportWidth = page.viewportSize()?.width ?? 0;
@@ -1431,11 +1434,11 @@ test("login uses paired branding and a centered university seal on the campus fa
 
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Forgot Password?" })).toBeVisible();
-  await expect(page.getByLabel("Registered email")).toBeVisible();
+  await expect(page.getByLabel("Administrator email")).toBeVisible();
   await page.getByRole("button", { name: "Back to sign in" }).click();
-  await expect(page.getByLabel("School ID")).toBeVisible();
+  await expect(page.getByLabel("Username", { exact: true })).toBeVisible();
 
-  await page.addScriptTag({ content: axeSource });
+  await page.evaluate(axeSource);
   const critical = await page.evaluate(async () => (await (window as any).axe.run(document)).violations.filter((item: any) => item.impact === "critical"));
   expect(critical).toEqual([]);
 });
@@ -1487,7 +1490,7 @@ test("login error notice animates into view", async ({ page }) => {
   }));
 
   await page.goto("/log-in.html");
-  await page.getByLabel("School ID").fill("invalid-user");
+  await page.getByLabel("Username", { exact: true }).fill("invalid-user");
   await page.locator("#password").fill("invalid-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 

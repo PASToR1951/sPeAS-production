@@ -1,3 +1,4 @@
+import { sendCanvasMessage } from "./ExperienceCanvasText";
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 export type OrgChartRoleContent = {
@@ -96,7 +97,7 @@ const DEFAULT_UNITS: OrgRole[] = [
   },
 ];
 
-export function OrgChart({ roles }: { roles?: readonly OrgChartRoleContent[] }) {
+export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgChartRoleContent[]; canvasMode?: boolean }) {
   const { chain, units } = useMemo(() => mergeRoleContent(roles), [roles]);
 
   return (
@@ -110,7 +111,7 @@ export function OrgChart({ roles }: { roles?: readonly OrgChartRoleContent[] }) 
             <Fragment key={role.id}>
               {index > 0 ? <li className="peas-org-link peas-org-link--into" aria-hidden="true" /> : null}
               <li className="peas-org-row">
-                <OrgNode role={role} />
+                <OrgNode role={role} canvasMode={canvasMode} />
               </li>
             </Fragment>
           ))}
@@ -120,7 +121,7 @@ export function OrgChart({ roles }: { roles?: readonly OrgChartRoleContent[] }) 
             <ol className="peas-org-units" aria-label="Office units and boards">
               {units.map((role) => (
                 <li className="peas-org-unit" key={role.id}>
-                  <OrgNode role={role} />
+                  <OrgNode role={role} canvasMode={canvasMode} />
                 </li>
               ))}
             </ol>
@@ -131,7 +132,7 @@ export function OrgChart({ roles }: { roles?: readonly OrgChartRoleContent[] }) 
   );
 }
 
-function OrgNode({ role }: { role: OrgRole }) {
+function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
   const secondaryTitle = role.title.trim() && role.title.trim() !== role.label.trim()
     ? role.title
     : "";
@@ -143,6 +144,16 @@ function OrgNode({ role }: { role: OrgRole }) {
         <strong className="peas-org-node__name">{role.name || role.label}</strong>
         {secondaryTitle ? <span className="peas-org-node__title">{secondaryTitle}</span> : null}
         <span className="peas-org-caption">{role.caption}</span>
+        {canvasMode && (
+          <button
+            className="peas-canvas-photo-button"
+            type="button"
+            aria-label={`Edit role and photo for ${role.name || role.label}`}
+            onClick={() => sendCanvasMessage({ type: "experience-canvas-role", roleId: role.id })}
+          >
+            Edit role and photo
+          </button>
+        )}
       </div>
     </article>
   );

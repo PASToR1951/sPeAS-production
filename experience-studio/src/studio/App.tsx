@@ -5,6 +5,7 @@ import React, { createContext, useContext, useEffect, useEffectEvent, useId, use
 import {
   defaultExperienceConfig,
   FAQ_CATEGORY_LIMITS,
+  EXPERIENCE_EDITABLE_PAGES,
   EXPERIENCE_FIXED_THEME,
   ExperienceConfig,
   ExperienceConfigSchema,
@@ -17,9 +18,10 @@ import { experiencePuckConfig } from "../shared/puckConfig";
 type PageKey = ExperiencePageKey;
 type DeviceKey = "desktop" | "tablet" | "mobile";
 const previewWidths: Record<DeviceKey, number> = { desktop: 1440, tablet: 820, mobile: 390 };
-type Screen = "pages" | "sections" | "edit" | "review" | "tools";
+type Screen = "pages" | "edit" | "review" | "tools";
 type EditorLocation = { page: PageKey; section: string };
 const UploadActivity = createContext<(change: number) => void>(() => {});
+const SlideshowSelection = createContext({ index: 0, select: (_index: number) => {} });
 
 type DraftPayload = {
   config: ExperienceConfig;
@@ -78,34 +80,30 @@ const componentMap = experiencePuckConfig.components as Record<string, any>;
 
 const pages = {
   landing: { name: "Home page", description: "Welcome message, photos, mission, and office team.", url: "/index.html" },
-  login: { name: "Sign-in page", description: "Branding, logos, and password reset instructions.", url: "/log-in.html" },
   faq: { name: "Frequently asked questions", description: "Questions, answers, and how to contact the office.", url: "/faq.html" },
 };
-const pageKeys = Object.keys(pages) as PageKey[];
+const pageKeys = EXPERIENCE_EDITABLE_PAGES;
 
-const sections: Record<string, { name: string; description: string; preview: string }> = {
-  HeroBlock: { name: "Welcome message and photos", description: "The headline, introduction, and slideshow at the top of Home.", preview: ".peas-public-hero" },
-  OverviewBlock: { name: "What is PeAS?", description: "How PeAS helps visitors preserve, discover, and access research.", preview: "#peas-overview-title" },
-  QuickLinksBlock: { name: "Explore PeAS links", description: "The text on links to the mission, team, and research agenda.", preview: "#quick-links-title" },
-  RichTextBlock: { name: "Our mission", description: "The heading and introduction under Mission.", preview: "#mission-title" },
-  ImageFeatureBlock: { name: "Organizational chart", description: "Office roles, names, and profile photos.", preview: "#org-title" },
-  ResearchAgendaBlock: { name: "Research agenda introduction", description: "The heading and introduction above the official research priorities.", preview: "#agenda-title" },
-  CtaBlock: { name: "Contact invitation", description: "The message and button that invite visitors to contact the office.", preview: "#public-contact-cta-title" },
-  FooterLinksBlock: { name: "Footer", description: "PeAS manages the footer across the website.", preview: "footer" },
-  LoginShellBlock: { name: "Sign-in content", description: "Branding and password reset copy.", preview: ".peas-login-heading" },
-  FaqBlock: { name: "Questions and answers", description: "Manage questions, answers, and related page copy.", preview: ".peas-faq-content" },
+const sections: Record<string, { name: string; preview: string }> = {
+  HeroBlock: { name: "Welcome message and photos", preview: ".peas-public-hero" },
+  OverviewBlock: { name: "What is PeAS?", preview: "#peas-overview-title" },
+  QuickLinksBlock: { name: "Explore PeAS links", preview: "#quick-links-title" },
+  RichTextBlock: { name: "Our mission", preview: "#mission-title" },
+  ImageFeatureBlock: { name: "Organizational chart", preview: "#org-title" },
+  ResearchAgendaBlock: { name: "Research agenda introduction", preview: "#agenda-title" },
+  CtaBlock: { name: "Contact invitation", preview: "#public-contact-cta-title" },
+  FaqBlock: { name: "Questions and answers", preview: ".peas-faq-hero" },
 };
 
 const sectionName = (type: string) => sections[type]?.name ?? "Website section";
 const editableFields: Record<string, readonly string[]> = {
-  HeroBlock: ["eyebrow", "title", "body", "images"],
+  HeroBlock: ["images", "eyebrow", "title", "body"],
   OverviewBlock: ["eyebrow", "title", "summary", "pillars"],
   QuickLinksBlock: ["title", "links"],
   RichTextBlock: ["title", "body"],
   ImageFeatureBlock: ["title", "body", "roles"],
   ResearchAgendaBlock: ["title", "body"],
   CtaBlock: ["title", "body", "label"],
-  LoginShellBlock: ["brandText", "forgotPasswordTitle", "forgotPasswordSubtitle", "footerText", "backgroundImageUrl", "graphicLogoUrl", "logoUrl"],
   FaqBlock: ["categories", "eyebrow", "title", "description", "contactTitle", "contactBody", "contactLabel"],
 };
 
@@ -166,11 +164,8 @@ const fieldLabels: Record<string, string> = {
   href: "Where the link goes",
   linkLabel: "Link text",
   label: "Button text",
-  logoUrl: "Logo image",
   imageUrl: "Picture",
   url: "Picture",
-  backgroundImageUrl: "Background picture",
-  graphicLogoUrl: "Side panel logo",
   alt: "Picture description",
   imageAlt: "Picture description",
   photo: "Profile photo",
@@ -188,16 +183,6 @@ const fieldLabels: Record<string, string> = {
   roles: "Organizational chart roles",
   subtitle: "Subtitle",
   description: "Short description",
-  brandText: "Brand name shown on the form",
-  schoolIdLabel: "School ID box label",
-  schoolIdPlaceholder: "School ID example text",
-  passwordLabel: "Password box label",
-  passwordPlaceholder: "Password example text",
-  submitLabel: "Sign-in button text",
-  forgotPasswordLabel: "“Forgot password” link text",
-  forgotPasswordTitle: "Forgot-password window title",
-  forgotPasswordSubtitle: "Forgot-password window message",
-  footerText: "Small print at the bottom",
 };
 
 const fieldHelp: Record<string, string> = {
@@ -232,6 +217,7 @@ function ImageUrlField(props: {
   uploadKind?: string;
   altText?: string;
   allowManualPath?: boolean;
+  showThumbnail?: boolean;
   onReplace?: (value: string) => void;
   clearLabel?: string;
   onClear?: () => void;
@@ -274,7 +260,7 @@ function ImageUrlField(props: {
   return (
     <div className="xp-image-field">
       <span>{props.label}</span>
-      {props.value ? (
+      {props.value && props.showThumbnail !== false ? (
         <img
           key={props.value}
           className="xp-image-preview"
@@ -484,44 +470,42 @@ function HeroImagesField(props: {
     ));
   };
 
+  const { index, select } = useContext(SlideshowSelection);
+  const selected = images[index];
   return (
-    <details className="xp-slideshow">
-      <summary>Welcome slideshow <small>4 photos</small></summary>
-      <div className="xp-array-field">
-        <p className="xp-help-text">Replace any of the four photos shown in the Home page slideshow.</p>
-        {images.map((image, index) => {
-          const slotNumber = index + 1;
-          return (
-            <div className="xp-array-item" key={`hero-slot-${slotNumber}`}>
-              <div className="xp-array-item-top">
-                <strong>Slideshow photo {slotNumber}</strong>
-
-              </div>
-              <ImageUrlField
-                label={`Slideshow photo ${slotNumber}`}
-                value={image.url || ""}
-                uploadKind={`hero-slot-${slotNumber}`}
-                altText={image.alt}
-                allowManualPath={false}
-                onChange={(value) => updateImage(index, { url: value, alt: "" })}
-              />
-              <label>
-                <span>Photo description</span>
-                <input
-                  id={`images-${index}-alt`}
-                  aria-describedby={`images-${index}-alt-help`}
-                  value={image.alt || ""}
-                  maxLength={255}
-                  placeholder={`Describe slideshow photo ${slotNumber}`}
-                  onChange={(event) => updateImage(index, { alt: event.target.value })}
-                />
-                <small className="xp-field-help" id={`images-${index}-alt-help`}>Required before publishing. Describe what this photo shows.</small>
-              </label>
-            </div>
-          );
-        })}
+    <section className="xp-slideshow xp-array-field" aria-labelledby="slideshow-heading">
+      <h3 id="slideshow-heading" tabIndex={-1}>Welcome slideshow</h3>
+      <div className="xp-photo-picker" role="group" aria-label="Choose a slideshow photo">
+        {images.map((image, slot) => (
+          <button key={slot} type="button" aria-label={`Show slideshow photo ${slot + 1}`} aria-pressed={slot === index} onClick={() => select(slot)}>
+            <img src={image.url} alt="" />
+            <span>Photo {slot + 1}</span>
+          </button>
+        ))}
       </div>
-    </details>
+      <ImageUrlField
+        key={index}
+        label={`Slideshow photo ${index + 1}`}
+        value={selected.url || ""}
+        uploadKind={`hero-slot-${index + 1}`}
+        altText={selected.alt}
+        allowManualPath={false}
+        showThumbnail={false}
+        onChange={(value) => updateImage(index, { url: value, alt: "" })}
+      />
+      <label>
+        <span>Photo description</span>
+        <input
+          id={`images-${index}-alt`}
+          aria-describedby="slideshow-description-help"
+          value={selected.alt || ""}
+          maxLength={255}
+          placeholder={`Describe slideshow photo ${index + 1}`}
+          onChange={(event) => updateImage(index, { alt: event.target.value })}
+        />
+        <small className="xp-field-help" id="slideshow-description-help">Required before publishing. Describe what this photo shows.</small>
+      </label>
+    </section>
   );
 }
 
@@ -799,9 +783,6 @@ function BlockInspector(props: {
 
   return (
     <div className="xp-field-stack">
-      {block.type === "LoginShellBlock" && (
-        <p className="xp-help-text">PeAS supplies the staff sign-in heading and instructions. To see the password reset copy, open Preview and choose Forgot password.</p>
-      )}
       {block.type === "ResearchAgendaBlock" && (
         <p className="xp-help-text">Update the introduction here. To change the official list, open Research Agenda in Admin Settings.</p>
       )}
@@ -907,7 +888,9 @@ export default function App() {
   const [section, setSection] = useState("HeroBlock");
   const [resume, setResume] = useState(readEditorLocation);
   const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
-  const [preview, setPreview] = useState(false);
+  const [heroPhoto, setHeroPhoto] = useState(0);
+  const [canvasScroll, setCanvasScroll] = useState({});
+  const [canvasReady, setCanvasReady] = useState(false);
   const [device, setDevice] = useState<DeviceKey>(() =>
     window.innerWidth < 640 ? "mobile" : window.innerWidth < 1100 ? "tablet" : "desktop"
   );
@@ -922,7 +905,6 @@ export default function App() {
   const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; action: () => void } | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const canvasRef = useRef<HTMLIFrameElement>(null);
-  const lastField = useRef("");
   const leaveConfirmed = useRef(false);
   const history = useRef<{ past: ExperienceConfig[]; future: ExperienceConfig[]; lastEdit: number }>({ past: [], future: [], lastEdit: 0 });
 
@@ -1011,28 +993,29 @@ export default function App() {
   }, [dirty, working]);
 
   function navigate(next: Screen, id = "studio-title") {
-    setPreview(false);
+    if (next !== "edit") setCanvasReady(false);
     setScreen(next);
     setFocusRequest({ id });
   }
 
-  function openSection(location: EditorLocation, field?: string) {
+  function selectSection(location: EditorLocation) {
     setActivePage(location.page);
     setSection(location.section);
     setResume(location);
     try { sessionStorage.setItem(locationKey, JSON.stringify(location)); } catch { /* Storage is optional. */ }
-    lastField.current = "";
+  }
+
+  function openSection(location: EditorLocation, field?: string) {
+    if (location.page !== activePage || screen !== "edit") setCanvasReady(false);
+    if (field?.startsWith("images-")) setHeroPhoto(Number(field.split("-")[1]));
     history.current.lastEdit = 0;
+    selectSection(location);
+    setCanvasScroll({});
     navigate("edit", field || "studio-title");
   }
 
   function openPage(page: PageKey) {
-    if (page === "login" || page === "faq") {
-      openSection({ page, section: page === "login" ? "LoginShellBlock" : "FaqBlock" });
-    } else {
-      setActivePage(page);
-      navigate("sections");
-    }
+    openSection({ page, section: page === "faq" ? "FaqBlock" : "HeroBlock" });
   }
 
   function exit() {
@@ -1044,8 +1027,7 @@ export default function App() {
     else leave();
   }
 
-  function updateBlock(props: Record<string, unknown>) {
-    if (!selected) return;
+  function updateBlock(props: Record<string, unknown>, blockType = section) {
     const now = Date.now();
     if (now - history.current.lastEdit > 700) {
       history.current.past = [...history.current.past.slice(-59), config];
@@ -1060,7 +1042,7 @@ export default function App() {
           ...config.pages[activePage],
           data: {
             ...config.pages[activePage].data,
-            content: config.pages[activePage].data.content.map((block) => block.type === section ? { ...block, props } : block),
+            content: config.pages[activePage].data.content.map((block) => block.type === blockType ? { ...block, props } : block),
           },
         },
       },
@@ -1191,33 +1173,92 @@ export default function App() {
     });
   }
 
-  function sendPreview(scroll: boolean) {
+  function sendCanvas(scroll = false) {
     const iframe = canvasRef.current;
-    iframe?.contentWindow?.postMessage({ type: "experience-config", config }, window.location.origin);
-    if (scroll && iframe?.contentWindow) {
-      const target = iframe.contentDocument?.querySelector(sections[section]?.preview);
-      if (target) iframe.contentWindow.scrollTo(0, iframe.contentWindow.scrollY + target.getBoundingClientRect().top - 96);
+    const targetWindow = iframe?.contentWindow;
+    if (!iframe || !targetWindow) return;
+    targetWindow.postMessage({ type: "experience-config", config }, window.location.origin);
+    if (scroll) {
+      const marker = iframe.contentDocument?.querySelector(sections[section]?.preview);
+      const target = marker?.closest("section") ?? marker;
+      if (target) targetWindow.scrollTo(0, targetWindow.scrollY + target.getBoundingClientRect().top - 96);
     }
   }
 
-  const refreshPreview = useEffectEvent((event: MessageEvent) => {
-    if (event.origin === window.location.origin && event.source === canvasRef.current?.contentWindow && event.data?.type === "experience-canvas-ready") {
-      sendPreview(true);
+  function showCanvasPhoto() {
+    canvasRef.current?.contentWindow?.postMessage({ type: "experience-show-photo", index: heroPhoto }, window.location.origin);
+  }
+
+  const receiveCanvasMessage = useEffectEvent((event: MessageEvent) => {
+    if (event.origin !== window.location.origin || event.source !== canvasRef.current?.contentWindow || !event.data) return;
+    const { type, block, field, value, index, open } = event.data;
+    if (type === "experience-canvas-ready") {
+      sendCanvas(true);
+      setCanvasReady(true);
+      return;
     }
+    if (working) return;
+    if (type === "experience-canvas-photo" && activePage === "landing" && Number.isInteger(index) && index >= 0 && index < 4) {
+      selectSection({ page: activePage, section: "HeroBlock" });
+      setHeroPhoto(index);
+      if (open) setFocusRequest({ id: "slideshow-heading" });
+      return;
+    }
+    if (type === "experience-canvas-role" && activePage === "landing") {
+      const chart = config.pages.landing.data.content.find((item) => item.type === "ImageFeatureBlock");
+      const roles = chart?.props.roles as OrganizationRole[] | undefined;
+      const roleIndex = roles?.findIndex((role) => role.id === event.data.roleId) ?? -1;
+      if (roleIndex >= 0) {
+        selectSection({ page: activePage, section: "ImageFeatureBlock" });
+        setFocusRequest({ id: `roles-${roleIndex}-photoAlt` });
+      }
+      return;
+    }
+    if (typeof block !== "string" || !Object.prototype.hasOwnProperty.call(editableFields, block)) return;
+    const target = config.pages[activePage].data.content.find((item) => item.type === block);
+    if (!target) return;
+    if (type === "experience-canvas-select" && block !== section) {
+      history.current.lastEdit = 0;
+      selectSection({ page: activePage, section: block });
+    }
+    if (type !== "experience-canvas-edit" || typeof field !== "string" || typeof value !== "string") return;
+    const path = field.split(".");
+    if (!editableFields[block].includes(path[0])) return;
+    const props = structuredClone(target.props);
+    let owner = props;
+    for (const key of path.slice(0, -1)) {
+      if (!Object.prototype.hasOwnProperty.call(owner, key) || typeof owner[key] !== "object" || !owner[key]) return;
+      owner = owner[key] as Record<string, unknown>;
+    }
+    const key = path[path.length - 1];
+    if (!Object.prototype.hasOwnProperty.call(owner, key) || typeof owner[key] !== "string" || owner[key] === value) return;
+    owner[key] = value;
+    updateBlock(props, block);
   });
-  const syncPreview = useEffectEvent(() => sendPreview(false));
+  const syncCanvas = useEffectEvent(sendCanvas);
+  const syncPhoto = useEffectEvent(showCanvasPhoto);
+
   useEffect(() => {
-    const listener = (event: MessageEvent) => refreshPreview(event);
+    const listener = (event: MessageEvent) => receiveCanvasMessage(event);
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
   }, []);
+
   useEffect(() => {
-    if (preview) syncPreview();
-  }, [config, preview]);
+    if (screen === "edit") syncCanvas();
+  }, [config, screen]);
+
+  useEffect(() => {
+    if (screen === "edit" && canvasReady) syncCanvas(true);
+  }, [canvasScroll, screen, canvasReady]);
+
+  useEffect(() => {
+    if (canvasReady && activePage === "landing") syncPhoto();
+  }, [heroPhoto, canvasReady, activePage]);
 
   useLayoutEffect(() => {
     const frame = canvasRef.current?.parentElement;
-    if (!preview || !frame) return;
+    if (screen !== "edit" || !frame) return;
     const width = previewWidths[device];
     const fitPreview = () => {
       frame.style.setProperty("--preview-width", `${width}px`);
@@ -1227,20 +1268,14 @@ export default function App() {
     const observer = new ResizeObserver(fitPreview);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [preview, device]);
-
-  function togglePreview() {
-    setPreview(!preview);
-    setFocusRequest({ id: preview ? lastField.current || "studio-title" : "preview-heading" });
-  }
+  }, [screen, device, activePage]);
 
   const resumeLocation = resume ?? changes.find((change) => editableFields[change.section]);
   const pageName = pages[activePage].name;
   const title = screen === "pages" ? "Which page do you want to update?"
-    : screen === "sections" ? `${pageName} sections`
     : screen === "review" ? "Review changes"
     : screen === "tools" ? "Version history and images"
-    : sectionName(section);
+    : pageName;
 
   return (
     <div className="xp-studio-shell">
@@ -1248,12 +1283,12 @@ export default function App() {
         <button className="xp-studio-button" type="button" onClick={exit} disabled={working}>Exit to Admin</button>
         <strong>Edit website pages</strong>
         {loadState === "ready" && (
-          <p role="status">
+          <p role="status" aria-label="Draft status">
             {statusText}
           </p>
         )}
       </header>
-      <main className="xp-workspace-main">
+      <main className={`xp-workspace-main${screen === "edit" ? " xp-visual-workspace" : ""}`}>
         {loadState === "loading" && <p role="status">Loading website pages…</p>}
         {loadState === "error" && (
           <div className="xp-workspace-notice">
@@ -1269,9 +1304,6 @@ export default function App() {
           {screen !== "pages" && (
             <nav aria-label="Website editor navigation" className="xp-workspace-nav">
               <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("pages")}>Website pages</button>
-              {screen === "edit" && activePage === "landing" && (
-                <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("sections", `section-${section}`)}>Home page sections</button>
-              )}
             </nav>
           )}
           {error && <p className="xp-workspace-error" role="alert">{error}</p>}
@@ -1284,7 +1316,6 @@ export default function App() {
           )}
           <div className="xp-workspace-title">
             <h1 id="studio-title" tabIndex={-1}>{title}</h1>
-            {screen === "edit" && activePage !== "landing" && <p>{pageName}</p>}
           </div>
 
           {screen === "pages" && <>
@@ -1309,63 +1340,59 @@ export default function App() {
             </div>
           </>}
 
-          {screen === "sections" && (
-            <ul className="xp-choice-list">
-              {config.pages[activePage].data.content.map((block) => (
-                <li key={block.type}>
-                  {editableFields[block.type]
-                    ? <button id={`section-${block.type}`} className="xp-choice" type="button" onClick={() => openSection({ page: activePage, section: block.type })}>
-                      <strong>{sectionName(block.type)}</strong>
-                      <span>{sections[block.type]?.description}</span>
-                    </button>
-                    : <div className="xp-choice xp-choice-readonly">
-                      <strong>{sectionName(block.type)} <small>Read-only</small></strong>
-                      <span>{sections[block.type]?.description}</span>
-                    </div>}
-                </li>
-              ))}
-            </ul>
-          )}
-
           {screen === "edit" && selected && <>
-            <div className="xp-workspace-actions">
-              <button className="xp-studio-button" type="button" onClick={togglePreview} disabled={working}>{preview ? "Back to editing" : "Preview"}</button>
-              <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}>Undo</button>
-              <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}>Redo</button>
+            <div className="xp-workspace-actions xp-editor-toolbar">
+              {activePage === "landing" && <label>Section
+                <select aria-label="Section" value={section} disabled={working} onChange={(event) => {
+                  history.current.lastEdit = 0;
+                  selectSection({ page: activePage, section: event.target.value });
+                  setCanvasScroll({});
+                }}>
+                  {config.pages[activePage].data.content.filter((block) => editableFields[block.type]).map((block) => (
+                    <option key={block.type} value={block.type}>{sectionName(block.type)}</option>
+                  ))}
+                </select>
+              </label>}
+              <div className="xp-edit-actions">
+                <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}>Undo</button>
+                <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}>Redo</button>
+                <button className="xp-studio-button" type="button" disabled={working || conflict || !dirty} onClick={saveDraft}>Save draft</button>
+                <button className="xp-studio-button primary" type="button" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}>Review changes</button>
+              </div>
             </div>
-            <div className={`xp-editor-layout${preview ? " is-previewing" : ""}`}>
-              <div className="xp-editor-fields" onFocusCapture={(event) => {
-                if (event.target.matches("input[id], textarea[id], select[id]")) lastField.current = event.target.id;
-              }}>
-                <fieldset disabled={busy === "publish" || busy === "restore"}>
+            <div className="xp-editor-layout">
+              <section className="xp-workspace-preview" aria-labelledby="preview-heading">
+                <div className="xp-preview-controls">
+                  <h2 tabIndex={-1} id="preview-heading">Live page canvas</h2>
+                  <label>Preview width
+                    <select value={device} onChange={(event) => setDevice(event.target.value as DeviceKey)}>
+                      <option value="desktop">Desktop</option>
+                      <option value="tablet">Tablet</option>
+                      <option value="mobile">Mobile</option>
+                    </select>
+                  </label>
+                  <button className="xp-text-button" type="button" onClick={() => setFocusRequest({ id: "section-settings" })}>Section settings</button>
+                </div>
+                <p className="xp-help-text xp-canvas-help">Click text to edit it on the page. Changes stay in your draft until you publish.</p>
+                {!canvasReady && <p role="status" className="xp-help-text">Loading the page canvas…</p>}
+                <div className={`xp-preview-frame ${device}`} inert={working}>
+                  <iframe key={activePage} ref={canvasRef} title={`Live editor for ${pageName}`} src={`${pages[activePage].url}?experienceCanvas=1`} />
+                </div>
+              </section>
+              <section className="xp-editor-fields" aria-labelledby="section-settings">
+                <div className="xp-section-settings-heading">
+                  <h2 id="section-settings" tabIndex={-1}>{sectionName(section)}</h2>
+                  <button className="xp-text-button" type="button" onClick={() => setFocusRequest({ id: "preview-heading" })}>Back to canvas</button>
+                </div>
+                <fieldset disabled={working}>
                   <legend className="xp-sr-only">{sectionName(section)} fields</legend>
                   <UploadActivity.Provider value={(change) => setUploads((count) => count + change)}>
-                    <BlockInspector key={section} block={selected} onChange={updateBlock} />
+                    <SlideshowSelection.Provider value={{ index: heroPhoto, select: setHeroPhoto }}>
+                      <BlockInspector key={section} block={selected} onChange={updateBlock} />
+                    </SlideshowSelection.Provider>
                   </UploadActivity.Provider>
                 </fieldset>
-                <div className="xp-workspace-actions">
-                  <button className="xp-studio-button" type="button" disabled={working || conflict || !dirty} onClick={saveDraft}>Save draft</button>
-                  <button className="xp-studio-button primary" type="button" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}>Review changes</button>
-                </div>
-                <p className="xp-help-text">Visitors see the published version until you publish your changes.</p>
-              </div>
-              {preview && (
-                <section className="xp-workspace-preview" aria-labelledby="preview-heading">
-                  <div className="xp-preview-controls">
-                    <h2 tabIndex={-1} id="preview-heading">Draft preview</h2>
-                    <label>Preview width
-                      <select value={device} onChange={(event) => setDevice(event.target.value as DeviceKey)}>
-                        <option value="desktop">Desktop</option>
-                        <option value="tablet">Tablet</option>
-                        <option value="mobile">Mobile</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className={`xp-preview-frame ${device}`}>
-                    <iframe ref={canvasRef} title={`Draft preview of ${pageName}`} src={`${pages[activePage].url}?experienceCanvas=1`} onLoad={() => sendPreview(true)} />
-                  </div>
-                </section>
-              )}
+              </section>
             </div>
           </>}
 

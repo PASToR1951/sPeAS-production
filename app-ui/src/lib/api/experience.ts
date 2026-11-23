@@ -10,7 +10,7 @@ export interface PublicExperienceConfig {
   };
 }
 
-export function usePublicExperience(page: "landing" | "login" | "faq") {
+export function usePublicExperience(page: "landing" | "faq") {
   const [config, setConfig] = useState<PublicExperienceConfig | null>(null);
   const params = new URLSearchParams(window.location.search);
   const canvasMode = window.parent !== window && params.get("experienceCanvas") === "1";
@@ -31,7 +31,7 @@ export function usePublicExperience(page: "landing" | "login" | "faq") {
     }
 
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.data?.type !== "experience-config") return;
+      if (!canvasMode || event.source !== window.parent || event.origin !== window.location.origin || event.data?.type !== "experience-config") return;
       if (isExperienceConfig(event.data.config)) setConfig(event.data.config);
     };
     window.addEventListener("message", onMessage);
@@ -41,23 +41,30 @@ export function usePublicExperience(page: "landing" | "login" | "faq") {
 
   useEffect(() => {
     if (!canvasMode) return;
-    const preventNavigation = (event: Event) => event.preventDefault();
-    document.addEventListener("submit", preventNavigation, true);
-    document.addEventListener("click", preventCanvasLinkNavigation, true);
+    const preventSubmit = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const selectSection = (event: MouseEvent) => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest("a[href]")) event.preventDefault();
+      const block = event.target.closest<HTMLElement>("[data-experience-section]")?.dataset.experienceSection;
+      if (block) window.parent.postMessage({ type: "experience-canvas-select", block }, window.location.origin);
+    };
+    document.documentElement.classList.add("peas-experience-canvas");
+    document.addEventListener("submit", preventSubmit, true);
+    document.addEventListener("click", selectSection, true);
     return () => {
-      document.removeEventListener("submit", preventNavigation, true);
-      document.removeEventListener("click", preventCanvasLinkNavigation, true);
+      document.documentElement.classList.remove("peas-experience-canvas");
+      document.removeEventListener("submit", preventSubmit, true);
+      document.removeEventListener("click", selectSection, true);
     };
   }, [canvasMode]);
 
   return { config, canvasMode };
 }
 
-function preventCanvasLinkNavigation(event: Event) {
-  if ((event.target as HTMLElement | null)?.closest("a[href]")) event.preventDefault();
-}
-
-export function experienceBlockProps(config: PublicExperienceConfig | null, page: "landing" | "login" | "faq", type: string) {
+export function experienceBlockProps(config: PublicExperienceConfig | null, page: "landing" | "faq", type: string) {
   return config?.pages?.[page]?.data?.content.find((block) => block.type === type)?.props ?? {};
 }
 

@@ -11372,3 +11372,54 @@ body:has(#react-public-root) {
   .peas-publication-actions > .peas-ui-button { font-size: .8125rem; padding-inline: 8px; }
   .peas-publication-actions > .peas-ui-button > svg { display: none; }
 }
+
+.peas-experience-canvas [data-experience-section] {
+  scroll-margin-top: 6rem;
+}
+
+.peas-experience-canvas .peas-canvas-text {
+  min-width: 1em;
+  min-height: 1em;
+  cursor: text;
+  border-radius: 0.15em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.peas-experience-canvas .peas-canvas-text:empty {
+  display: inline-block;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.peas-experience-canvas .peas-canvas-text:hover,
+.peas-experience-canvas .peas-canvas-text:focus {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.peas-experience-canvas .peas-canvas-text:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 0.15em;
+}
+
+.peas-experience-canvas .peas-canvas-text--multiline { white-space: pre-wrap; }
+.peas-experience-canvas .peas-canvas-photo-button {
+  border: 0;
+  border-radius: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  color: var(--academic-navy);
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.peas-experience-canvas .peas-canvas-faq-question button {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  min-width: 42px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: var(--brand-green-soft);
+  color: var(--brand-green-dark);
+  cursor: pointer;
+}

@@ -108,6 +108,21 @@ function legacyV5Config(): any {
   return input;
 }
 
+Deno.test("the website editor keeps sign-in content fixed and saves Home edits", () => {
+  const draft = structuredClone(defaultExperienceConfig);
+  const login = draft.pages.login.data.content[0];
+  login.props.brandText = "Outdated branding";
+  login.props.schoolIdLabel = "School ID";
+  login.props.backgroundImageUrl = "/Components/images/1.jpg";
+  const hero = draft.pages.landing.data.content.find((block) => block.type === "HeroBlock");
+  assert(hero);
+  hero.props.title = "Updated welcome heading";
+
+  const saved = migrateExperienceConfigToV6(draft);
+  assertEquals(saved.pages.login, defaultExperienceConfig.pages.login);
+  assertEquals(saved.pages.landing.data.content.find((block) => block.type === "HeroBlock")?.props.title, "Updated welcome heading");
+});
+
 Deno.test("v1 experience content migrates while layout and theme stay locked", () => {
   const input = structuredClone(defaultExperienceConfig) as any;
   input.schemaVersion = 1;
