@@ -1,3 +1,4 @@
+import { isStaffRole, ROLE_LABELS, STAFF_WORKSPACE } from "../../../../shared/staffRoles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, LayoutDashboard, LogOut, Menu, X } from "lucide-react";
 import { Button } from "../ui/button";
@@ -31,8 +32,13 @@ export function PublicNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const alwaysGreen = usesAlwaysGreenNavbar();
   const { session, signOut } = usePublicSession();
-  const isAdmin = session?.role === "admin";
-  const authenticated = Boolean(session?.authenticated && isAdmin);
+  const role = session?.role;
+  const isAdmin = role === "admin";
+  const authenticated = Boolean(session?.authenticated && (isAdmin || isStaffRole(role)));
+  const passwordPending = session?.user?.passwordSetupRequired;
+  const workspacePath = passwordPending ? "/log-in.html?setup=1" : isAdmin ? "/admin/dashboard.html" : STAFF_WORKSPACE;
+  const workspaceLabel = passwordPending ? "Set your password" : isAdmin ? "Administrator dashboard" : "Staff workspace";
+  const roleLabel = isAdmin || isStaffRole(role) ? ROLE_LABELS[role] : "";
   const userName = String(session?.user?.name ?? session?.username ?? session?.userId ?? "Administrator");
   const userImage = normalizeProfileImage(session?.user?.image);
 
@@ -109,7 +115,7 @@ export function PublicNavbar() {
         </a>
         {authenticated ? (
           <>
-            <AccountMenu userImage={userImage} userName={userName} onLogout={handleLogout} />
+            <AccountMenu userImage={userImage} userName={userName} roleLabel={roleLabel} workspacePath={workspacePath} workspaceLabel={workspaceLabel} onLogout={handleLogout} />
           </>
         ) : null}
       </div>
@@ -157,7 +163,7 @@ export function PublicNavbar() {
             {authenticated ? (
               <>
                 <MobileAccountIdentity userImage={userImage} userName={userName} />
-                <a href="/admin/dashboard.html"><LayoutDashboard aria-hidden="true" /> Administrator dashboard</a>
+                <a href={workspacePath}><LayoutDashboard aria-hidden="true" /> {workspaceLabel}</a>
                 <Button variant="outline" onClick={handleLogout}>
                   Logout
                 </Button>
@@ -202,7 +208,14 @@ function NavbarSearch({ className, onFocus }: { className: string; onFocus?: () 
   );
 }
 
-function AccountMenu({ userImage, userName, onLogout }: { userImage: string; userName: string; onLogout: () => Promise<void> }) {
+function AccountMenu({ userImage, userName, roleLabel, workspacePath, workspaceLabel, onLogout }: {
+  userImage: string;
+  userName: string;
+  roleLabel: string;
+  workspacePath: string;
+  workspaceLabel: string;
+  onLogout: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const initials = getInitials(userName);
 
@@ -223,11 +236,11 @@ function AccountMenu({ userImage, userName, onLogout }: { userImage: string; use
                 <AccountAvatar image={userImage} initials={initials} large />
                 <div>
                   <strong>{userName}</strong>
-                  <small>Administrator</small>
+                  <small>{roleLabel}</small>
                 </div>
               </div>
               <div className="peas-public-account-menu__items">
-                <DropdownMenuItem asChild><a href="/admin/dashboard.html"><LayoutDashboard aria-hidden="true" /><span>Administrator dashboard</span></a></DropdownMenuItem>
+                <DropdownMenuItem asChild><a href={workspacePath}><LayoutDashboard aria-hidden="true" /><span>{workspaceLabel}</span></a></DropdownMenuItem>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="peas-public-account-menu__logout" onSelect={() => void onLogout()}>

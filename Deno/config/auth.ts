@@ -94,6 +94,12 @@ export const auth = betterAuth({
       image: "profile_picture",
     },
     additionalFields: {
+      passwordSetupRequired: {
+        type: "boolean",
+        fieldName: "password_setup_required",
+        required: false,
+        input: false,
+      },
       role: {
         type: "string",
         required: false,
@@ -151,6 +157,8 @@ export const auth = betterAuth({
       verify: ({ password, hash }) => verifyPassword(password, hash),
     },
     sendResetPassword: async ({ user, url }) => {
+      // Staff recover access through a newly issued temporary credential.
+      if ((user as { role?: string }).role !== "admin") return;
       const { sendPasswordResetEmail } = await import(
         "../services/emailService.ts"
       );

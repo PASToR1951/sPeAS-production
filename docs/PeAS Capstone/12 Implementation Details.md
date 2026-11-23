@@ -18,6 +18,24 @@ evidence](../../ops/READER_UI_UX_FIXES.md). The frontend was activated on Octobe
 25 at 10:01:16 PM Asia/Manila; see the [activation record and live asset
 verification](../../ops/READER_UI_UX_DEPLOYMENT.md).
 
+## Staff accounts and submission review
+
+Migration `0018_staff_accounts.sql` adds the three staff roles, required
+first-sign-in password setup, and manuscript assignments. Apply it before
+activating the matching web application, import worker, and frontend assets.
+Role Management creates staff credentials and shows the temporary password
+once. The staff member sets a new password and signs in again. Full
+administrators are provisioned with the server bootstrap command.
+
+The Repository Assistant uses the existing import preparation workflow.
+Submitting locks edits and keeps the content private. An administrator assigns
+a Manuscript Reviewer in Submission Review. An administrator or the assigned
+Reviewer can return the work with correction notes or publish it after review.
+Complete issues also require reviewing the assembled PDF. Returning work
+archives private catalog copies and preserves their provenance. Resubmission
+requires a new assignment. The import worker processes staff preparations
+even when the administrator import feature flag is off.
+
 ## Author data contracts
 
 `PublicAuthorReference` is the only public attribution shape. Guest and public

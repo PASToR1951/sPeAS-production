@@ -1,3 +1,5 @@
+import { handleWorkspaceAuth } from "./routes/userRoutes.ts";
+import { isStaffRole, STAFF_WORKSPACE } from "../shared/staffRoles.ts";
 // server.ts
 
 // Environment variables are loaded (and exported to Deno.env) once by
@@ -50,7 +52,6 @@ import { isAuthenticated, isAdmin, requireCapability } from "./middleware/authMi
 import { canModifyPendingUpload, canViewCompilation } from "./services/contentAuthorizationService.ts";
 import { AuthorReferenceValidationError, listAffiliationsCompatibility, validateAuthorReferenceValues } from "./services/authorReferenceDataService.ts";
 import { getSessionFromHeaders } from "./services/sessionService.ts";
-import { auth } from "./config/auth.ts"; // Better Auth instance
 import { webHandler } from "./utils/oakAdapter.ts"; // web Request/Response -> oak bridge
 import { analyticsRateLimit } from "./middleware/rateLimit.ts"; // Per-IP rate limiting
 import { STORAGE_ROOT } from "./config/storage.ts";
@@ -381,6 +382,19 @@ app.use(async (ctx, next) => {
 // Add static file serving middleware for admin directory
 app.use(async (ctx, next) => {
   if (ctx.request.url.pathname.startsWith('/admin/')) {
+    const path = ctx.request.url.pathname;
+    if (path.endsWith(".html") || path.endsWith("/")) {
+      const session = await getSessionFromHeaders(ctx.request.headers, true);
+      if (session?.passwordSetupRequired) {
+        ctx.response.redirect("/log-in.html?setup=1");
+        return;
+      }
+      if (session && isStaffRole(session.role) && path !== STAFF_WORKSPACE &&
+        !(session.role === "news_editor" && path === "/admin/Components/news.html")) {
+        ctx.response.redirect(STAFF_WORKSPACE);
+        return;
+      }
+    }
     try {
       const adminPath = ctx.request.url.pathname.replace("/icons/Category-icons/", "/icons/category-icons/");
       await ctx.send({
@@ -492,7 +506,20 @@ router.all("/api/auth/callback/(.*)", (ctx) => {
 // under /api/auth/*. Registered after the password-only guards.
 router.all(
   "/api/auth/(.*)",
-  webHandler((req) => auth.handler(req), {
+  async (ctx, next) => {
+    const path = ctx.request.url.pathname.replace(/\/+$/, "");
+    const setupRoutes = ["/api/auth/get-session", "/api/auth/sign-out"];
+    if (ctx.request.headers.has("cookie") && !setupRoutes.includes(path)) {
+      const session = await getSessionFromHeaders(ctx.request.headers, true);
+      if (session?.passwordSetupRequired) {
+        ctx.response.status = 403;
+        ctx.response.body = { error: "Complete password setup first." };
+        return;
+      }
+    }
+    await next();
+  },
+  webHandler(handleWorkspaceAuth, {
     prepareHeaders: (headers, ctx) => {
       // Better Auth operates on a web Request and cannot see Oak's direct peer.
       // Replace any caller-supplied chain with the shared trusted-proxy result

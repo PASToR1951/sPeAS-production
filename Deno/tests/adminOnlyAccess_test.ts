@@ -9,7 +9,7 @@ import {
   requireCapability,
 } from "../middleware/authMiddleware.ts";
 
-Deno.test("only administrators normalize and receive capabilities", () => {
+Deno.test("retired and unknown roles receive no capabilities", () => {
   assertEquals(normalizeAppRole("ADMIN"), "admin");
   for (const role of ["user", "publisher", "owner", "", null]) {
     assertEquals(normalizeAppRole(role), null);
@@ -17,6 +17,17 @@ Deno.test("only administrators normalize and receive capabilities", () => {
   }
   assert(hasCapability("admin", "documents:upload"));
   assert(hasCapability("admin", "roles:manage"));
+});
+
+Deno.test("staff capabilities stay within their workspace", () => {
+  assert(hasCapability("repository_assistant", "submissions:prepare"));
+  assert(hasCapability("manuscript_reviewer", "submissions:assigned-review"));
+  assert(hasCapability("news_editor", "news:draft"));
+  for (const role of ["repository_assistant", "manuscript_reviewer", "news_editor"]) {
+    for (const capability of ["roles:manage", "reports:view", "documents:review", "documents:upload", "news:manage", "news:delete", "system:admin"] as const) {
+      assertEquals(hasCapability(role, capability), false);
+    }
+  }
 });
 
 Deno.test("legacy authenticated roles fail capability middleware", async () => {
@@ -51,10 +62,8 @@ Deno.test("historical admin-only migration remains immutable request-era history
   assertStringIncludes(sql, "uq_document_requests_active_email_target");
   assertStringIncludes(sql, "users_admin_role_check");
 
-  const bytes = await Deno.readFile(new URL(
-    "../db/production-migrations/0005_admin_only_access.sql",
-    import.meta.url,
-  ));
+  // The historical digest was captured with CRLF line endings.
+  const bytes = new TextEncoder().encode(sql.replace(/\r?\n/g, "\r\n"));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const checksum = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   assertEquals(checksum, "189da64735a601ba185ce4d35f0a236f907865ac679d526ea03a89fed9aee8c0");

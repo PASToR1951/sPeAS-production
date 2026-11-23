@@ -17,9 +17,9 @@ export class SystemLogsModel {
   /**
    * Creates a new log entry
    */
-  static async createLog(log: SystemLog): Promise<SystemLog> {
+  static async createLog(log: SystemLog, db: Pick<typeof client, "queryObject"> = client): Promise<SystemLog> {
     try {
-      const result = await client.queryObject<SystemLog>(
+      const result = await db.queryObject<SystemLog>(
         `INSERT INTO system_logs 
         (log_type, user_id, username, action, details, ip_address, status, related_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

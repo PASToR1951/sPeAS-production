@@ -33,6 +33,7 @@ const env = {
   PUBLIC_APP_URL: origin,
   BETTER_AUTH_URL: origin,
   PEAS_BASE_URL: origin,
+  TRUSTED_PROXY_RANGES: "127.0.0.1",
   IMPORT_TEST_ARTIFACTS: temporary,
   PEAS_TEST_STATIC_ROOT: path.join(temporary, "static"),
   NEWS_MEDIA_WORKER_ENABLED: "false",

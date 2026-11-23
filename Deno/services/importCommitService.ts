@@ -1,3 +1,5 @@
+import { SystemLogsModel } from "../models/systemLogsModel.ts";
+import { type SubmissionReviewer, requireSubmissionReview } from "./submissionReviewService.ts";
 import { resolve } from "https://deno.land/std@0.200.0/path/mod.ts";
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { publicationHold } from "../../shared/uploadReview.ts";
@@ -232,6 +234,7 @@ export async function commitImportItem(
   batchId: string,
   itemId: string,
   owner: string,
+  reviewer?: SubmissionReviewer,
 ): Promise<number> {
   if ((await client.queryObject("SELECT batch_id FROM issue_revisions WHERE batch_id=$1", [batchId])).rows.length) throw new ImportError("Prepare and publish this private correction from its revision review. Existing catalog records remain unchanged until then.", 409);
   // Copy first; the transaction only references a verified, immutable rendition.
@@ -256,7 +259,8 @@ export async function commitImportItem(
   await retainImportSources(batchId,(snapshot.recipe as PreparationRecipe).parts.map(p=>p.assetId));
   return withTransaction(async (connection) => {
     const batch = await requireBatch(batchId, owner, connection, true);
-    requireEditable(batch);
+    if (reviewer) requireSubmissionReview(batch, reviewer);
+    requireEditable(batch, !!reviewer);
     const row = (await connection.queryObject<Row>(
       "SELECT * FROM import_items WHERE id=$1 AND batch_id=$2 FOR UPDATE",
       [itemId, batchId],
@@ -271,14 +275,16 @@ export async function commitImportItem(
         409,
       );
     }
+    // Staff draft keys are local to their workspace.
+    const externalKey = batch.staff_submission ? `staff:${row.id}` : row.external_key;
     // Serialize the durable external key across batches without globally locking unrelated papers.
     await connection.queryArray(
       "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
-      [row.external_key],
+      [externalKey],
     );
     const existing = (await connection.queryObject<Row>(
       "SELECT document_id FROM import_external_records WHERE external_key=$1",
-      [row.external_key],
+      [externalKey],
     )).rows[0];
     if (existing) {
       throw new ImportError(
@@ -375,7 +381,7 @@ export async function commitImportItem(
     );
     await connection.queryArray(
       "INSERT INTO import_external_records(external_key,document_id,item_id) VALUES($1,$2,$3)",
-      [row.external_key, id, itemId],
+      [externalKey, id, itemId],
     );
     await connection.queryArray(
       "UPDATE import_items SET document_id=$2,state='committed' WHERE id=$1",
@@ -389,6 +395,7 @@ export async function commitImportBatch(
   batchId: string,
   owner: string,
   itemIds: string[],
+  reviewer?: SubmissionReviewer,
 ): Promise<BatchItemResult[]> {
   if (!Array.isArray(itemIds) || itemIds.length > 100 || !itemIds.length) {
     throw new ImportError("Select up to 100 reviewed papers");
@@ -398,7 +405,7 @@ export async function commitImportBatch(
     try {
       results.push({
         itemId,
-        documentId: await commitImportItem(batchId, itemId, owner),
+        documentId: await commitImportItem(batchId, itemId, owner, reviewer),
       });
     } catch (error) {
       results.push({
@@ -415,11 +422,15 @@ export async function publishImportBatch(
   batchId: string,
   owner: string,
   revision: number,
+  reviewer?: SubmissionReviewer,
+  reviewedPaperIds?: string[],
 ): Promise<void> {
   await withTransaction(async (connection) => {
     const batch = await requireBatch(batchId, owner, connection, true);
+    if (reviewer) requireSubmissionReview(batch, reviewer);
     if (batch.status === "published") return;
-    requireEditable(batch);
+    requireEditable(batch, !!reviewer);
+    const publisherId = reviewer?.id ?? owner;
     if (batch.revision !== revision) {
       throw new ImportError(
         "Workspace changed. Review the publication summary again.",
@@ -430,6 +441,11 @@ export async function publishImportBatch(
       "SELECT * FROM import_items WHERE batch_id=$1 AND state<>'ignored' FOR UPDATE",
       [batchId],
     )).rows;
+    if (reviewer && (!Array.isArray(reviewedPaperIds) ||
+      new Set(reviewedPaperIds).size !== papers.length ||
+      papers.some((paper) => !reviewedPaperIds.includes(paper.id)))) {
+      throw new ImportError("Confirm every paper in the current submission.", 409);
+    }
     if (
       !papers.length ||
       papers.some((p) => !p.document_id || !itemIsReady(itemDto(p)))
@@ -442,9 +458,6 @@ export async function publishImportBatch(
       batch.mode === "compiled" &&
       (!batch.compiled_document_id || !batch.collection?.reviewed)
     ) throw new ImportError("Review the collection covers and foreword");
-    if (batch.mode === "compiled" && !await currentIssueRendition(Number(batch.compiled_document_id))) {
-      throw new ImportError("Prepare and review the complete issue PDF before publishing its papers.", 409);
-    }
     const ids = papers.map((p) => p.document_id);
     for (const paper of papers) {
       const notes=paper.metadata.reviewNotes;
@@ -527,6 +540,10 @@ export async function publishImportBatch(
         "SELECT start_year,end_year,volume,issue_number,department,category,review_status,deleted_at,contents_needs_resolution,cover_file_path,cover_page_count,front_cover_page,back_cover_page,foreword,foreword_content_sha256,abstract_foreword,abstract_foreword_source FROM compiled_documents WHERE id=$1 FOR UPDATE",
         [batch.compiled_document_id],
       )).rows[0];
+      const rendition = await currentIssueRendition(batch.compiled_document_id);
+      if (!rendition || (reviewer?.role === "manuscript_reviewer" && rendition.reviewed_by !== reviewer.id)) {
+        throw new ImportError("Prepare and review the complete issue PDF before publishing its papers.", 409);
+      }
       const collection = batch.collection as ImportCollection;
       const assetIds = [collection.coverAssetId, collection.forewordAssetId]
         .filter((id): id is string => !!id);
@@ -586,17 +603,23 @@ export async function publishImportBatch(
     }
     await connection.queryArray(
       "UPDATE documents SET is_public=true,review_status='approved',reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=ANY($1::int[])",
-      [ids, owner],
+      [ids, publisherId],
     );
     if (batch.compiled_document_id) {
       await connection.queryArray(
         "UPDATE compiled_documents SET review_status='approved',reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1 AND review_status='pending_review' AND deleted_at IS NULL",
-        [batch.compiled_document_id, owner],
+        [batch.compiled_document_id, publisherId],
       );
     }
     await connection.queryArray(
       "UPDATE import_batches SET status='published',published_at=now(),expires_at=now()+interval '30 days',revision=revision+1 WHERE id=$1",
       [batchId],
     );
+    if (reviewer) {
+      await SystemLogsModel.createLog({
+        log_type: "document", user_id: publisherId, action: "staff_submission_published",
+        related_id: batchId, details: { revision, count: ids.length },
+      }, connection);
+    }
   });
 }

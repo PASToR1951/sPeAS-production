@@ -27,6 +27,7 @@ import {
   type ImportMode,
   importPathKey,
   importValueKey,
+  itemIsReady,
   importWorkspaceStatus,
   metadataErrors,
   type RecipePart,
@@ -50,6 +51,8 @@ import { SimplePdfReader } from "../../components/documents/SimplePdfReader";
 import { Button } from "../../components/ui/button";
 import { useAdminIdentity } from "../../components/layout/AdminLayout";
 import "../../styles/document-preparation.css";
+
+type AuthorChoice = Pick<AuthorRecord, "id" | "fullName" | "department">;
 
 type LocalSource = {
   file: File;
@@ -115,7 +118,8 @@ function Check(
 export function ImportPreparationWorkspace(
   { initialMode = "batch" }: { initialMode?: ImportMode },
 ) {
-  const { userId } = useAdminIdentity();
+  const { userId, role } = useAdminIdentity();
+  const staff = role === "repository_assistant";
   const recoveryKey = `peas-import-workspace:${userId}`;
   const requestKey = useRef(crypto.randomUUID());
   const [recoverable, setRecoverable] = useState<
@@ -138,7 +142,7 @@ export function ImportPreparationWorkspace(
   const [outputRefreshKey, setOutputRefreshKey] = useState(0);
   const [diagnostic, setDiagnostic] = useState("");
   const [wordConversionReady, setWordConversionReady] = useState(false);
-  const [authors, setAuthors] = useState<AuthorRecord[]>([]);
+  const [authors, setAuthors] = useState<AuthorChoice[]>([]);
   const [topics, setTopics] = useState<Array<{ id: number; name: string }>>([]);
   const [dirtyPapers, setDirtyPapers] = useState<Record<string, boolean>>({});
   const [collectionDirty, setCollectionDirty] = useState(false);
@@ -183,8 +187,11 @@ export function ImportPreparationWorkspace(
   };
   useEffect(() => {
     folderRef.current?.setAttribute("webkitdirectory", "");
-    void fetchAuthors().then(setAuthors).catch(() => undefined);
-    void fetchAdminTopics().then(setTopics).catch(() => undefined);
+    if (!staff) void fetchAuthors().then(setAuthors).catch(() => undefined);
+    const approvedTopics = staff
+      ? apiFetch<Array<{ id: number; name: string }>>("/api/staff/topics")
+      : fetchAdminTopics();
+    void approvedTopics.then(setTopics).catch(() => undefined);
     void apiFetch<{ workerAvailable: boolean; wordConversionReady: boolean; message: string }>(
       `${importBase}/diagnostics`,
     ).then((d) => {
@@ -198,7 +205,7 @@ export function ImportPreparationWorkspace(
     void apiFetch<typeof recent>(importBase).then(setRecent).catch((e) =>
       setError(getErrorMessage(e))
     );
-  }, []);
+  }, [staff]);
   useEffect(() => {
     if (!batch?.items.some((i) => i.state === "preparing")) return;
     const timer = setInterval(() => {
@@ -390,7 +397,8 @@ export function ImportPreparationWorkspace(
   };
   const selected = batch?.items.find((i) => i.id === selectedId) ??
     batch?.items[0];
-  const editable = batch?.status === "draft";
+  const editable = batch?.status === "draft" && !batch.submittedAt;
+  const includedPapers = batch?.items.filter(item => item.state !== "ignored") ?? [];
   const exportSources = async (itemId?: string) => {
     const result = await apiFetch<{ id: string }>(`${base(batch!.id)}/export`, {
       method: "POST",
@@ -405,10 +413,7 @@ export function ImportPreparationWorkspace(
     >
       <header>
         <h2>Prepare documents</h2>
-        <p>
-          Review the originals, assemble one PDF for each paper, then approve
-          publication.
-        </p>
+        <p>{staff ? "Review the originals, assemble each paper’s PDF, and submit the workspace." : "Review the originals, assemble one PDF for each paper, then approve publication."}</p>
       </header>
       {!batch && recoverable
         ? (
@@ -453,9 +458,7 @@ export function ImportPreparationWorkspace(
                   <option value="compiled">
                     Compiled volume — a group for each paper
                   </option>
-                  <option value="batch">
-                    Batch workspace — independent papers
-                  </option>
+                  {staff ? null : <option value="batch">Batch workspace — independent papers</option>}
                 </select>
               </Field>
               {recent.length
@@ -474,7 +477,7 @@ export function ImportPreparationWorkspace(
                       </option>
                       {recent.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.mode} · {importWorkspaceStatus(r.status, r.committedPapers, r.includedPapers)} · {r.id.slice(0, 8)}
+                          {r.mode} · {r.submitted_at && r.status === "draft" ? "Submitted for review" : importWorkspaceStatus(r.status, r.committedPapers, r.includedPapers)} · {r.id.slice(0, 8)}
                         </option>
                       ))}
                     </select>
@@ -494,6 +497,8 @@ export function ImportPreparationWorkspace(
                 : "Batch workspace"} · {importWorkspaceStatus(batch.status, batch.items.filter(i => i.state !== "ignored" && i.documentId).length, batch.items.filter(i => i.state !== "ignored").length)}
             </strong>
             <span>Workspace {batch.id.slice(0, 8)}</span>
+            {batch.submittedAt && batch.status === "draft" ? <p role="status">Submitted for review. The workspace is locked while it is in the review queue.</p> : null}
+            {batch.returnNote ? <p role="status"><strong>Returned for corrections</strong><br />{batch.returnNote}</p> : null}
             <p>
               Uncommitted originals and temporary archives expire on{" "}
               <time dateTime={batch.expiresAt}>
@@ -671,7 +676,11 @@ export function ImportPreparationWorkspace(
         )
         : null}
       {batch?.mode === "compiled" && completeSource && editable && batch.collection ? <IssueRangeEditor batch={batch} busy={busy} run={action} onChanged={() => refresh().then(() => undefined)} /> : null}
-      {batch?.items.length
+      {staff && batch && !editable && includedPapers.length ? <section className="peas-preparation-surface">
+        <h3>Submitted papers</h3>
+        <ul>{includedPapers.map(paper => <li key={paper.id}><a href={`${base(batch.id)}/items/${paper.id}/preview`} target="_blank" rel="noreferrer">{paper.metadata.title}</a></li>)}</ul>
+      </section> : null}
+      {batch?.items.length && (!staff || editable)
         ? (
           <section className="peas-preparation-surface">
             <h3>2. Prepare and review each paper</h3>
@@ -703,6 +712,7 @@ export function ImportPreparationWorkspace(
                   item={selected}
                   batch={batch}
                   authors={authors}
+                  limitedAuthorSearch={staff}
                   topics={topics}
                   onTopicLabels={(labels) => setTopics(current => [...current.filter(topic => !labels.some(label => label.id === topic.id)), ...labels])}
                   busy={busy}
@@ -716,7 +726,18 @@ export function ImportPreparationWorkspace(
           </section>
         )
         : null}
-      {batch && editable && batch.items.length
+      {staff && batch && editable && includedPapers.length ? <section className="peas-preparation-surface">
+        <h3>3. Submit for review</h3>
+        <p>Save the preparation checks for every included paper{batch.mode === "compiled" ? " and the collection details" : ""}. You can make changes again if a reviewer returns the submission.</p>
+        <Button disabled={busy || unsavedChanges || !includedPapers.every(itemIsReady) || (batch.mode === "compiled" && !batch.collection?.reviewed)} onClick={() =>
+          void action(async () => {
+            setBatch(await apiFetch<ImportBatch>(`${base(batch.id)}/submit`, {
+              method: "POST", json: { revision: batch.revision },
+            }));
+            setMessage("Submission sent for review.");
+          }, "Submitting for review…")}>Submit for review</Button>
+      </section> : null}
+      {!staff && batch && editable && batch.items.length
         ? batch.revisionTarget ? <section className="peas-preparation-surface"><h3>3. Review and publish the private correction</h3><p>The current published issue and its paper links remain available while you prepare this draft. Review every paper and the complete PDF. Publishing replaces all reviewed assets and metadata together using their existing record IDs.</p><IssueOutputReview key={JSON.stringify([batch.revision, batch.collection, batch.items.map(i => [i.id, i.revision, i.finalSha256])])} id={batch.revisionTarget.id} revisionBatchId={batch.id} busy={busy || unsavedChanges} run={action} onReviewed={() => { void refresh().then(current => { if (current?.revisionTarget?.published) setMessage("The reviewed issue correction and all paper assets were published together. Existing links are preserved."); }); }} /></section> : (
           <section className="peas-preparation-surface">
             <h3>3. Commit and publish</h3>
@@ -819,6 +840,7 @@ function PaperPreparation({
   onExport,
   onDirtyChange,
   authors,
+  limitedAuthorSearch,
   topics,
   onTopicLabels,
 }: {
@@ -829,7 +851,8 @@ function PaperPreparation({
   onChanged: () => Promise<void>;
   onExport: () => Promise<void>;
   onDirtyChange: (id: string, dirty: boolean) => void;
-  authors: AuthorRecord[];
+  authors: AuthorChoice[];
+  limitedAuthorSearch: boolean;
   topics: Array<{ id: number; name: string }>;
   onTopicLabels: (labels: Array<{ id: number; name: string }>) => void;
 }) {
@@ -840,6 +863,22 @@ function PaperPreparation({
       recoveredPaperDraft(item)?.parts ?? item.recipe.parts
     ),
     [authorSearch, setAuthorSearch] = useState("");
+  const [limitedAuthors, setLimitedAuthors] = useState<AuthorChoice[]>([]);
+  const [authorLookupError, setAuthorLookupError] = useState("");
+  const selectedAuthorIds = metadata.authorIds.join(",");
+  useEffect(() => {
+    if (!limitedAuthorSearch) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ q: authorSearch, ids: selectedAuthorIds });
+      void apiFetch<AuthorChoice[]>(`/api/staff/author-picker?${params}`, {
+        signal: controller.signal, cache: "no-store",
+      }).then(matches => { setLimitedAuthors(matches); setAuthorLookupError(""); })
+        .catch(() => { if (!controller.signal.aborted) setAuthorLookupError("Author search is unavailable. Try again."); });
+    }, 200);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [limitedAuthorSearch, authorSearch, selectedAuthorIds]);
+  const authorChoices = limitedAuthorSearch ? limitedAuthors : authors;
   const topicNames = metadata.topicIds.map(id => topics.find(topic => topic.id === id)?.name || "Loading topic…");
   const [preview, setPreview] = useState<
       { url: string; title: string; asset?: ImportAsset } | null
@@ -1012,7 +1051,7 @@ function PaperPreparation({
           <ol>
             {metadata.authorIds.map((id, index) => (
               <li key={id}>
-                {authors.find((a) => String(a.id) === id)?.fullName || "Loading author…"}{" "}
+                {authorChoices.find((a) => String(a.id) === id)?.fullName || "Loading author…"}{" "}
                 <button
                   type="button"
                   disabled={index === 0}
@@ -1043,10 +1082,11 @@ function PaperPreparation({
               placeholder="Search author name"
             />
           </Field>
+          {authorLookupError ? <p role="alert">{authorLookupError}</p> : null}
           {authorSearch
             ? (
               <ul className="peas-preparation-matches">
-                {authors.filter((a) =>
+                {authorChoices.filter((a) =>
                   a.fullName.toLowerCase().includes(
                     authorSearch.toLowerCase(),
                   ) && !metadata.authorIds.includes(String(a.id))
@@ -1075,6 +1115,7 @@ function PaperPreparation({
           </p>
         </fieldset>
         <DocumentClassificationEditor
+          allowCreateTopic={!limitedAuthorSearch}
           value={{
             topicIds: metadata.topicIds,
             topicNames,

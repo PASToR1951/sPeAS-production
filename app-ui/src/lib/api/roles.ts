@@ -1,6 +1,6 @@
 import { apiFetch } from "./http";
 
-export type ManagedRole = "admin";
+import type { StaffRole, WorkspaceRole } from "../../../../shared/staffRoles";
 
 export interface ManagedUser {
   id: string;
@@ -8,7 +8,8 @@ export interface ManagedUser {
   email: string;
   username?: string | null;
   display_username?: string | null;
-  role: ManagedRole;
+  role: WorkspaceRole;
+  password_setup_required?: boolean;
   role_id: number;
   created_at: string;
 }
@@ -26,4 +27,18 @@ export function revokeManagedUserSessions(userId: string) {
 
 export function deleteManagedAdministrator(userId: string) {
   return apiFetch<void>(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+}
+
+export interface TemporaryCredential {
+  id: string;
+  username: string;
+  temporaryPassword: string;
+}
+
+export function createStaffAccount(input: { name: string; username: string; email: string; role: StaffRole }) {
+  return apiFetch<TemporaryCredential>("/api/admin/users", { method: "POST", json: input });
+}
+
+export function reissueStaffPassword(id: string) {
+  return apiFetch<TemporaryCredential>(`/api/admin/users/${encodeURIComponent(id)}/temporary-password`, { method: "POST" });
 }

@@ -23,10 +23,10 @@ export async function recoverImportJobs(): Promise<void> {
     "UPDATE import_items i SET state='failed',error=j.error FROM import_jobs j WHERE j.item_id=i.id AND j.recipe_revision=i.recipe_revision AND j.status='failed' AND i.state='preparing'",
   );
 }
-export async function claimImportJob(workerId: string): Promise<Row | null> {
+export async function claimImportJob(workerId: string, staffOnly = false): Promise<Row | null> {
   return withTransaction(async (connection) => {
     const job = (await connection.queryObject<Row>(
-      `SELECT j.* FROM import_jobs j JOIN import_batches b ON b.id=j.batch_id WHERE j.status='queued' AND j.available_at<=now() AND b.status='draft' AND b.expires_at>now() ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
+      `SELECT j.* FROM import_jobs j JOIN import_batches b ON b.id=j.batch_id WHERE j.status='queued' AND j.available_at<=now() AND b.status='draft' AND b.expires_at>now() AND b.submitted_at IS NULL AND (NOT $1 OR b.staff_submission) ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1`, [staffOnly],
     )).rows[0];
     if (!job) return null;
     const result = await connection.queryObject<Row>(

@@ -4,8 +4,10 @@ import { AuthShell } from "../../components/public/PublicPageShell";
 import { InteractiveImageDistortion } from "../../components/public/InteractiveImageDistortion";
 import { Button } from "../../components/ui/button";
 import { getErrorMessage } from "../../lib/api/http";
-import { requestPasswordReset, safeSameOriginRedirect, signInUsername } from "../../lib/api/auth";
+import { completePasswordSetup, logout, requestPasswordReset, safeSameOriginRedirect, signInUsername } from "../../lib/api/auth";
 import { experienceBlockProps, usePublicExperience } from "../../lib/api/experience";
+
+import { isStaffRole, STAFF_WORKSPACE } from "../../../../shared/staffRoles";
 
 const FACADE_IMAGE_URL = "/Components/images/spud_facade.jpg";
 const LEGACY_LOGIN_IMAGES = new Set([
@@ -17,9 +19,11 @@ const LEGACY_PASSWORD_PLACEHOLDERS = new Set(["••••••••", "*****
 export function PublicLoginPage() {
   const { config, canvasMode } = usePublicExperience("login");
   const content = experienceBlockProps(config, "login", "LoginShellBlock");
-  const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [mode, setMode] = useState<"login" | "forgot" | "setup">(() => new URLSearchParams(location.search).has("setup") ? "setup" : "login");
   const [schoolId, setSchoolId] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState<"password" | "forgot" | null>(null);
@@ -30,13 +34,37 @@ export function PublicLoginPage() {
   const submitLogin = async (event: FormEvent) => {
     event.preventDefault();
     if (canvasMode) return;
-    if (!schoolId.trim() || !password) return setNotice({ kind: "error", text: "Enter both your School ID and password." });
+    if (!schoolId.trim() || !password) return setNotice({ kind: "error", text: "Enter your username or School ID and password." });
     setBusy("password"); setNotice(null);
     try {
       const session = await signInUsername(schoolId, password);
-      if (session.role !== "admin") throw new Error("Administrator access is required.");
+      if (session.user.passwordSetupRequired) {
+        setMode("setup");
+        return;
+      }
+      if (isStaffRole(session.role)) {
+        window.location.assign(STAFF_WORKSPACE);
+        return;
+      }
+      if (session.role !== "admin") throw new Error("PeAS staff access is required.");
       const fallback = "/admin/dashboard.html";
       window.location.assign(redirect || fallback);
+    } catch (error) { setNotice({ kind: "error", text: getErrorMessage(error) }); }
+    finally { setBusy(null); }
+  };
+
+  const submitSetup = async (event: FormEvent) => {
+    event.preventDefault();
+    if (canvasMode) return;
+    if (newPassword !== confirmPassword) return setNotice({ kind: "error", text: "The new passwords must match." });
+    setBusy("password"); setNotice(null);
+    try {
+      await completePasswordSetup(password, newPassword);
+      await logout().catch(() => undefined);
+      setPassword(""); setNewPassword(""); setConfirmPassword("");
+      history.replaceState(null, "", location.pathname);
+      setMode("login");
+      setNotice({ kind: "success", text: "Password saved. Sign in with your new password." });
     } catch (error) { setNotice({ kind: "error", text: getErrorMessage(error) }); }
     finally { setBusy(null); }
   };
@@ -75,8 +103,8 @@ export function PublicLoginPage() {
 
         <div className="peas-login-heading">
           {mode === "forgot" ? <button className="peas-login-back" type="button" onClick={() => { setMode("login"); setNotice(null); }}><ArrowLeft aria-hidden="true" /> Back to sign in</button> : null}
-          <h1>{String(mode === "forgot" ? content.forgotPasswordTitle || "Forgot Password?" : "Administrator sign in")}</h1>
-          <p>{String(mode === "forgot" ? content.forgotPasswordSubtitle || "We will send reset instructions to your administrator email." : "Authorized PeAS administrators only.")}</p>
+          <h1>{String(mode === "forgot" ? content.forgotPasswordTitle || "Forgot Password?" : mode === "setup" ? "Set your password" : "PeAS staff sign in")}</h1>
+          <p>{String(mode === "forgot" ? content.forgotPasswordSubtitle || "We will send reset instructions to your administrator email." : mode === "setup" ? "Choose a new password with at least 14 characters." : "For authorized PeAS staff and administrators.")}</p>
         </div>
 
         {notice ? <div id={noticeId} className={`peas-login-notice is-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"} aria-live="polite">
@@ -86,12 +114,12 @@ export function PublicLoginPage() {
 
         {mode === "login" ? <form className="peas-login-form" onSubmit={submitLogin} noValidate aria-describedby={noticeId}>
           <div className="peas-login-field">
-            <label htmlFor="school-id">{String(content.schoolIdLabel || "School ID")}</label>
+            <label htmlFor="school-id">{String(content.schoolIdLabel === "School ID" ? "Username or School ID" : content.schoolIdLabel || "Username or School ID")}</label>
             <input
               id="school-id"
               autoCapitalize="none"
               autoComplete="username"
-              placeholder={String(content.schoolIdPlaceholder || "Enter your School ID")}
+              placeholder={"Enter your username or School ID"}
               spellCheck={false}
               value={schoolId}
               onChange={(event) => setSchoolId(event.currentTarget.value)}
@@ -120,6 +148,23 @@ export function PublicLoginPage() {
             {busy === "password" ? <LoaderCircle className="peas-spin" aria-hidden="true" /> : null}
             {busy === "password" ? "Signing in…" : String(content.submitLabel || "Sign in")}
           </Button>
+        </form> : mode === "setup" ? <form className="peas-login-form" onSubmit={submitSetup} aria-describedby={noticeId}>
+          <div className="peas-login-field">
+            <label htmlFor="setup-current">Temporary password</label>
+            <input id="setup-current" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.currentTarget.value)} />
+          </div>
+          <div className="peas-login-field">
+            <label htmlFor="setup-new">New password</label>
+            <input id="setup-new" type="password" autoComplete="new-password" required minLength={14} maxLength={128} value={newPassword} onChange={event => setNewPassword(event.currentTarget.value)} />
+          </div>
+          <div className="peas-login-field">
+            <label htmlFor="setup-confirm">Confirm new password</label>
+            <input id="setup-confirm" type="password" autoComplete="new-password" required value={confirmPassword} onChange={event => setConfirmPassword(event.currentTarget.value)} />
+          </div>
+          <Button type="submit" disabled={busy !== null || canvasMode}>Save password</Button>
+          <Button type="button" variant="outline" disabled={busy !== null} onClick={() => {
+            void logout().finally(() => window.location.replace("/log-in.html"));
+          }}>Sign out</Button>
         </form> : <form className="peas-login-form" onSubmit={submitForgot} noValidate aria-describedby={noticeId}>
           <div className="peas-login-field">
             <label htmlFor="reset-email">Administrator email</label>

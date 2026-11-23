@@ -1,3 +1,4 @@
+import { useAdminIdentity } from "../../components/layout/AdminLayout";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -63,7 +64,6 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { DropdownMenuSeparator } from "../../components/ui/dropdown-menu";
-import { fetchSession } from "../../lib/api/auth";
 import { getErrorMessage } from "../../lib/api/http";
 import {
   createNewsPost,
@@ -117,9 +117,9 @@ export function AdminNewsPage() {
   const [form, setForm] = useState<NewsPostInput>(EMPTY_FORM);
   const [initialForm, setInitialForm] = useState<NewsPostInput>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
+  const canPublish = useAdminIdentity().role === "admin";
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(canPublish ? "all" : "draft");
   const [actionPostId, setActionPostId] = useState<number | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget>(null);
 
@@ -135,10 +135,6 @@ export function AdminNewsPage() {
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
-  useEffect(() => {
-    fetchSession().then((session) => setCanDelete(session?.role === "admin"))
-      .catch(() => setCanDelete(false));
-  }, []);
 
   const filteredPosts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -332,7 +328,7 @@ export function AdminNewsPage() {
       <AdminPageHeader
         eyebrow="Research & Publications"
         title="Department News"
-        description="Plan, draft, preview, and publish department stories from one editorial workspace."
+        description={canPublish ? "Draft, preview, and publish department stories." : "Write your department news drafts and add media for an administrator to publish."}
         actions={
           <Button onClick={openCreate}>
             <Plus aria-hidden="true" /> New article
@@ -357,7 +353,7 @@ export function AdminNewsPage() {
               role="group"
               aria-label="Filter by status"
             >
-              {(["all", "draft", "scheduled", "published"] as const).map((status) => (
+              {(canPublish ? (["all", "draft", "scheduled", "published"] as const) : (["draft"] as const)).map((status) => (
                 <button
                   className={statusFilter === status ? "is-active" : ""}
                   key={status}
@@ -421,7 +417,7 @@ export function AdminNewsPage() {
                   </small>
                 </div>
                 <div className="peas-admin-news-row__actions">
-                  <div className="peas-admin-news-row__primary-action">
+                  {canPublish ? <div className="peas-admin-news-row__primary-action">
                     {post.status === "draft"
                       ? <PublishSplitButton
                         label="Publish"
@@ -454,12 +450,12 @@ export function AdminNewsPage() {
                           <Eye aria-hidden="true" /> View
                         </Button>
                       )}
-                  </div>
+                  </div> : null}
                   <div className="peas-admin-news-row__secondary-actions">
                     <Button variant="outline" size="sm" onClick={() => openEdit(post)}>
                       <Edit3 aria-hidden="true" /> Edit
                     </Button>
-                    {canDelete
+                    {canPublish
                       ? <Button variant="destructive" size="sm" onClick={() => void remove(post)}>
                         <Trash2 aria-hidden="true" /> Delete
                       </Button>
@@ -487,6 +483,7 @@ export function AdminNewsPage() {
       {editing !== undefined
         ? (
           <NewsEditor
+            canPublish={canPublish}
             editing={editing}
             form={form}
             isDirty={isDirty}
@@ -514,7 +511,8 @@ export function AdminNewsPage() {
 }
 
 function NewsEditor(
-  { editing, form, isDirty, saving, onChange, onClose, onSubmit, onPublish, onSchedule, onReturnToDraft }: {
+  { canPublish, editing, form, isDirty, saving, onChange, onClose, onSubmit, onPublish, onSchedule, onReturnToDraft }: {
+    canPublish: boolean;
     editing: NewsPost | null;
     form: NewsPostInput;
     isDirty: boolean;
@@ -836,7 +834,7 @@ function NewsEditor(
                 ? "Save draft"
                 : "Save changes"}
             </Button>
-            <PublishSplitButton
+            {canPublish ? <PublishSplitButton
               label={form.status === "published" ? "Publish now" : "Publish"}
               disabled={saving}
               onPublish={onPublish}
@@ -845,7 +843,7 @@ function NewsEditor(
               extraItems={form.status === "published"
                 ? [{ label: "Return to draft", icon: <Save aria-hidden="true" />, onSelect: onReturnToDraft }]
                 : undefined}
-            />
+            /> : null}
           </div>
         </header>
 

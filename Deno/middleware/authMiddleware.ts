@@ -1,7 +1,9 @@
 import { Context, Next } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { getSessionFromHeaders } from "../services/sessionService.ts";
 
-export const APP_ROLES = ["admin"] as const;
+import { STAFF_ROLES } from "../../shared/staffRoles.ts";
+
+export const APP_ROLES = ["admin", ...STAFF_ROLES] as const;
 export type AppRole = typeof APP_ROLES[number];
 
 export const CAPABILITIES = [
@@ -13,15 +15,22 @@ export const CAPABILITIES = [
     "reports:view",
     "reports:export",
     "system:admin",
+    "submissions:prepare",
+    "submissions:assigned-review",
+    "news:draft",
 ] as const;
 export type Capability = typeof CAPABILITIES[number];
 
 const ROLE_CAPABILITIES: Record<AppRole, ReadonlySet<Capability>> = {
     admin: new Set(CAPABILITIES),
+    repository_assistant: new Set(["submissions:prepare"]),
+    manuscript_reviewer: new Set(["submissions:assigned-review"]),
+    news_editor: new Set(["news:draft"]),
 };
 
 export function normalizeAppRole(value: unknown): AppRole | null {
-    return String(value ?? "").trim().toLowerCase() === "admin" ? "admin" : null;
+    const role = String(value ?? "").trim().toLowerCase();
+    return APP_ROLES.find((candidate) => candidate === role) ?? null;
 }
 
 export function hasCapability(role: unknown, capability: Capability): boolean {
@@ -30,6 +39,14 @@ export function hasCapability(role: unknown, capability: Capability): boolean {
 }
 
 export async function isAuthenticated(ctx: Context, next: Next) {
+    await authenticateWorkspace(ctx, next, false);
+}
+
+export async function isStaffAuthenticated(ctx: Context, next: Next) {
+    await authenticateWorkspace(ctx, next, true);
+}
+
+async function authenticateWorkspace(ctx: Context, next: Next, allowStaff: boolean) {
     let session;
     try {
         session = await getSessionFromHeaders(ctx.request.headers);
@@ -47,7 +64,7 @@ export async function isAuthenticated(ctx: Context, next: Next) {
     }
 
     const role = normalizeAppRole(session.role);
-    if (!role) {
+    if (!role || (!allowStaff && role !== "admin")) {
         ctx.response.status = 403;
         ctx.response.body = { error: "Administrator access required" };
         return;

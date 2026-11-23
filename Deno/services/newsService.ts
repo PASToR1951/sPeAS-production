@@ -4,6 +4,8 @@ import {
   ensureNewsMediaTablesExist,
   getNewsMedia,
   validateNewsMediaOwnership,
+  lockNewsAttachments,
+  requireEditorMedia,
   validateNewsMediaForPublish,
   type NewsMediaAsset,
   NewsMediaValidationError,
@@ -244,18 +246,19 @@ export async function getPublishedNewsBySlug(
   return (await hydrateNewsPosts([mapNewsRow(result.rows[0])]))[0] ?? null;
 }
 
-export async function listAllNews(): Promise<NewsPost[]> {
+export async function listAllNews(editorId?: string): Promise<NewsPost[]> {
   const result = await client.queryObject<NewsRow>(`
     SELECT ${SELECT_FIELDS}
     FROM news_posts
-    WHERE deleted_at IS NULL
+    WHERE deleted_at IS NULL AND ($1::text IS NULL OR (created_by=$1 AND status='draft'))
     ORDER BY created_at DESC, id DESC
-  `);
-  return await hydrateNewsPosts(result.rows.map(mapNewsRow), true);
+  `, [editorId ?? null]);
+  return await hydrateNewsPosts(result.rows.map(mapNewsRow), true, editorId);
 }
 
 export async function searchNewsReferences(
   query: string,
+  limitedAuthors = false,
 ): Promise<{ authors: NewsAuthorReference[]; works: NewsWorkReference[] }> {
   const normalized = query.trim().slice(0, 120);
   const like = `%${normalized}%`;
@@ -269,14 +272,14 @@ export async function searchNewsReferences(
       WHERE $1 = ''
          OR a.full_name ILIKE $2
          OR a.id::text ILIKE $2
-         OR COALESCE(a.spud_id, '') ILIKE $2
+         OR (NOT $3 AND COALESCE(a.spud_id, '') ILIKE $2)
          OR COALESCE(a.department, '') ILIKE $2
       GROUP BY a.id
-      ORDER BY CASE WHEN a.id::text = $1 OR a.spud_id = $1 THEN 0 ELSE 1 END,
+      ORDER BY CASE WHEN a.id::text = $1 OR (NOT $3 AND a.spud_id = $1) THEN 0 ELSE 1 END,
                a.full_name ASC
       LIMIT 20
     `,
-      [normalized, like],
+      [normalized, like, limitedAuthors],
     ),
     client.queryObject<WorkReferenceRow>(
       `
@@ -318,7 +321,7 @@ export async function searchNewsReferences(
   ]);
 
   return {
-    authors: authorsResult.rows.map(mapAuthorReference),
+    authors: authorsResult.rows.map(row => mapAuthorReference(limitedAuthors ? { ...row, spud_id: null } : row)),
     works: worksResult.rows.map(mapWorkReference),
   };
 }
@@ -326,10 +329,17 @@ export async function searchNewsReferences(
 export async function createNewsPost(
   input: NewsPostInput,
   userId: string,
+  draftOnly = false,
 ): Promise<NewsPost> {
   const authorIds = normalizeAuthorIds(input.taggedAuthorIds);
   const works = normalizeWorkInputs(input.taggedWorks);
   const basePost = await withTransaction(async (connection) => {
+    if (draftOnly) {
+      await lockNewsAttachments(connection);
+      if (input.status !== "draft" || input.publishAt || input.coverImageUrl) {
+        throw new NewsMediaValidationError("Save a draft and use uploaded cover media.");
+      }
+    }
     await validateReferences(connection, authorIds, works);
     const slug = await uniqueSlug(input.title, connection);
     const result = await connection.queryObject<NewsRow>(
@@ -359,22 +369,32 @@ export async function createNewsPost(
     );
     const post = mapNewsRow(result.rows[0]);
     await replaceReferences(connection, post.id, authorIds, works);
+    if (draftOnly) {
+      await requireEditorMedia(connection, userId, [...(input.mediaIds ?? []), ...(input.coverMediaId ? [input.coverMediaId] : [])], post.id);
+    }
     await validateNewsMediaOwnership(connection, userId, input.coverMediaId);
     await attachNewsMediaToPost(connection, post.id, input.mediaIds ?? [], userId);
     if (input.status === "published") await validateNewsMediaForPublish(connection, post.id, [...(input.mediaIds ?? []), ...(input.coverMediaId ? [input.coverMediaId] : [])]);
     return post;
   });
-  return (await hydrateNewsPosts([basePost], true))[0];
+  return (await hydrateNewsPosts([basePost], true, draftOnly ? userId : undefined))[0];
 }
 
 export async function updateNewsPost(
   id: number,
   input: NewsPostInput,
   userId: string,
+  draftOnly = false,
 ): Promise<NewsPost | null> {
   const authorIds = normalizeAuthorIds(input.taggedAuthorIds);
   const works = normalizeWorkInputs(input.taggedWorks);
   const basePost = await withTransaction(async (connection) => {
+    if (draftOnly) {
+      await lockNewsAttachments(connection);
+      if (input.status !== "draft" || input.publishAt || input.coverImageUrl) {
+        throw new NewsMediaValidationError("Save a draft and use uploaded cover media.");
+      }
+    }
     await validateReferences(connection, authorIds, works);
     const result = await connection.queryObject<NewsRow>(
       `
@@ -396,7 +416,7 @@ export async function updateNewsPost(
             ELSE published_at
           END,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1 AND deleted_at IS NULL
+      WHERE id = $1 AND deleted_at IS NULL AND (NOT $12 OR (created_by=$13 AND status='draft'))
       RETURNING ${SELECT_FIELDS}
     `,
       [
@@ -411,18 +431,23 @@ export async function updateNewsPost(
         input.authorName,
         input.status,
         input.publishAt ?? null,
+        draftOnly,
+        userId,
       ],
     );
     if (!result.rows[0]) return null;
     const post = mapNewsRow(result.rows[0]);
     await replaceReferences(connection, post.id, authorIds, works);
+    if (draftOnly) {
+      await requireEditorMedia(connection, userId, [...(input.mediaIds ?? []), ...(input.coverMediaId ? [input.coverMediaId] : [])], post.id);
+    }
     await validateNewsMediaOwnership(connection, userId, input.coverMediaId);
     await attachNewsMediaToPost(connection, post.id, input.mediaIds ?? [], userId);
     if (input.status === "published") await validateNewsMediaForPublish(connection, post.id, [...(input.mediaIds ?? []), ...(input.coverMediaId ? [input.coverMediaId] : [])]);
     return post;
   });
   if (!basePost) return null;
-  return (await hydrateNewsPosts([basePost], true))[0];
+  return (await hydrateNewsPosts([basePost], true, draftOnly ? userId : undefined))[0];
 }
 
 export async function deleteNewsPost(id: number): Promise<boolean> {
@@ -438,7 +463,7 @@ export async function deleteNewsPost(id: number): Promise<boolean> {
   return Boolean(result.rowCount);
 }
 
-async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false): Promise<NewsPost[]> {
+async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, editorId?: string): Promise<NewsPost[]> {
   if (!posts.length) return posts;
   const postIds = posts.map((post) => post.id);
   const [authorsResult, worksResult] = await Promise.all([
@@ -493,7 +518,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false):
   for (const row of authorsResult.rows) {
     const postId = Number(row.news_post_id);
     const list = authorsByPost.get(postId) ?? [];
-    list.push(mapAuthorReference(row));
+    list.push(mapAuthorReference(editorId ? { ...row, spud_id: null } : row));
     authorsByPost.set(postId, list);
   }
   const worksByPost = new Map<number, NewsWorkReference[]>();
@@ -509,7 +534,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false):
   );
   const mediaByPost = new Map<number, NewsMediaAsset[]>();
   await Promise.all(mediaLinks.rows.map(async (link) => {
-    const media = await getNewsMedia(null, link.asset_id, includePrivateMedia);
+    const media = await getNewsMedia(editorId ?? null, link.asset_id, includePrivateMedia);
     if (!media) return;
     const postId = Number(link.news_post_id);
     const list = mediaByPost.get(postId) ?? [];
@@ -519,7 +544,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false):
   await Promise.all(posts.map(async (post) => {
     const existing = mediaByPost.get(post.id) ?? [];
     if (!post.coverMediaId || existing.some((media) => media.id === post.coverMediaId)) return;
-    const cover = await getNewsMedia(null, post.coverMediaId, includePrivateMedia);
+    const cover = await getNewsMedia(editorId ?? null, post.coverMediaId, includePrivateMedia);
     if (!cover) return;
     const list = mediaByPost.get(post.id) ?? [];
     list.unshift(cover);

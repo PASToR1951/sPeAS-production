@@ -22,6 +22,7 @@ export interface ImportBatchSummary {
   status: string;
   created_at: string;
   expires_at: string;
+  submitted_at?: string | null;
   committedPapers: number;
   includedPapers: number;
 }
@@ -122,6 +123,10 @@ export interface ImportItem {
   error: string | null;
 }
 export interface ImportBatch {
+  staffSubmission?: boolean;
+  submittedAt?: string | null;
+  assignedReviewerId?: string | null;
+  returnNote?: string | null;
   revisionTarget?: { id: number; baseFingerprint: string; published: boolean } | null;
   jobs?: { id: string; itemId: string; status: string; progress: { assetId?: string; phase?: string; startedAt?: string; completed?: number; total?: number }; updatedAt: string }[];
   id: string;

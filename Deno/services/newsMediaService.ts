@@ -350,7 +350,7 @@ export async function getPublicNewsMediaVariant(assetId: string, variantKey: str
      WHERE v.asset_id = $1 AND v.variant_key = $2
        AND EXISTS (
          SELECT 1 FROM news_post_media npm JOIN news_posts np ON np.id = npm.news_post_id
-         WHERE npm.asset_id = v.asset_id AND np.status = 'published' AND np.deleted_at IS NULL
+         WHERE npm.asset_id = v.asset_id AND np.status = 'published' AND np.published_at <= CURRENT_TIMESTAMP AND np.deleted_at IS NULL
        )
      UNION ALL
      SELECT v.storage_key, v.mime_type, v.size_bytes, v.checksum
@@ -359,7 +359,7 @@ export async function getPublicNewsMediaVariant(assetId: string, variantKey: str
      WHERE v.asset_id = $1 AND v.variant_key = $2
        AND EXISTS (
          SELECT 1 FROM news_posts np
-         WHERE np.cover_media_id = v.asset_id AND np.status = 'published' AND np.deleted_at IS NULL
+         WHERE np.cover_media_id = v.asset_id AND np.status = 'published' AND np.published_at <= CURRENT_TIMESTAMP AND np.deleted_at IS NULL
        )
      LIMIT 1`,
     [assetId, variantKey],
@@ -392,11 +392,11 @@ export async function getPublicNewsMediaTrack(assetId: string, trackId: number) 
        AND (
          EXISTS (
            SELECT 1 FROM news_post_media npm JOIN news_posts np ON np.id = npm.news_post_id
-           WHERE npm.asset_id = t.asset_id AND np.status = 'published' AND np.deleted_at IS NULL
+           WHERE npm.asset_id = t.asset_id AND np.status = 'published' AND np.published_at <= CURRENT_TIMESTAMP AND np.deleted_at IS NULL
          )
          OR EXISTS (
            SELECT 1 FROM news_posts np
-           WHERE np.cover_media_id = t.asset_id AND np.status = 'published' AND np.deleted_at IS NULL
+           WHERE np.cover_media_id = t.asset_id AND np.status = 'published' AND np.published_at <= CURRENT_TIMESTAMP AND np.deleted_at IS NULL
          )
        )`,
     [trackId, assetId],
@@ -404,47 +404,84 @@ export async function getPublicNewsMediaTrack(assetId: string, trackId: number) 
   return result.rows[0] ?? null;
 }
 
-export async function updateNewsMediaMetadata(_userId: string, assetId: string, input: { title?: string | null; altText?: string | null; isDecorative?: boolean; caption?: string | null; credit?: string | null; posterAltText?: string | null; transcript?: string | null }) {
+export async function lockNewsAttachments(db: { queryArray: typeof client.queryArray }) {
+  await db.queryArray("LOCK TABLE news_posts, news_post_media IN SHARE ROW EXCLUSIVE MODE");
+}
+
+export async function requireEditorMedia(db: QueryExecutor, editorId: string, assetIds: string[], postId?: number) {
+  if (!assetIds.length) return;
+  const { rows } = await db.queryObject<{ id: string }>(
+    `SELECT a.id FROM news_media_assets a WHERE a.id=ANY($1::uuid[]) AND a.created_by=$2 AND a.deleted_at IS NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM news_posts p
+       WHERE p.deleted_at IS NULL AND ($3::bigint IS NULL OR p.id<>$3)
+         AND (p.cover_media_id=a.id OR EXISTS (
+           SELECT 1 FROM news_post_media m WHERE m.news_post_id=p.id AND m.asset_id=a.id
+         ))
+         AND ($3::bigint IS NOT NULL OR p.created_by IS DISTINCT FROM $2 OR p.status<>'draft' OR (
+           SELECT count(*) FROM news_posts q WHERE q.deleted_at IS NULL AND (
+             q.cover_media_id=a.id OR EXISTS (
+               SELECT 1 FROM news_post_media qm WHERE qm.news_post_id=q.id AND qm.asset_id=a.id
+             )
+           )
+         ) > 1)
+     )`, [[...new Set(assetIds)], editorId, postId ?? null],
+  );
+  if (rows.length !== new Set(assetIds).size) {
+    throw new NewsMediaValidationError("This media is unavailable or attached to another article");
+  }
+}
+
+export async function withEditorMedia<T>(editorId: string | null, assetId: string, action: (db: QueryExecutor) => Promise<T>): Promise<T> {
+  if (!editorId) return action(client);
+  return withTransaction(async (db) => {
+    await lockNewsAttachments(db);
+    await requireEditorMedia(db, editorId, [assetId]);
+    return action(db);
+  });
+}
+
+export async function updateNewsMediaMetadata(_userId: string, assetId: string, input: { title?: string | null; altText?: string | null; isDecorative?: boolean; caption?: string | null; credit?: string | null; posterAltText?: string | null; transcript?: string | null }, db: QueryExecutor = client) {
   for (const [value, limit, label] of [[input.title, 255, "title"], [input.credit, 255, "credit"], [input.altText, 2000, "alternative text"], [input.posterAltText, 2000, "poster description"], [input.caption, 2000, "caption"], [input.transcript, 2_000_000, "transcript"]] as const) {
     if (value != null && value.length > limit) throw new NewsMediaValidationError(`The ${label} is too long`);
   }
-  const result = await client.queryObject<AssetRow>(
+  const result = await db.queryObject<AssetRow>(
     `UPDATE news_media_assets SET title = $2, alt_text = $3, is_decorative = $4, caption = $5, credit = $6, poster_alt_text = $7, transcript = $8, updated_at = CURRENT_TIMESTAMP
      WHERE id = $1 AND deleted_at IS NULL RETURNING id, media_type, status, original_name, source_mime, source_size, width, height, duration_ms, title, alt_text, is_decorative, caption, credit, poster_alt_text, transcript, error_code, created_at, ready_at`,
     [assetId, input.title?.trim() || null, input.altText?.trim() || null, Boolean(input.isDecorative), input.caption?.trim() || null, input.credit?.trim() || null, input.posterAltText?.trim() || null, input.transcript?.trim() || null],
   );
   if (!result.rows[0]) return null;
-  return await getNewsMedia(null, assetId, true);
+  return await getNewsMedia(null, assetId, true, db);
 }
 
-export async function saveNewsMediaCaptions(_userId: string, assetId: string, input: { language?: string; label?: string; content: string; isDefault?: boolean }) {
-  const owned = await client.queryObject<{ id: string }>("SELECT id FROM news_media_assets WHERE id = $1 AND media_type = 'video' AND deleted_at IS NULL", [assetId]);
+export async function saveNewsMediaCaptions(_userId: string, assetId: string, input: { language?: string; label?: string; content: string; isDefault?: boolean }, db: QueryExecutor = client) {
+  const owned = await db.queryObject<{ id: string }>("SELECT id FROM news_media_assets WHERE id = $1 AND media_type = 'video' AND deleted_at IS NULL", [assetId]);
   if (!owned.rows[0]) return null;
   const content = normalizeWebVtt(input.content);
   if (content.length > 512 * 1024) throw new NewsMediaValidationError("Caption files must be 512 KB or smaller");
-  const result = await client.queryObject<TrackRow>(
+  const result = await db.queryObject<TrackRow>(
     `INSERT INTO news_media_tracks (asset_id, track_type, language, label, text_content, is_default)
      VALUES ($1, 'captions', $2, $3, $4, $5)
      ON CONFLICT (asset_id, track_type, language) DO UPDATE SET label = EXCLUDED.label, text_content = EXCLUDED.text_content, is_default = EXCLUDED.is_default
      RETURNING id, asset_id, track_type, language, label, storage_key, text_content, is_default`,
     [assetId, input.language?.trim().slice(0, 16) || "en", input.label?.trim().slice(0, 120) || "English", content, Boolean(input.isDefault)],
   );
-  if (input.isDefault) await client.queryObject("UPDATE news_media_tracks SET is_default = FALSE WHERE asset_id = $1 AND track_type = 'captions' AND id <> $2", [assetId, result.rows[0].id]);
+  if (input.isDefault) await db.queryObject("UPDATE news_media_tracks SET is_default = FALSE WHERE asset_id = $1 AND track_type = 'captions' AND id <> $2", [assetId, result.rows[0].id]);
   return result.rows[0] ? { id: Number(result.rows[0].id), trackType: result.rows[0].track_type, language: result.rows[0].language, label: result.rows[0].label, url: null, textContent: result.rows[0].text_content, isDefault: result.rows[0].is_default } : null;
 }
 
-export async function deleteNewsMedia(_userId: string, assetId: string) {
-  const detached = await client.queryObject(
+export async function deleteNewsMedia(_userId: string, assetId: string, db: QueryExecutor = client) {
+  const detached = await db.queryObject(
     `DELETE FROM news_post_media npm USING news_posts np
      WHERE npm.asset_id = $1 AND np.id = npm.news_post_id`,
     [assetId],
   );
-  const detachedCover = await client.queryObject(
+  const detachedCover = await db.queryObject(
     `UPDATE news_posts SET cover_media_id = NULL, updated_at = CURRENT_TIMESTAMP
      WHERE cover_media_id = $1`,
     [assetId],
   );
-  const result = await client.queryObject<{ source_key: string | null }>(
+  const result = await db.queryObject<{ source_key: string | null }>(
     `UPDATE news_media_assets SET status = 'cancelled', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
      WHERE id = $1
        AND NOT EXISTS (SELECT 1 FROM news_post_media WHERE asset_id = $1)
@@ -457,14 +494,14 @@ export async function deleteNewsMedia(_userId: string, assetId: string) {
   return Boolean(result.rows[0] || detached.rowCount || detachedCover.rowCount);
 }
 
-export async function retryNewsMedia(_userId: string, assetId: string) {
-  const result = await client.queryObject<{ id: string }>(
+export async function retryNewsMedia(_userId: string, assetId: string, db: QueryExecutor = client) {
+  const result = await db.queryObject<{ id: string }>(
     `UPDATE news_media_assets SET status = 'queued', error_code = NULL, updated_at = CURRENT_TIMESTAMP
      WHERE id = $1 AND status = 'failed' AND deleted_at IS NULL RETURNING id`,
     [assetId],
   );
   if (!result.rows[0]) return false;
-  await client.queryObject("INSERT INTO news_media_jobs (asset_id) VALUES ($1) ON CONFLICT (asset_id) DO UPDATE SET status = 'pending', available_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP", [assetId]);
+  await db.queryObject("INSERT INTO news_media_jobs (asset_id) VALUES ($1) ON CONFLICT (asset_id) DO UPDATE SET status = 'pending', available_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP", [assetId]);
   return true;
 }
 

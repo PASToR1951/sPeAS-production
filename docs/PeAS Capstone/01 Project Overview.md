@@ -8,9 +8,12 @@ review, publication, reporting, site content, and operations.
 
 - A visitor may browse approved public records, view safe author references and
   profiles, and download an available public PDF without authentication.
-- An administrator must authenticate before viewing the full author directory,
-  managing document-author relationships, uploading, reviewing, or accessing
-  operational data.
+- Administrators manage accounts, the full author directory, publication,
+  department news, and operational data.
+- Repository Assistants prepare and submit their own papers and journal issues.
+  Manuscript Reviewers can review and publish assigned submissions after the
+  publication checks pass. News Editors manage their own department news
+  drafts and draft media. Administrators publish department news.
 - A document is publicly visible only when it is not deleted, is approved, is
   marked public, and any compiled parent is also live and approved.
 - Public author references contain only string `id` and `full_name` values.

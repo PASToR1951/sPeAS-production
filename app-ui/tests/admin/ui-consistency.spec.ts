@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { source as axeSource } from "axe-core";
 
 const ADMIN_LINKS = [
+  "Submission Review",
   "Dashboard",
   "Documents",
   "Classification",
@@ -286,7 +287,7 @@ test("settings remains available from the administrator profile menu", async ({ 
   await page.getByRole("menuitem", { name: "Settings" }).click();
   await settingsNavigation.getByRole("link", { name: "Role Management" }).click();
   await expect(page).toHaveURL(/\/admin\/Components\/role-management\.html$/);
-  await expect(page.getByRole("heading", { name: "Administrator Accounts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Role Management" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open profile menu for Admin M User" })).toBeVisible();
 });
 

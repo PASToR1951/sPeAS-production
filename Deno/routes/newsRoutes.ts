@@ -1,6 +1,7 @@
 import { Router } from "../deps.ts";
 import {
   isAuthenticated,
+  isStaffAuthenticated,
   requireCapability,
 } from "../middleware/authMiddleware.ts";
 import { UserNewsSaveModel } from "../models/userNewsSaveModel.ts";
@@ -28,6 +29,7 @@ import {
   retryNewsMedia,
   saveNewsMediaCaptions,
   updateNewsMediaMetadata,
+  withEditorMedia,
 } from "../services/newsMediaService.ts";
 import {
   createNewsPost,
@@ -44,6 +46,14 @@ import {
 
 const router = new Router();
 const requireNewsManagement = requireCapability("news:manage");
+const requireNewsDraft = requireCapability("news:draft");
+const requireDraftAccess: ReturnType<typeof requireCapability> = async (ctx, next) => {
+  ctx.response.headers.set("Cache-Control", "private, no-store");
+  await requireNewsDraft(ctx, next);
+};
+const editorId = (ctx: { state: { user?: { id: string; role: string } } }) =>
+  ctx.state.user?.role === "news_editor" ? String(ctx.state.user.id) : undefined;
+
 const requireNewsDeletion = requireCapability("news:delete");
 
 router.get(
@@ -141,8 +151,8 @@ router.delete(
 
 router.post(
   "/api/admin/news/media/uploads",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     try {
       const body = await ctx.request.body({ type: "json" }).value as Record<string, unknown>;
@@ -165,8 +175,8 @@ router.post(
 
 router.post(
   "/api/admin/news/media/uploads/:uploadId/parts",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     try {
       const session = await getNewsMediaUpload(String(ctx.state.user.id), String(ctx.params.uploadId));
@@ -197,8 +207,8 @@ router.post(
 
 router.get(
   "/api/admin/news/media/uploads/:uploadId",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const session = await getNewsMediaUpload(String(ctx.state.user.id), String(ctx.params.uploadId));
     if (!session) {
@@ -212,8 +222,8 @@ router.get(
 
 router.put(
   "/api/admin/news/media/uploads/:uploadId/parts/:partNumber",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const userId = String(ctx.state.user.id);
     const uploadId = String(ctx.params.uploadId);
@@ -267,8 +277,8 @@ router.put(
 
 router.post(
   "/api/admin/news/media/uploads/:uploadId/complete",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     try {
       const asset = await completeNewsMediaUpload(String(ctx.state.user.id), String(ctx.params.uploadId));
@@ -282,8 +292,8 @@ router.post(
 
 router.delete(
   "/api/admin/news/media/uploads/:uploadId",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const session = await getNewsMediaUpload(String(ctx.state.user.id), String(ctx.params.uploadId));
     if (!session) {
@@ -299,13 +309,13 @@ router.delete(
 
 router.get(
   "/api/admin/news/media/:id",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const id = String(ctx.params.id);
     // Capability middleware authorizes this admin response; private metadata is
     // still never exposed outside this route.
-    const asset = await getNewsMedia(null, id, true);
+    const asset = isUuid(id) ? await getNewsMedia(editorId(ctx) ?? null, id, true) : null;
     if (!asset) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Media asset not found" };
@@ -317,14 +327,19 @@ router.get(
 
 router.get(
   "/api/admin/news/media/:id/variant/:variant",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const assetId = String(ctx.params.id);
     const variantKey = decodeURIComponent(String(ctx.params.variant || ""));
     if (!isUuid(assetId) || !/^[a-z0-9_-]{1,120}$/i.test(variantKey)) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Media variant not found" };
+      return;
+    }
+    if (editorId(ctx) && !await getNewsMedia(editorId(ctx)!, assetId, true)) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "Media asset not found" };
       return;
     }
     const variant = await getAdminNewsMediaVariant(String(ctx.state.user.id), assetId, variantKey);
@@ -339,14 +354,19 @@ router.get(
 
 router.get(
   "/api/admin/news/media/:id/track/:trackId",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const assetId = String(ctx.params.id);
     const trackId = Number(ctx.params.trackId);
     if (!isUuid(assetId) || !Number.isInteger(trackId) || trackId <= 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Media track not found" };
+      return;
+    }
+    if (editorId(ctx) && !await getNewsMedia(editorId(ctx)!, assetId, true)) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "Media asset not found" };
       return;
     }
     const track = await getAdminNewsMediaTrack(String(ctx.state.user.id), assetId, trackId);
@@ -371,12 +391,14 @@ router.get(
 
 router.patch(
   "/api/admin/news/media/:id",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     try {
       const body = await ctx.request.body({ type: "json" }).value as Record<string, unknown>;
-      const asset = await updateNewsMediaMetadata(String(ctx.state.user.id), String(ctx.params.id), {
+      const id = String(ctx.params.id);
+      if (!isUuid(id)) throw new NewsMediaValidationError("Media asset not found");
+      const asset = await withEditorMedia(editorId(ctx) ?? null, id, (db) => updateNewsMediaMetadata(String(ctx.state.user.id), id, {
         title: body.title == null ? null : String(body.title),
         altText: body.altText == null ? null : String(body.altText),
         isDecorative: Boolean(body.isDecorative),
@@ -384,7 +406,7 @@ router.patch(
         credit: body.credit == null ? null : String(body.credit),
         posterAltText: body.posterAltText == null ? null : String(body.posterAltText),
         transcript: body.transcript == null ? null : String(body.transcript),
-      });
+      }, db));
       if (!asset) {
         ctx.response.status = 404;
         ctx.response.body = { error: "Media asset not found" };
@@ -400,19 +422,21 @@ router.patch(
 
 router.post(
   "/api/admin/news/media/:id/captions",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     try {
       const body = await ctx.request.body({ type: "json" }).value as Record<string, unknown>;
       const content = String(body.content ?? "");
       if (!content.trim()) throw new NewsMediaValidationError("Caption content is required");
-      const track = await saveNewsMediaCaptions(String(ctx.state.user.id), String(ctx.params.id), {
+      const id = String(ctx.params.id);
+      if (!isUuid(id)) throw new NewsMediaValidationError("Media asset not found");
+      const track = await withEditorMedia(editorId(ctx) ?? null, id, (db) => saveNewsMediaCaptions(String(ctx.state.user.id), id, {
         content,
         language: body.language == null ? undefined : String(body.language),
         label: body.label == null ? undefined : String(body.label),
         isDefault: Boolean(body.isDefault),
-      });
+      }, db));
       if (!track) {
         ctx.response.status = 404;
         ctx.response.body = { error: "Video media asset not found" };
@@ -428,10 +452,18 @@ router.post(
 
 router.delete(
   "/api/admin/news/media/:id",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
-    const deleted = await deleteNewsMedia(String(ctx.state.user.id), String(ctx.params.id));
+    const id = String(ctx.params.id);
+    let deleted = false;
+    if (isUuid(id)) {
+      try {
+        deleted = await withEditorMedia(editorId(ctx) ?? null, id, (db) => deleteNewsMedia(String(ctx.state.user.id), id, db));
+      } catch (error) {
+        if (!(error instanceof NewsMediaValidationError)) throw error;
+      }
+    }
     if (!deleted) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Media asset not found or not owned by this editor" };
@@ -443,10 +475,18 @@ router.delete(
 
 router.post(
   "/api/admin/news/media/:id/retry",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
-    const retried = await retryNewsMedia(String(ctx.state.user.id), String(ctx.params.id));
+    const id = String(ctx.params.id);
+    let retried = false;
+    if (isUuid(id)) {
+      try {
+        retried = await withEditorMedia(editorId(ctx) ?? null, id, (db) => retryNewsMedia(String(ctx.state.user.id), id, db));
+      } catch (error) {
+        if (!(error instanceof NewsMediaValidationError)) throw error;
+      }
+    }
     if (!retried) {
       ctx.response.status = 404;
       ctx.response.body = { error: "Failed media asset not found" };
@@ -548,20 +588,20 @@ router.get("/api/news/:slug", async (ctx) => {
 
 router.get(
   "/api/admin/news",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
-    ctx.response.body = { posts: await listAllNews() };
+    ctx.response.body = { posts: await listAllNews(editorId(ctx)) };
   },
 );
 
 router.get(
   "/api/admin/news/references",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const query = ctx.request.url.searchParams.get("q") ?? "";
-    ctx.response.body = await searchNewsReferences(query);
+    ctx.response.body = await searchNewsReferences(query, !!editorId(ctx));
   },
 );
 
@@ -629,14 +669,14 @@ router.post(
 
 router.post(
   "/api/admin/news",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const input = await readNewsInput(ctx);
     if (!input) return;
     let post;
     try {
-      post = await createNewsPost(input, String(ctx.state.user.id));
+      post = await createNewsPost(input, String(ctx.state.user.id), !!editorId(ctx));
     } catch (error) {
       if (error instanceof NewsReferenceValidationError || error instanceof NewsMediaValidationError) {
         ctx.response.status = 400;
@@ -657,16 +697,16 @@ router.post(
 
 router.put(
   "/api/admin/news/:id",
-  isAuthenticated,
-  requireNewsManagement,
+  isStaffAuthenticated,
+  requireDraftAccess,
   async (ctx) => {
     const id = positiveInteger(ctx.params.id, 0);
     const input = await readNewsInput(ctx);
     if (!id || !input) return;
-    const previous = (await listAllNews()).find((post) => post.id === id);
+    const previous = (await listAllNews(editorId(ctx))).find((post) => post.id === id);
     let post;
     try {
-      post = await updateNewsPost(id, input, String(ctx.state.user.id));
+      post = await updateNewsPost(id, input, String(ctx.state.user.id), !!editorId(ctx));
     } catch (error) {
       if (error instanceof NewsReferenceValidationError || error instanceof NewsMediaValidationError) {
         ctx.response.status = 400;
@@ -761,6 +801,12 @@ async function readNewsInput(ctx: any): Promise<NewsPostInput | null> {
   } catch {
     ctx.response.status = 400;
     ctx.response.body = { error: "A valid JSON body is required" };
+    return null;
+  }
+
+  if (editorId(ctx) && (body.status !== "draft" || (body.publishAt != null && body.publishAt !== ""))) {
+    ctx.response.status = 403;
+    ctx.response.body = { error: "An administrator publishes or schedules news." };
     return null;
   }
 
@@ -949,7 +995,9 @@ async function serveNewsMediaFile(ctx: any, filePath: string, mimeType: string, 
   ctx.response.headers.set("Accept-Ranges", allowRange ? "bytes" : "none");
   ctx.response.headers.set("Content-Type", mimeType);
   ctx.response.headers.set("X-Content-Type-Options", "nosniff");
-  ctx.response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  if (!ctx.response.headers.has("Cache-Control")) {
+    ctx.response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  }
   const etag = `"${etagValue || `${size}-${stat.mtime?.getTime() || 0}`}"`;
   ctx.response.headers.set("ETag", etag);
   if (stat.mtime) ctx.response.headers.set("Last-Modified", stat.mtime.toUTCString());

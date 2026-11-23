@@ -1,3 +1,4 @@
+import { STAFF_ROLES, STAFF_WORKSPACE } from "../../shared/staffRoles";
 import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminLayout, type WorkspaceRole } from "./components/layout/AdminLayout";
@@ -11,8 +12,12 @@ type AdminRoute = {
   Component: ComponentType;
 };
 
-const ADMIN_ROLES: WorkspaceRole[] = ["admin"];
 const routes: Record<string, AdminRoute> = {
+  [STAFF_WORKSPACE]: {
+    title: "Staff Workspace | PeAS",
+    allowedRoles: ["admin", ...STAFF_ROLES],
+    Component: lazyNamed(() => import("./features/staff/StaffWorkspacePage"), "StaffWorkspacePage"),
+  },
   "/admin/dashboard.html": {
     title: "Dashboard | PeAS Admin",
     Component: lazyNamed(() => import("./features/dashboard/DashboardPage"), "DashboardPage"),
@@ -31,7 +36,6 @@ const routes: Record<string, AdminRoute> = {
   },
   "/admin/Components/upload_document.html": {
     title: "Upload Document | PeAS",
-    allowedRoles: ADMIN_ROLES,
     Component: lazyNamed(() => import("./features/upload/UploadDocumentPage"), "UploadDocumentPage"),
   },
   "/admin/Components/archive-documents.html": {
@@ -64,7 +68,7 @@ const routes: Record<string, AdminRoute> = {
   },
   "/admin/Components/news.html": {
     title: "Department News | PeAS",
-    allowedRoles: ADMIN_ROLES,
+    allowedRoles: ["admin", "news_editor"],
     Component: lazyNamed(() => import("./features/news/AdminNewsPage"), "AdminNewsPage"),
   },
   "/admin/Components/role-management.html": {

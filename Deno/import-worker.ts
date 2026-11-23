@@ -37,12 +37,10 @@ while (!stopped) {
       await purgeAbandonedImportCopies();
       lastCopyCleanup = Date.now();
     }
-    if (importEnabled()) {
-      const job = await claimImportJob(workerId);
-      if (job) {
-        await processImportJob(job);
-        continue;
-      }
+    const job = await claimImportJob(workerId, !importEnabled());
+    if (job) {
+      await processImportJob(job);
+      continue;
     }
   } catch (error) {
     console.error(

@@ -1,3 +1,4 @@
+import { isStaffRole, ROLE_LABELS, STAFF_ROLES, STAFF_WORKSPACE, type WorkspaceRole } from "../../../../shared/staffRoles";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import {
   Archive,
@@ -48,7 +49,7 @@ interface AdminLayoutProps {
   pathname: string;
 }
 
-export type WorkspaceRole = "admin";
+export type { WorkspaceRole } from "../../../../shared/staffRoles";
 type AdminNavigationItem = {
   label: string;
   href: string;
@@ -70,7 +71,7 @@ interface AdminIdentity {
   userId: string;
   userName: string;
   role: WorkspaceRole;
-  roleLabel: "Administrator";
+  roleLabel: string;
   profile: UserProfile | null;
   updateProfile: (update: Partial<UserProfile>) => void;
 }
@@ -78,17 +79,19 @@ interface AdminIdentity {
 const AdminIdentityContext = createContext<AdminIdentity | null>(null);
 
 const navItems: AdminNavigationItem[] = [
+  { label: "Staff workspace", href: STAFF_WORKSPACE, icon: LayoutDashboard, roles: [...STAFF_ROLES] },
+  { label: "Submission Review", href: STAFF_WORKSPACE, icon: FileText, roles: ADMIN_ONLY_ROLES },
   { label: "Dashboard", href: "/admin/dashboard.html", icon: LayoutDashboard, roles: ["admin"] as WorkspaceRole[] },
   { label: "Documents", href: "/admin/Components/documents_list.html", icon: FileText, roles: ["admin"] as WorkspaceRole[] },
   { label: "Classification", href: "/admin/Components/classification-management.html", icon: Tags, roles: ["admin"] as WorkspaceRole[] },
   { label: "Archived Documents", href: "/admin/Components/archive-documents.html", icon: Archive, roles: ["admin"] as WorkspaceRole[] },
   { label: "Authors", href: "/admin/Components/author-list.html", icon: UsersRound, roles: ["admin"] as WorkspaceRole[] },
-  { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin"] as WorkspaceRole[] },
+  { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin", "news_editor"] },
   { label: "Contact Inquiries", href: "/admin/Components/contact-inquiries.html", icon: MailQuestion, roles: ["admin"] as WorkspaceRole[] },
 ];
 
 const utilityItems: AdminNavigationItem[] = [
-  { label: "View Site", href: "/index.html", icon: Home, roles: ["admin"] as WorkspaceRole[] },
+  { label: "View Site", href: "/index.html", icon: Home, roles: ["admin", ...STAFF_ROLES] },
 ];
 
 const settingsNavItems: AdminNavigationItem[] = [
@@ -183,8 +186,12 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
       window.location.replace(`/log-in.html?redirect=${redirect}`);
       return;
     }
+    if (session.user?.passwordSetupRequired) {
+      window.location.replace("/log-in.html?setup=1");
+      return;
+    }
     if (!workspaceRole || !allowedRoles.includes(workspaceRole)) {
-      const destination = "/index.html";
+      const destination = isStaffRole(workspaceRole) ? STAFF_WORKSPACE : "/index.html";
       const timer = window.setTimeout(() => window.location.replace(destination), 900);
       return () => window.clearTimeout(timer);
     }
@@ -198,7 +205,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
   }, [profile, session]);
   const userId = String(session?.userId ?? session?.user?.id ?? profile?.id ?? session?.username ?? userName);
 
-  const role = "Administrator";
+  const role = workspaceRole ? ROLE_LABELS[workspaceRole] : "Administrator";
   const sidebarToggleLabel = isMobileViewport
     ? (mobileOpen ? "Close navigation" : "Open navigation")
     : (collapsed ? "Expand sidebar" : "Collapse sidebar");
@@ -218,7 +225,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
     }
   }, []);
 
-  if (!sessionLoaded || !session) {
+  if (!sessionLoaded || !session || session.user?.passwordSetupRequired) {
     return <WorkspaceGate message="Checking your workspace access…" />;
   }
 
@@ -263,13 +270,13 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
           </div>
 
           <div className="peas-admin-topbar__right">
-            <div className="peas-admin-notifications">
+            {workspaceRole === "admin" ? <div className="peas-admin-notifications">
             <button className="peas-admin-icon-btn" type="button" aria-label={`Notifications${notificationSummary.unread ? `, ${notificationSummary.unread} unread` : ""}`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); if (!notificationsOpen) void refreshNotifications(); }}>
               <Bell aria-hidden="true" />
               {notificationSummary.unread ? <span className="peas-admin-notification-badge" aria-hidden="true">{notificationSummary.unread > 99 ? "99+" : notificationSummary.unread}</span> : null}
             </button>
             {notificationsOpen ? <AdminNotificationPanel notifications={notifications} onClear={async () => { await clearAdminNotifications(); setNotifications([]); setNotificationSummary({ total: 0, unread: 0, urgent: 0 }); }} onClose={() => setNotificationsOpen(false)} onOpen={async (notification) => { if (!notification.isRead) { await markAdminNotificationRead(notification.id).catch(() => undefined); } setNotificationsOpen(false); if (notification.actionPath) window.location.assign(notification.actionPath); }} /> : null}
-            </div>
+            </div> : null}
             <AdminProfileMenu
               initials={initials}
               onLogout={handleLogout}
@@ -490,7 +497,7 @@ function WorkspaceGate({ message }: { message: string }) {
 
 function normalizeWorkspaceRole(value: unknown): WorkspaceRole | null {
   const role = String(value ?? "").toLowerCase();
-  return role === "admin" ? role : null;
+  return role === "admin" || isStaffRole(role) ? role : null;
 }
 
 function useStoredSidebarState(): [boolean, (value: boolean) => void] {

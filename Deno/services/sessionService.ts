@@ -4,7 +4,7 @@
  * Sessions are created and stored by Better Auth (config/auth.ts) in the
  * `session` table; the cookie is `better-auth.session_token`. This module
  * keeps the app-facing shape stable: `{ id, role, isLoggedIn }` with roles
- * normalized to lowercase (e.g. "admin", "publisher", "user").
+ * normalized to lowercase.
  */
 
 import { auth } from "../config/auth.ts";
@@ -14,6 +14,7 @@ export interface SessionData {
   id: string;
   role: string;
   isLoggedIn: boolean;
+  passwordSetupRequired: boolean;
 }
 
 /**
@@ -22,16 +23,20 @@ export interface SessionData {
  */
 export async function getSessionFromHeaders(
   headers: Headers,
+  allowPasswordSetup = false,
 ): Promise<SessionData | null> {
   try {
     const result = await auth.api.getSession({ headers });
     if (!result?.user) return null;
 
-    const role = (result.user as { role?: string | null }).role;
+    const user = result.user as { role?: string | null; passwordSetupRequired?: boolean };
+    const passwordSetupRequired = user.passwordSetupRequired === true;
+    if (passwordSetupRequired && !allowPasswordSetup) return null;
     return {
       id: result.user.id,
-      role: String(role || "user").toLowerCase(),
+      role: String(user.role || "user").toLowerCase(),
       isLoggedIn: true,
+      passwordSetupRequired,
     };
   } catch (error) {
     console.error("getSessionFromHeaders: session lookup failed:", error);

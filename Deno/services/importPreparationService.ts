@@ -85,9 +85,9 @@ export async function requireBatch(
   if (!result.rows[0]) throw new ImportError("Import workspace not found", 404);
   return result.rows[0];
 }
-export function requireEditable(batch: Row): void {
+export function requireEditable(batch: Row, allowSubmitted = false): void {
   if (
-    batch.status !== "draft" ||
+    batch.status !== "draft" || (!allowSubmitted && !!batch.submitted_at) ||
     new Date(batch.expires_at).getTime() <= Date.now()
   ) throw new ImportError("This import workspace is no longer editable", 409);
 }
@@ -104,19 +104,20 @@ export async function createImportBatch(
   owner: string,
   mode: ImportMode,
   key: string,
+  staffSubmission = false,
 ): Promise<ImportBatch> {
   if (
     !["single", "compiled", "batch"].includes(mode) || !key || key.length > 200
   ) throw new ImportError("Invalid workspace mode or request key");
   const row = await client.queryObject<Row>(
-    "INSERT INTO import_batches(owner_id,mode,idempotency_key) VALUES($1,$2,$3) ON CONFLICT(owner_id,idempotency_key) DO UPDATE SET idempotency_key=import_batches.idempotency_key RETURNING id",
-    [owner, mode, key],
+    "INSERT INTO import_batches(owner_id,mode,idempotency_key,staff_submission) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,idempotency_key) DO UPDATE SET idempotency_key=import_batches.idempotency_key RETURNING id",
+    [owner, mode, key, staffSubmission],
   );
   return getImportBatch(row.rows[0].id, owner);
 }
 export async function listImportBatches(owner: string) {
   return (await client.queryObject(
-    `SELECT b.id,b.mode,b.status,b.created_at,b.expires_at,
+    `SELECT b.id,b.mode,b.status,b.created_at,b.expires_at,b.submitted_at,
       (SELECT count(*)::int FROM import_items i WHERE i.batch_id=b.id AND i.state<>'ignored' AND i.document_id IS NOT NULL) AS "committedPapers",
       (SELECT count(*)::int FROM import_items i WHERE i.batch_id=b.id AND i.state<>'ignored') AS "includedPapers"
       FROM import_batches b WHERE b.owner_id=$1 ORDER BY b.created_at DESC LIMIT 100`,
@@ -140,6 +141,10 @@ export async function getImportBatch(
   ]);
   return {
     id,
+    staffSubmission: batch.staff_submission,
+    submittedAt: batch.submitted_at,
+    assignedReviewerId: batch.assigned_reviewer_id,
+    returnNote: batch.return_note,
     revisionTarget: (await client.queryObject<Row>("SELECT compiled_document_id,base_fingerprint,published_at FROM issue_revisions WHERE batch_id=$1", [id])).rows.map(r => ({ id: Number(r.compiled_document_id), baseFingerprint: String(r.base_fingerprint), published: !!r.published_at }))[0] ?? null,
     jobs: (await client.queryObject<Row>("SELECT id,item_id,status,progress,coalesce(heartbeat_at,created_at) AS updated_at FROM import_jobs WHERE batch_id=$1 ORDER BY created_at DESC LIMIT 500",[id])).rows.map(j=>({id:String(j.id),itemId:j.item_id,status:j.status,progress:j.progress,updatedAt:String(j.updated_at)})),
     mode: batch.mode,

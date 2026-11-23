@@ -5,6 +5,7 @@ export interface SessionUser {
   name?: string;
   email?: string;
   role?: string;
+  passwordSetupRequired?: boolean;
   username?: string | null;
   displayUsername?: string | null;
   image?: string | null;
@@ -13,8 +14,7 @@ export interface SessionUser {
 
 /**
  * Normalized session shape derived from Better Auth's GET /api/auth/get-session
- * response ({ session, user } or null). `role` is lowercase
- * ("admin" | "publisher" | "user").
+ * response ({ session, user } or null). `role` is lowercase.
  */
 export interface SessionResponse {
   authenticated: boolean;
@@ -106,4 +106,11 @@ export function safeSameOriginRedirect(value: string | null, fallback: string) {
   } catch {
     return fallback;
   }
+}
+
+export function completePasswordSetup(currentPassword: string, newPassword: string) {
+  return apiFetch<void>("/api/staff/password-setup", {
+    method: "POST",
+    json: { currentPassword, newPassword },
+  });
 }
