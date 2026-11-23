@@ -57,7 +57,7 @@ export async function getCompiledDocument(compiledDocId: number): Promise<any> {
     // Create a response object with all fields from compiledDoc plus any additional fields
     const response = {
       ...compiledDoc,
-      classification: await getDocumentClassification(compiledDocId, false),
+      classification: await getDocumentClassification(compiledDocId, false, true),
       // Expose only reviewed collection text; the foreword path is never abstract content.
       abstract: compiledDoc.abstract_foreword || ''
     };

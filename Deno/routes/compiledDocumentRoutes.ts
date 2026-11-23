@@ -421,7 +421,7 @@ const reviewCompiledDocument = async (ctx: RouterContext<any, any, any>) => {
         // active pending children while validating their classification; using
         // the public-only scope here makes every new compilation appear to have
         // no classified children and makes approval impossible.
-        const classification = await getDocumentClassification(id, true);
+        const classification = await getDocumentClassification(id, true, true);
         if (!classification.complete) {
             ctx.response.status = 422;
             ctx.response.body = {

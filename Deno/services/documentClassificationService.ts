@@ -516,15 +516,15 @@ export async function mergeTopics(
   });
 }
 
-async function documentScopeIds(documentId: number, includePending: boolean): Promise<{ ids: number[]; source: ClassificationSource }> {
-  const compiled = await client.queryObject(`SELECT 1 FROM compiled_documents WHERE id = $1 AND deleted_at IS NULL`, [documentId]);
-  if (!compiled.rows.length) return { ids: [documentId], source: "document" };
+async function documentScopeIds(documentId: number, includePending: boolean, isCompiled: boolean): Promise<{ ids: number[]; source: ClassificationSource }> {
+  if (!isCompiled) return { ids: [documentId], source: "document" };
 
   const children = await client.queryObject(`
     SELECT DISTINCT d.id
-    FROM documents d
+    FROM compiled_documents cd
+    JOIN documents d ON d.deleted_at IS NULL
     LEFT JOIN compiled_document_items cdi ON cdi.document_id = d.id
-    WHERE d.deleted_at IS NULL
+    WHERE cd.id = $1 AND cd.deleted_at IS NULL
       AND ($2 = TRUE OR (d.review_status = 'approved' AND d.is_public IS TRUE))
       AND (d.compiled_parent_id = $1 OR cdi.compiled_document_id = $1)
   `, [documentId, includePending]);
@@ -546,29 +546,22 @@ function emptyClassification(source: ClassificationSource = "document"): Documen
 export async function getDocumentClassifications(
   documentIds: number[],
   includePending = false,
+  isCompiled = false,
 ): Promise<Map<number, DocumentClassification>> {
   const ids = [...new Set(documentIds.filter((id) => Number.isInteger(id) && id > 0))];
   const result = new Map<number, DocumentClassification>();
   if (!ids.length) return result;
 
-  const compiledRows = await client.queryObject<{ id: number | string }>(
-    `SELECT id FROM compiled_documents WHERE id IN (${placeholders(ids)}) AND deleted_at IS NULL`,
-    ids,
-  );
-  const compiledIds = new Set(compiledRows.rows.map((row) => Number(row.id)));
-  const sourceById = new Map<number, ClassificationSource>(ids.map((id) => [id, compiledIds.has(id) ? "aggregated_children" : "document"]));
+  const source: ClassificationSource = isCompiled ? "aggregated_children" : "document";
+  const scopePairs: Array<[number, number]> = isCompiled ? [] : ids.map((id) => [id, id]);
 
-  const scopePairs: Array<[number, number]> = ids
-    .filter((id) => !compiledIds.has(id))
-    .map((id) => [id, id]);
-
-  if (compiledIds.size) {
-    const compiledIdList = [...compiledIds];
+  if (isCompiled) {
+    const compiledIdList = ids;
     const childRows = await client.queryObject<{ requested_id: number | string; document_id: number | string }>(`
       SELECT cd.id AS requested_id, d.id AS document_id
       FROM compiled_documents cd
       JOIN documents d ON d.deleted_at IS NULL
-      WHERE cd.id IN (${placeholders(compiledIdList)})
+      WHERE cd.id IN (${placeholders(compiledIdList)}) AND cd.deleted_at IS NULL
         AND ($${compiledIdList.length + 1} = TRUE OR (d.review_status = 'approved' AND d.is_public IS TRUE))
         AND (d.compiled_parent_id = cd.id OR EXISTS (
           SELECT 1 FROM compiled_document_items cdi
@@ -579,7 +572,7 @@ export async function getDocumentClassifications(
   }
 
   if (!scopePairs.length) {
-    for (const id of ids) result.set(id, emptyClassification(sourceById.get(id) ?? "document"));
+    for (const id of ids) result.set(id, emptyClassification(source));
     return result;
   }
 
@@ -633,7 +626,6 @@ export async function getDocumentClassifications(
   for (const row of keywordRows.rows as Record<string, unknown>[]) append(keywordById, Number(row.requested_id), toTerm(row, "term"));
 
   for (const id of ids) {
-    const source = sourceById.get(id) ?? "document";
     const researchAgendas = agendaById.get(id) ?? [];
     const topics = topicById.get(id) ?? [];
     const keywords = keywordById.get(id) ?? [];
@@ -649,8 +641,9 @@ export async function getDocumentClassifications(
 export async function getDocumentClassification(
   documentId: number,
   includePending = false,
+  isCompiled = false,
 ): Promise<DocumentClassification> {
-  const scope = await documentScopeIds(documentId, includePending);
+  const scope = await documentScopeIds(documentId, includePending, isCompiled);
   if (!scope.ids.length) {
     return { researchAgendas: [], topics: [], keywords: [], complete: false, source: scope.source };
   }

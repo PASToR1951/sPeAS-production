@@ -585,10 +585,12 @@ export async function fetchDocuments(
     
     // Process documents
     const documents: Document[] = [];
-    const classifications = await getDocumentClassifications(
-      (result.rows as any[]).map((row) => Number(row.id)),
-      includeReview || normalizedReviewStatus === 'pending_review',
-    );
+    const rows = result.rows as { id: number; doc_source: "document" | "compiled" }[];
+    const includePending = includeReview || normalizedReviewStatus === "pending_review";
+    const [paperClassifications, issueClassifications] = await Promise.all([
+      getDocumentClassifications(rows.filter((row) => row.doc_source === "document").map((row) => Number(row.id)), includePending),
+      getDocumentClassifications(rows.filter((row) => row.doc_source === "compiled").map((row) => Number(row.id)), includePending, true),
+    ]);
     
     for (const row of result.rows as any[]) {
       console.log(`[DB] Processing ${row.doc_source} row ID=${row.id}:`, {
@@ -661,7 +663,7 @@ export async function fetchDocuments(
       // Fetch the three classification namespaces for every record.  The
       // legacy topics array is retained as a topics-only compatibility field.
       try {
-        doc.classification = classifications.get(doc.id) ?? {
+        doc.classification = (doc.is_compiled ? issueClassifications : paperClassifications).get(Number(doc.id)) ?? {
           researchAgendas: [],
           topics: [],
           keywords: [],

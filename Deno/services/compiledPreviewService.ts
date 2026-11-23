@@ -141,7 +141,7 @@ export async function getCompiledPreviewManifest(compiledDocumentId: number): Pr
   const category = String(parent.category ?? "COMPILED").toUpperCase();
   const startYear = numberOrNull(parent.start_year);
   const endYear = numberOrNull(parent.end_year);
-  const classification = await getDocumentClassification(compiledDocumentId, true);
+  const classification = await getDocumentClassification(compiledDocumentId, true, true);
 
   return {
     collection: {
