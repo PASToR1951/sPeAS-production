@@ -58,7 +58,7 @@ test("publisher workspace only exposes news and document upload", async ({ page 
   await expect(page.getByRole("link", { name: "Documents", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Operational Reports", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Experience Studio", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Edit website pages", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Role Management" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "System Logs" })).toHaveCount(0);
   expect(contactSummaryRequests).toBe(0);

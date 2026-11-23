@@ -98,7 +98,7 @@ const settingsNavItems: AdminNavigationItem[] = [
   { label: "Profile", href: "/admin/Components/admin_settings.html", icon: UserRound, roles: ADMIN_ONLY_ROLES },
   { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ADMIN_ONLY_ROLES, activePaths: ["/admin/Components/search-analytics.html"] },
   { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ADMIN_ONLY_ROLES },
-  { label: "Experience Studio", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES },
+  { label: "Edit website pages", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES },
   { label: "Role Management", href: "/admin/Components/role-management.html", icon: ShieldCheck, roles: ADMIN_ONLY_ROLES },
   { label: "Research Agenda", href: "/admin/Components/research-agenda.html", icon: ListOrdered, roles: ADMIN_ONLY_ROLES },
 ];

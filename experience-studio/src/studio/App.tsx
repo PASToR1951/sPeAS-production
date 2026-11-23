@@ -1,23 +1,30 @@
 import Uppy from "@uppy/core";
 import Dashboard from "@uppy/dashboard";
 import XHRUpload from "@uppy/xhr-upload";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   defaultExperienceConfig,
   FAQ_CATEGORY_LIMITS,
   EXPERIENCE_FIXED_THEME,
   ExperienceConfig,
   ExperienceConfigSchema,
+  type ExperiencePageKey,
+  getExperiencePublishIssues,
+  migrateExperienceConfigToV6,
 } from "../../../Deno/shared/experienceConfig";
 import { experiencePuckConfig } from "../shared/puckConfig";
 
-type PageKey = "landing" | "login" | "faq";
+type PageKey = ExperiencePageKey;
 type DeviceKey = "desktop" | "tablet" | "mobile";
-type InspectorTab = "content" | "checks" | "assets";
+const previewWidths: Record<DeviceKey, number> = { desktop: 1440, tablet: 820, mobile: 390 };
+type Screen = "pages" | "sections" | "edit" | "review" | "tools";
+type EditorLocation = { page: PageKey; section: string };
+const UploadActivity = createContext<(change: number) => void>(() => {});
 
 type DraftPayload = {
   config: ExperienceConfig;
-  version?: number;
+  publishedConfig: ExperienceConfig;
+  version: number;
   status?: string;
 };
 
@@ -67,66 +74,48 @@ type HeroImage = {
 type FaqItem = { id: string; question: string; answer: string };
 type FaqCategory = { id: string; label: string; items: FaqItem[] };
 
-const landingBlocks = [
-  "AnnouncementBanner",
-  "HeroBlock",
-  "OverviewBlock",
-  "GalleryBlock",
-  "QuickLinksBlock",
-  "RichTextBlock",
-  "ImageFeatureBlock",
-  "ResearchAgendaBlock",
-  "CtaBlock",
-  "FooterLinksBlock",
-];
-
-const loginBlocks = ["LoginShellBlock", "BrandPanelBlock", "HelpPanelBlock"];
-const faqBlocks = ["FaqBlock"];
-
-const cloneConfig = (config: ExperienceConfig): ExperienceConfig =>
-  JSON.parse(JSON.stringify(config));
-
 const componentMap = experiencePuckConfig.components as Record<string, any>;
 
-const pageNames: Record<PageKey, string> = {
-  landing: "Home page",
-  login: "Sign-in page",
-  faq: "FAQ page",
+const pages = {
+  landing: { name: "Home page", description: "Welcome message, photos, mission, and office team.", url: "/index.html" },
+  login: { name: "Sign-in page", description: "Branding, logos, and password reset instructions.", url: "/log-in.html" },
+  faq: { name: "Frequently asked questions", description: "Questions, answers, and how to contact the office.", url: "/faq.html" },
+};
+const pageKeys = Object.keys(pages) as PageKey[];
+
+const sections: Record<string, { name: string; description: string; preview: string }> = {
+  HeroBlock: { name: "Welcome message and photos", description: "The headline, introduction, and slideshow at the top of Home.", preview: ".peas-public-hero" },
+  OverviewBlock: { name: "What is PeAS?", description: "How PeAS helps visitors preserve, discover, and access research.", preview: "#peas-overview-title" },
+  QuickLinksBlock: { name: "Explore PeAS links", description: "The text on links to the mission, team, and research agenda.", preview: "#quick-links-title" },
+  RichTextBlock: { name: "Our mission", description: "The heading and introduction under Mission.", preview: "#mission-title" },
+  ImageFeatureBlock: { name: "Organizational chart", description: "Office roles, names, and profile photos.", preview: "#org-title" },
+  ResearchAgendaBlock: { name: "Research agenda introduction", description: "The heading and introduction above the official research priorities.", preview: "#agenda-title" },
+  CtaBlock: { name: "Contact invitation", description: "The message and button that invite visitors to contact the office.", preview: "#public-contact-cta-title" },
+  FooterLinksBlock: { name: "Footer", description: "PeAS manages the footer across the website.", preview: "footer" },
+  LoginShellBlock: { name: "Sign-in content", description: "Branding and password reset copy.", preview: ".peas-login-heading" },
+  FaqBlock: { name: "Questions and answers", description: "Manage questions, answers, and related page copy.", preview: ".peas-faq-content" },
 };
 
-// Plain-language names and one-line explanations for every section type,
-// shown in the section list and the "Add a section" menu.
-const sectionMeta: Record<string, { name: string; description: string }> = {
-  AnnouncementBanner: { name: "Announcement Bar", description: "A thin colored strip at the top for short news." },
-  HeroBlock: { name: "Welcome Banner", description: "The big opening area with a title, photos, search, and category links." },
-  OverviewBlock: { name: "PeAS Overview", description: "An interactive explanation of how PeAS preserves, discovers, and provides access to research." },
-  GalleryBlock: { name: "Photo Gallery", description: "A row of pictures with a short introduction." },
-  QuickLinksBlock: { name: "Quick Links", description: "Cards that take visitors to other pages or sections." },
-  RichTextBlock: { name: "Text Section", description: "A heading with paragraphs of plain text." },
-  ImageFeatureBlock: { name: "Organizational Chart", description: "The people, offices, and boards in the office structure." },
-  ResearchAgendaBlock: { name: "Research Agenda", description: "Presentation for the database-managed research priorities." },
-  CtaBlock: { name: "Call to Action", description: "A banner inviting visitors to do something, like contacting you." },
-  FooterLinksBlock: { name: "Footer", description: "The logo, copyright line, and links at the very bottom." },
-  LoginShellBlock: { name: "Sign-in Box", description: "The form where users enter their School ID and password." },
-  BrandPanelBlock: { name: "Side Brand Panel", description: "A decorative panel shown beside the sign-in box." },
-  HelpPanelBlock: { name: "Help Panel", description: "Help text and links for users who can't sign in." },
-  FaqBlock: { name: "FAQ Content", description: "Searchable questions and answers for public readers." },
-};
-
-const sectionName = (type: string) =>
-  sectionMeta[type]?.name || (componentMap[type]?.label as string) || type;
-
+const sectionName = (type: string) => sections[type]?.name ?? "Website section";
 const editableFields: Record<string, readonly string[]> = {
   HeroBlock: ["eyebrow", "title", "body", "images"],
   OverviewBlock: ["eyebrow", "title", "summary", "pillars"],
   QuickLinksBlock: ["title", "links"],
-  RichTextBlock: ["eyebrow", "title", "body"],
-  ImageFeatureBlock: ["eyebrow", "title", "body", "roles"],
-  ResearchAgendaBlock: ["eyebrow", "title", "body", "imageUrl", "imageAlt"],
+  RichTextBlock: ["title", "body"],
+  ImageFeatureBlock: ["title", "body", "roles"],
+  ResearchAgendaBlock: ["title", "body"],
   CtaBlock: ["title", "body", "label"],
-  LoginShellBlock: ["brandText", "title", "subtitle", "forgotPasswordTitle", "forgotPasswordSubtitle", "footerText", "backgroundImageUrl", "graphicLogoUrl", "logoUrl"],
-  FaqBlock: ["eyebrow", "title", "description", "categories", "contactTitle", "contactBody", "contactLabel"],
+  LoginShellBlock: ["brandText", "forgotPasswordTitle", "forgotPasswordSubtitle", "footerText", "backgroundImageUrl", "graphicLogoUrl", "logoUrl"],
+  FaqBlock: ["categories", "eyebrow", "title", "description", "contactTitle", "contactBody", "contactLabel"],
 };
+
+const locationKey = "peas-experience-editor-location";
+
+class ExperienceRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -141,7 +130,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.details || data.error || `Request failed: ${response.status}`);
+    throw new ExperienceRequestError(data.details || data.error || `Request failed: ${response.status}`, response.status);
   }
   return data as T;
 }
@@ -236,133 +225,28 @@ const fieldPlaceholders: Record<string, string> = {
 
 const friendlyLabel = (name: string) => fieldLabels[name] || niceLabel(name);
 
-function buildRecipe(name: string, base: ExperienceConfig): ExperienceConfig {
-  const next = cloneConfig(base);
-
-  if (name === "Minimal Academic") {
-    next.title = "Minimal Academic";
-    next.pages.landing.data.content = next.pages.landing.data.content.filter((block) =>
-      ["HeroBlock", "QuickLinksBlock", "RichTextBlock", "ResearchAgendaBlock", "FooterLinksBlock"].includes(block.type)
-    );
-  }
-
-  if (name === "Visual Research Portal") {
-    next.title = "Visual Research Portal";
-    next.pages.landing.data.content.splice(1, 0, {
-      type: "GalleryBlock",
-      props: {
-        id: "visual-gallery",
-        eyebrow: "Highlights",
-        title: "Research in motion",
-        body: "A visual look at the office's activities, publications, and collaborations.",
-        images: [
-          { url: "/Components/images/PeAS-news-1.png", alt: "PeAS news image" },
-          { url: "/Components/images/PeAS-news-2.png", alt: "PeAS news image" },
-          { url: "/Components/images/PeAS-news-3.png", alt: "PeAS news image" },
-        ],
-      },
-    });
-  }
-
-  if (name === "Announcement Campaign") {
-    next.title = "Announcement Campaign";
-    next.pages.landing.data.content.unshift({
-      type: "AnnouncementBanner",
-      props: {
-        id: "campaign-announcement",
-        tone: "gold",
-        text: "New publication updates are available from the Office of Research & Publications.",
-        href: "/news.html",
-        linkLabel: "View updates",
-      },
-    });
-  }
-
-  if (name === "Focused Login") {
-    next.title = "Focused Login";
-    const loginShell = next.pages.login.data.content.find((block) => block.type === "LoginShellBlock");
-    if (loginShell) {
-      loginShell.props = {
-        ...loginShell.props,
-        layout: "focused",
-        title: "Sign in to PeAS",
-        subtitle: "Access your saved documents, history, and research tools.",
-      };
-    }
-  }
-
-  next.updatedAt = new Date().toISOString();
-  return next;
-}
-
-function getGuardrails(config: ExperienceConfig, page: PageKey): string[] {
-  const warnings: string[] = [];
-  const data = config.pages[page].data;
-  const json = JSON.stringify(data);
-  const linkMatches = json.match(/"href"\s*:\s*"([^"]+)"/g) || [];
-
-  data.content.forEach((block) => {
-    const props = block.props || {};
-    if ("imageUrl" in props && props.imageUrl && !props.imageAlt) {
-      warnings.push(`${sectionName(block.type)}: the picture has no description for blind visitors.`);
-    }
-    if ("images" in props && Array.isArray(props.images)) {
-      props.images.forEach((image: any, index: number) => {
-        if (image?.url && !image?.alt) warnings.push(`${sectionName(block.type)}: picture ${index + 1} has no description for blind visitors.`);
-      });
-    }
-    if ("roles" in props && Array.isArray(props.roles)) {
-      props.roles.forEach((role: OrganizationRole, index: number) => {
-        const roleName = role.name || role.title || role.label || `Role ${index + 1}`;
-        if (role.photo && !role.photoAlt?.trim()) {
-          warnings.push(`${roleName}: the profile photo has no description for blind visitors.`);
-        }
-        const requiredRoleFields: Array<[keyof OrganizationRole, string]> = [
-          ["title", "position or board name"],
-          ["label", "short chart label"],
-          ["caption", "office or unit"],
-        ];
-        requiredRoleFields.forEach(([field, fieldLabel]) => {
-          if (!String(role[field] || "").trim()) {
-            warnings.push(`${roleName}: ${fieldLabel} is required.`);
-          }
-        });
-        if (role.title && role.title.length > 100) {
-          warnings.push(`${roleName}: the position is very long and may not fit on phones.`);
-        }
-      });
-    }
-    if (typeof props.title === "string" && props.title.length > 110) {
-      warnings.push(`${sectionName(block.type)}: the title is very long and may not fit on phones.`);
-    }
-  });
-
-  linkMatches.forEach((match) => {
-    const href = match.replace(/^"href"\s*:\s*"/, "").replace(/"$/, "");
-    const safe = href.startsWith("/") || href.startsWith("#") || href.startsWith("mailto:") ||
-      href.startsWith("https://") || href.startsWith("http://");
-    if (!safe) warnings.push(`A link points to “${href}”, which doesn't look like a valid address.`);
-  });
-
-  return warnings.length ? warnings : ["No issues found for this page."];
-}
-
 function ImageUrlField(props: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   uploadKind?: string;
   altText?: string;
-  storageHint?: string;
   allowManualPath?: boolean;
+  onReplace?: (value: string) => void;
   clearLabel?: string;
   onClear?: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const reportUpload = useContext(UploadActivity);
+  const replaceImage = props.onReplace ?? props.onChange;
+  const changeImage = useRef(replaceImage);
+  useLayoutEffect(() => { changeImage.current = replaceImage; }, [replaceImage]);
+  const uploadId = useId();
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File) => {
+    reportUpload(1);
     setUploading(true);
     setUploadError("");
     try {
@@ -377,11 +261,13 @@ function ImageUrlField(props: {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.details || data.error || "Upload failed");
-      if (data.asset?.file_path) props.onChange(data.asset.file_path);
+      if (!data.asset?.file_path) throw new Error("The upload did not return a photo. Try replacing it again.");
+      changeImage.current(data.asset.file_path);
     } catch (error) {
       setUploadError(errorMessage(error));
     } finally {
       setUploading(false);
+      reportUpload(-1);
     }
   };
 
@@ -397,24 +283,25 @@ function ImageUrlField(props: {
           onError={(event) => { event.currentTarget.style.display = "none"; }}
         />
       ) : null}
-      <div className="xp-copy-row">
-        <input
-          value={props.value || ""}
-          readOnly={props.allowManualPath === false}
-          aria-label={props.allowManualPath === false ? `${props.label} storage path` : undefined}
-          placeholder="Upload or use an existing PeAS image path"
-          onChange={(event) => {
-            if (props.allowManualPath !== false) props.onChange(event.target.value);
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? "Uploading..." : "Upload"}
-        </button>
-      </div>
+      <button
+        className="xp-studio-button"
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        aria-label={`${uploading ? "Uploading" : props.value ? "Replace photo" : "Upload photo"} · ${props.label}`}
+        aria-describedby={uploadId}
+      >
+        {uploading ? "Uploading…" : props.value ? "Replace photo" : "Upload photo"}
+      </button>
+      {props.allowManualPath !== false && (
+        <details>
+          <summary>Use an existing PeAS image</summary>
+          <label>
+            <span>{props.label} path</span>
+            <input value={props.value || ""} onChange={(event) => props.onChange(event.target.value)} />
+          </label>
+        </details>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -439,8 +326,8 @@ function ImageUrlField(props: {
         </button>
       ) : null}
       {uploadError
-        ? <small className="xp-field-error">{uploadError}</small>
-        : <small className="xp-field-help">{props.storageHint || "JPG, PNG, or WEBP up to 8MB."}</small>}
+        ? <small className="xp-field-error" role="alert" id={uploadId}>{uploadError}</small>
+        : <small className="xp-field-help" id={uploadId}>JPG, PNG, or WebP up to 8 MB.</small>}
     </div>
   );
 }
@@ -506,16 +393,21 @@ function OrganizationRolesField(props: {
                     roleIndex === index ? { ...item, photo: "", photoAlt: "" } : item
                   ))}
                   onChange={(value) => updateRole(index, "photo", value)}
+                  onReplace={(value) => props.onChange(roles.map((item, roleIndex) =>
+                    roleIndex === index ? { ...item, photo: value, photoAlt: "" } : item
+                  ))}
                 />
                 <label>
                   <span>Photo description</span>
                   <input
+                    id={`roles-${index}-photoAlt`}
+                    aria-describedby={`roles-${index}-photoAlt-help`}
                     value={role.photoAlt || ""}
                     placeholder={fieldPlaceholders.photoAlt}
                     maxLength={255}
                     onChange={(event) => updateRole(index, "photoAlt", event.target.value)}
                   />
-                  <small className="xp-field-help">Required when a photo is used. Describe what the photo shows.</small>
+                  <small className="xp-field-help" id={`roles-${index}-photoAlt-help`}>Required when a photo is used. Describe what the photo shows.</small>
                 </label>
                 <label>
                   <span>Person's name</span>
@@ -586,52 +478,50 @@ function HeroImagesField(props: {
     ...(currentImages[index] || {}),
   }));
 
-  const updateImage = (index: number, key: keyof HeroImage, value: string) => {
+  const updateImage = (index: number, update: Partial<HeroImage>) => {
     props.onChange(images.map((image, imageIndex) =>
-      imageIndex === index ? { ...image, [key]: value } : image
+      imageIndex === index ? { ...image, ...update } : image
     ));
   };
 
   return (
-    <section className="xp-array-field" aria-labelledby="xp-hero-images-title">
-      <div className="xp-array-heading">
-        <span id="xp-hero-images-title">Hero background photos</span>
-        <small>4 fixed slideshow slots</small>
-      </div>
-      <p className="xp-help-text">
-        Replace each slot independently. Uploads stay in that slot's dedicated hero folder, and the public page fades through the slots in this order.
-      </p>
-      {images.map((image, index) => {
-        const slotNumber = index + 1;
-        return (
-          <div className="xp-array-item" key={`hero-slot-${slotNumber}`}>
-            <div className="xp-array-item-top">
-              <strong>Slideshow photo {slotNumber}</strong>
-              <small>Slot {slotNumber}</small>
-            </div>
-            <ImageUrlField
-              label="Photo"
-              value={image.url || ""}
-              uploadKind={`hero-slot-${slotNumber}`}
-              altText={image.alt}
-              storageHint={`JPG, PNG, or WEBP up to 8MB. Stored in hero/slot-${slotNumber}.`}
-              allowManualPath={false}
-              onChange={(value) => updateImage(index, "url", value)}
-            />
-            <label>
-              <span>Photo description</span>
-              <input
-                value={image.alt || ""}
-                maxLength={255}
-                placeholder={`Describe slideshow photo ${slotNumber}`}
-                onChange={(event) => updateImage(index, "alt", event.target.value)}
+    <details className="xp-slideshow">
+      <summary>Welcome slideshow <small>4 photos</small></summary>
+      <div className="xp-array-field">
+        <p className="xp-help-text">Replace any of the four photos shown in the Home page slideshow.</p>
+        {images.map((image, index) => {
+          const slotNumber = index + 1;
+          return (
+            <div className="xp-array-item" key={`hero-slot-${slotNumber}`}>
+              <div className="xp-array-item-top">
+                <strong>Slideshow photo {slotNumber}</strong>
+
+              </div>
+              <ImageUrlField
+                label={`Slideshow photo ${slotNumber}`}
+                value={image.url || ""}
+                uploadKind={`hero-slot-${slotNumber}`}
+                altText={image.alt}
+                allowManualPath={false}
+                onChange={(value) => updateImage(index, { url: value, alt: "" })}
               />
-              <small className="xp-field-help">Required before publishing. Describe what this photo shows.</small>
-            </label>
-          </div>
-        );
-      })}
-    </section>
+              <label>
+                <span>Photo description</span>
+                <input
+                  id={`images-${index}-alt`}
+                  aria-describedby={`images-${index}-alt-help`}
+                  value={image.alt || ""}
+                  maxLength={255}
+                  placeholder={`Describe slideshow photo ${slotNumber}`}
+                  onChange={(event) => updateImage(index, { alt: event.target.value })}
+                />
+                <small className="xp-field-help" id={`images-${index}-alt-help`}>Required before publishing. Describe what this photo shows.</small>
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -735,23 +625,23 @@ function FaqCategoriesField(props: {
   };
 
   return (
-    <section className="xp-array-field xp-faq-editor" aria-labelledby="xp-faq-categories-title">
+    <section className="xp-array-field xp-faq-editor" aria-labelledby="categories" id="categories-editor">
       <div className="xp-array-heading">
-        <span id="xp-faq-categories-title">FAQ categories and questions</span>
+        <span id="categories" tabIndex={-1}>FAQ categories and questions</span>
         <small>{categories.length} categories · {totalItems} questions</small>
       </div>
-      <p className="xp-help-text">Answers are plain text. Categories and questions can be reordered; their IDs stay stable so public links and saved drafts remain consistent.</p>
+      <p className="xp-help-text">Open a category and choose a question to edit its answer.</p>
       <div className="xp-faq-editor__categories">
         {categories.map((category, categoryIndex) => (
           <details className="xp-array-item xp-faq-editor__category" key={category.id}>
             <summary>
               <strong>{category.label || `Category ${categoryIndex + 1}`}</strong>
-              <small>{category.items.length} questions</small>
+              <small>{category.items.length} {category.items.length === 1 ? "question" : "questions"}</small>
             </summary>
             <div className="xp-faq-editor__category-body">
               <label>
                 <span>Category name</span>
-                <input value={category.label} maxLength={80} onChange={(event) => updateCategory(categoryIndex, { label: event.currentTarget.value })} />
+                <input id={`categories-${categoryIndex}-label`} value={category.label} maxLength={80} onChange={(event) => updateCategory(categoryIndex, { label: event.currentTarget.value })} />
               </label>
               <div className="xp-faq-editor__controls" aria-label={`Move or remove ${category.label || "category"}`}>
                 <button type="button" className="xp-array-control" onClick={() => moveCategory(categoryIndex, -1)} disabled={categoryIndex === 0}>Move up</button>
@@ -760,22 +650,24 @@ function FaqCategoriesField(props: {
               </div>
               <div className="xp-faq-editor__items">
                 {category.items.map((item, itemIndex) => (
-                  <div className="xp-array-item xp-faq-editor__item" key={item.id}>
-                    <div className="xp-faq-editor__item-heading"><strong>Question {itemIndex + 1}</strong><small>Plain text</small></div>
-                    <label>
-                      <span>Question</span>
-                      <input value={item.question} maxLength={180} onChange={(event) => updateItem(categoryIndex, itemIndex, { question: event.currentTarget.value })} />
-                    </label>
-                    <label>
-                      <span>Answer</span>
-                      <textarea value={item.answer} maxLength={2000} rows={5} onChange={(event) => updateItem(categoryIndex, itemIndex, { answer: event.currentTarget.value })} />
-                    </label>
-                    <div className="xp-faq-editor__controls">
-                      <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, -1)} disabled={itemIndex === 0}>Move up</button>
-                      <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, 1)} disabled={itemIndex === category.items.length - 1}>Move down</button>
-                      <button type="button" className="xp-array-control is-danger" onClick={() => updateCategory(categoryIndex, { items: category.items.filter((_, index) => index !== itemIndex) })} disabled={category.items.length <= 1}>Remove question</button>
+                  <details className="xp-array-item xp-faq-editor__item" key={item.id}>
+                    <summary>{item.question || "Untitled question"}</summary>
+                    <div className="xp-faq-editor__category-body">
+                      <label>
+                        <span>Question</span>
+                        <input id={`categories-${categoryIndex}-items-${itemIndex}-question`} value={item.question} maxLength={180} onChange={(event) => updateItem(categoryIndex, itemIndex, { question: event.currentTarget.value })} />
+                      </label>
+                      <label>
+                        <span>Answer</span>
+                        <textarea id={`categories-${categoryIndex}-items-${itemIndex}-answer`} value={item.answer} maxLength={2000} rows={5} onChange={(event) => updateItem(categoryIndex, itemIndex, { answer: event.currentTarget.value })} />
+                      </label>
+                      <div className="xp-faq-editor__controls">
+                        <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, -1)} disabled={itemIndex === 0}>Move up</button>
+                        <button type="button" className="xp-array-control" onClick={() => moveItem(categoryIndex, itemIndex, 1)} disabled={itemIndex === category.items.length - 1}>Move down</button>
+                        <button type="button" className="xp-array-control is-danger" onClick={() => updateCategory(categoryIndex, { items: category.items.filter((_, index) => index !== itemIndex) })} disabled={category.items.length <= 1}>Remove question</button>
+                      </div>
                     </div>
-                  </div>
+                  </details>
                 ))}
               </div>
               <button type="button" className="xp-studio-button" onClick={() => addItem(categoryIndex)} disabled={totalItems >= FAQ_CATEGORY_LIMITS.maxTotalItems || category.items.length >= FAQ_CATEGORY_LIMITS.maxItems}>Add question</button>
@@ -789,6 +681,7 @@ function FaqCategoriesField(props: {
 }
 
 function FieldEditor(props: {
+  id?: string;
   name: string;
   field: any;
   value: any;
@@ -797,7 +690,10 @@ function FieldEditor(props: {
   const { name, field, value, onChange } = props;
   const label = friendlyLabel(name);
   const help = fieldHelp[name];
-  const helpLine = help ? <small className="xp-field-help">{help}</small> : null;
+  const controlId = useId();
+  const helpId = help ? `${controlId}-help` : undefined;
+  const helpLine = help ? <small className="xp-field-help" id={helpId}>{help}</small> : null;
+  const fieldId = props.id || controlId;
   const maxLength = name === "eyebrow" ? 80 : name === "title" ? 140 : name === "summary" ? 600 : undefined;
 
   if (field.type === "text" && (name === "url" || name === "photo" || name.endsWith("Url"))) {
@@ -824,7 +720,7 @@ function FieldEditor(props: {
     return (
       <label>
         <span>{label}</span>
-        <textarea value={value || ""} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} />
+        <textarea rows={name === "title" ? 2 : 5} id={fieldId} aria-describedby={helpId} value={value || ""} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} />
         {helpLine}
       </label>
     );
@@ -834,7 +730,7 @@ function FieldEditor(props: {
     return (
       <label>
         <span>{label}</span>
-        <select value={value || ""} onChange={(event) => onChange(event.target.value)}>
+        <select id={fieldId} aria-describedby={helpId} value={value || ""} onChange={(event) => onChange(event.target.value)}>
           {(field.options || []).map((option: any) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
@@ -880,6 +776,8 @@ function FieldEditor(props: {
     <label>
       <span>{label}</span>
       <input
+        id={fieldId}
+        aria-describedby={helpId}
         value={value || ""}
         maxLength={maxLength}
         placeholder={fieldPlaceholders[name] || ""}
@@ -891,32 +789,34 @@ function FieldEditor(props: {
 }
 
 function BlockInspector(props: {
-  block?: BlockData;
+  block: BlockData;
   onChange: (props: Record<string, any>) => void;
 }) {
-  if (!props.block) {
-    return <div className="xp-empty-state">Choose a section from the left to edit its text, links, images, and layout.</div>;
-  }
-
-  const component = componentMap[props.block.type] || {};
-  const allowed = editableFields[props.block.type] ?? [];
-  const fields = Object.entries(component.fields || {}).filter(([name]) => allowed.includes(name));
+  const { block, onChange } = props;
+  const fields = componentMap[block.type]?.fields ?? {};
+  const allowed = editableFields[block.type] ?? [];
+  const update = (name: string, value: unknown) => onChange({ ...block.props, [name]: value });
 
   return (
     <div className="xp-field-stack">
-      <div className="xp-inspector-title">
-        <span>{sectionName(props.block.type)}</span>
-      </div>
-      {fields.map(([name, field]: [string, any]) => (
-        <FieldEditor
-          key={name}
-          name={name}
-          field={field}
-          value={props.block?.props?.[name]}
-          onChange={(value) => props.onChange({ ...(props.block?.props || {}), [name]: value })}
-        />
+      {block.type === "LoginShellBlock" && (
+        <p className="xp-help-text">PeAS supplies the staff sign-in heading and instructions. To see the password reset copy, open Preview and choose Forgot password.</p>
+      )}
+      {block.type === "ResearchAgendaBlock" && (
+        <p className="xp-help-text">Update the introduction here. To change the official list, open Research Agenda in Admin Settings.</p>
+      )}
+      {allowed.map((name) => fields[name] && (
+        <FieldEditor key={name} id={name} name={name} field={fields[name]} value={block.props[name]} onChange={(value) => update(name, value)} />
       ))}
-      {!fields.length ? <p className="xp-help-text">This system section is locked and has no editable content.</p> : null}
+      {block.props.imageUrl && "imageAlt" in block.props && (
+        <details>
+          <summary>Archived image settings</summary>
+          <label>
+            <span>Archived image description</span>
+            <input id="imageAlt" value={block.props.imageAlt} onChange={(event) => update("imageAlt", event.target.value)} />
+          </label>
+        </details>
+      )}
     </div>
   );
 }
@@ -979,594 +879,561 @@ function AssetUploader() {
   );
 }
 
+function readEditorLocation(): EditorLocation | null {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(locationKey) || "null") as EditorLocation | null;
+    return stored && pageKeys.includes(stored.page) && editableFields[stored.section] ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function issueLabel(issue: ReturnType<typeof getExperiencePublishIssues>[number]) {
+  const [, index] = issue.field.split("-");
+  if (issue.field.startsWith("images-")) return `Slideshow photo ${Number(index) + 1} needs a description.`;
+  if (issue.field === "imageAlt") return "The archived image needs a description.";
+  return issue.message.replace("requires alternative text", "needs a description");
+}
+
 export default function App() {
-  const [config, setConfig] = useState<ExperienceConfig>(() => cloneConfig(defaultExperienceConfig));
+  const [config, setConfig] = useState<ExperienceConfig>(defaultExperienceConfig);
+  const [savedConfig, setSavedConfig] = useState(config);
+  const [published, setPublished] = useState<ExperienceConfig | null>(null);
+  const [version, setVersion] = useState(0);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [screen, setScreen] = useState<Screen>("pages");
   const [activePage, setActivePage] = useState<PageKey>("landing");
-  const [device, setDevice] = useState<DeviceKey>("desktop");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
-  const [status, setStatus] = useState("Loading your pages…");
-  const [version, setVersion] = useState<number | undefined>();
+  const [section, setSection] = useState("HeroBlock");
+  const [resume, setResume] = useState(readEditorLocation);
+  const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
+  const [preview, setPreview] = useState(false);
+  const [device, setDevice] = useState<DeviceKey>(() =>
+    window.innerWidth < 640 ? "mobile" : window.innerWidth < 1100 ? "tablet" : "desktop"
+  );
   const [versions, setVersions] = useState<VersionSummary[]>([]);
-  const [busy, setBusy] = useState<"save" | "publish" | "preview" | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [identityName, setIdentityName] = useState("");
-  const [confirmState, setConfirmState] = useState<{
-    title: string;
-    body: React.ReactNode;
-    confirmLabel: string;
-    danger?: boolean;
-    onConfirm: () => void;
-  } | null>(null);
-
-  // Undo/redo: bounded snapshots of the whole config. Typing bursts are
-  // coalesced so one undo step reverts a phrase, not a keystroke.
-  const historyRef = useRef<{ past: ExperienceConfig[]; future: ExperienceConfig[] }>({ past: [], future: [] });
-  const lastHistoryPushRef = useRef(0);
-  const [, setHistoryTick] = useState(0);
-
-  const pushHistory = (snapshot: ExperienceConfig, force = false) => {
-    historyRef.current.future = [];
-    const now = Date.now();
-    if (!force && now - lastHistoryPushRef.current < 700) {
-      setHistoryTick((tick) => tick + 1);
-      return;
-    }
-    lastHistoryPushRef.current = now;
-    historyRef.current.past.push(cloneConfig(snapshot));
-    if (historyRef.current.past.length > 60) historyRef.current.past.shift();
-    setHistoryTick((tick) => tick + 1);
-  };
-
-  const undo = () => {
-    const previous = historyRef.current.past.pop();
-    if (!previous) return;
-    historyRef.current.future.push(cloneConfig(config));
-    lastHistoryPushRef.current = 0;
-    setConfig(previous);
-    setDirty(true);
-    setStatus("Undone");
-    setHistoryTick((tick) => tick + 1);
-  };
-
-  const redo = () => {
-    const next = historyRef.current.future.pop();
-    if (!next) return;
-    historyRef.current.past.push(cloneConfig(config));
-    lastHistoryPushRef.current = 0;
-    setConfig(next);
-    setDirty(true);
-    setStatus("Redone");
-    setHistoryTick((tick) => tick + 1);
-  };
-
-  const canUndo = historyRef.current.past.length > 0;
-  const canRedo = historyRef.current.future.length > 0;
-
-  const allowedBlocks = activePage === "landing" ? landingBlocks : activePage === "login" ? loginBlocks : faqBlocks;
-  const page = config.pages[activePage];
-  const pageBlocks = page.data.content as BlockData[];
-  const selectedBlock = pageBlocks[selectedIndex];
-
-  const loadVersions = async () => {
-    const payload = await fetchJson<{ versions: VersionSummary[] }>("/api/admin/experience/versions?limit=8");
-    setVersions(payload.versions);
-  };
-
-  useEffect(() => {
-    fetchJson<DraftPayload>("/api/admin/experience/draft")
-      .then((payload) => {
-        const parsed = ExperienceConfigSchema.parse(payload.config);
-        setConfig(parsed);
-        setVersion(payload.version);
-        setStatus("All changes saved");
-        applyThemeVars(EXPERIENCE_FIXED_THEME);
-      })
-      .catch((error) => {
-        console.error("Failed to load draft:", error);
-        setStatus("Couldn't load your saved draft — you're seeing the standard page. Refresh to try again.");
-        applyThemeVars(EXPERIENCE_FIXED_THEME);
-      });
-    loadVersions().catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    Promise.all([
-      fetchJson<{ user?: { name?: string; username?: string } }>("/api/auth/get-session"),
-      fetchJson<{ first_name?: string; middle_name?: string; last_name?: string }>("/api/user/profile"),
-    ]).then(([session, profile]) => {
-      if (!mounted) return;
-      const profileName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ").trim();
-      setIdentityName(profileName || session.user?.name || session.user?.username || "Administrator");
-    }).catch(() => { if (mounted) setIdentityName("Administrator"); });
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => { applyThemeVars(EXPERIENCE_FIXED_THEME); }, []);
-
-  useEffect(() => {
-    setSelectedIndex(0);
-    setInspectorTab("content");
-  }, [activePage]);
-
-  // Set when the user has already confirmed leaving via the Exit button, so
-  // the browser's own beforeunload dialog doesn't ask a second time.
+  const [historyStatus, setHistoryStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [busy, setBusy] = useState<"save" | "publish" | "restore" | null>(null);
+  const operation = useRef(false);
+  const [uploads, setUploads] = useState(0);
+  const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; action: () => void } | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const canvasRef = useRef<HTMLIFrameElement>(null);
+  const lastField = useRef("");
   const leaveConfirmed = useRef(false);
+  const history = useRef<{ past: ExperienceConfig[]; future: ExperienceConfig[]; lastEdit: number }>({ past: [], future: [], lastEdit: 0 });
+
+  const dirty = config !== savedConfig;
+  const working = busy !== null || uploads > 0;
+  const selected = config.pages[activePage].data.content.find((block) => block.type === section);
+  const issues = useMemo(() => getExperiencePublishIssues(config), [config]);
+  const invalidDraft = issues.some((issue) => issue.page === "faq");
+  const changes = useMemo(() => {
+    if (!published || (screen !== "review" && screen !== "pages")) return [];
+    const normalized = invalidDraft ? config : migrateExperienceConfigToV6(config);
+    return pageKeys.flatMap((page) => normalized.pages[page].data.content
+      .filter((block) => {
+        const live = published.pages[page].data.content.find((item) => item.type === block.type);
+        return JSON.stringify(block.props) !== JSON.stringify(live?.props);
+      })
+      .map((block) => ({ page, section: block.type })));
+  }, [config, invalidDraft, published, screen]);
+
+  const statusText = busy === "publish" ? "Publishing changes…" : busy === "restore" ? "Restoring draft…" : busy === "save"
+    ? "Saving draft…" : uploads ? "Uploading photo…" : status || (dirty ? "Unsaved changes" : hasDraft ? "Draft saved" : "Viewing published content");
+
+  async function loadDraft() {
+    setLoadState("loading");
+    setError("");
+    try {
+      const data = await fetchJson<DraftPayload>("/api/admin/experience/draft");
+      const draft = ExperienceConfigSchema.parse(data.config);
+      const live = ExperienceConfigSchema.parse(data.publishedConfig);
+      setConfig(draft);
+      setSavedConfig(draft);
+      setPublished(live);
+      setVersion(data.version);
+      setHasDraft(data.status === "draft");
+      setConflict(false);
+      setStatus("");
+      history.current = { past: [], future: [], lastEdit: 0 };
+      setLoadState("ready");
+    } catch {
+      setLoadState("error");
+    }
+  }
+
+  const loadOnMount = useEffectEvent(loadDraft);
+  useEffect(() => {
+    applyThemeVars(EXPERIENCE_FIXED_THEME);
+    void loadOnMount();
+  }, []);
+
+  async function loadVersions() {
+    setHistoryStatus("loading");
+    try {
+      const payload = await fetchJson<{ versions: VersionSummary[] }>("/api/admin/experience/versions?limit=8");
+      setVersions(payload.versions);
+      setHistoryStatus("ready");
+    } catch {
+      setHistoryStatus("error");
+    }
+  }
 
   useEffect(() => {
-    if (!dirty) return;
-    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+    const dialog = dialogRef.current;
+    if (confirm && dialog && !dialog.open) dialog.showModal();
+  }, [confirm]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const field = document.getElementById(focusRequest.id) ?? document.getElementById("studio-title");
+    if (!field) return;
+    for (let parent = field.parentElement; parent; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    }
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({ block: "nearest" });
+  }, [focusRequest, loadState]);
+
+  useEffect(() => {
+    if (!dirty && !working) return;
+    const warn = (event: BeforeUnloadEvent) => {
       if (leaveConfirmed.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
-    window.addEventListener("beforeunload", warnBeforeLeaving);
-    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [dirty]);
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, working]);
 
-  const exitStudio = () => {
-    if (!dirty) {
+  function navigate(next: Screen, id = "studio-title") {
+    setPreview(false);
+    setScreen(next);
+    setFocusRequest({ id });
+  }
+
+  function openSection(location: EditorLocation, field?: string) {
+    setActivePage(location.page);
+    setSection(location.section);
+    setResume(location);
+    try { sessionStorage.setItem(locationKey, JSON.stringify(location)); } catch { /* Storage is optional. */ }
+    lastField.current = "";
+    history.current.lastEdit = 0;
+    navigate("edit", field || "studio-title");
+  }
+
+  function openPage(page: PageKey) {
+    if (page === "login" || page === "faq") {
+      openSection({ page, section: page === "login" ? "LoginShellBlock" : "FaqBlock" });
+    } else {
+      setActivePage(page);
+      navigate("sections");
+    }
+  }
+
+  function exit() {
+    const leave = () => {
+      leaveConfirmed.current = true;
       window.location.assign("/admin/Components/admin_settings.html");
+    };
+    if (dirty) setConfirm({ title: "Leave without saving?", body: "Changes since the last successful save will be lost.", label: "Leave studio", action: leave });
+    else leave();
+  }
+
+  function updateBlock(props: Record<string, unknown>) {
+    if (!selected) return;
+    const now = Date.now();
+    if (now - history.current.lastEdit > 700) {
+      history.current.past = [...history.current.past.slice(-59), config];
+    }
+    history.current.lastEdit = now;
+    history.current.future = [];
+    setConfig({
+      ...config,
+      pages: {
+        ...config.pages,
+        [activePage]: {
+          ...config.pages[activePage],
+          data: {
+            ...config.pages[activePage].data,
+            content: config.pages[activePage].data.content.map((block) => block.type === section ? { ...block, props } : block),
+          },
+        },
+      },
+    });
+    setError("");
+    setStatus("");
+  }
+
+  function undoOrRedo(direction: "past" | "future") {
+    if (working) return;
+    const step = history.current[direction].pop();
+    if (!step) return;
+    history.current[direction === "past" ? "future" : "past"].push(config);
+    history.current.lastEdit = 0;
+    setConfig(step);
+    setStatus("");
+    setError("");
+  }
+
+  const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (screen !== "edit" || confirm || working || !(event.metaKey || event.ctrlKey)) return;
+    if ((event.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable]")) return;
+    const key = event.key.toLowerCase();
+    if (key !== "z" && key !== "y") return;
+    event.preventDefault();
+    undoOrRedo(key === "y" || event.shiftKey ? "future" : "past");
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => handleShortcut(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
+  async function persistDraft() {
+    const data = await fetchJson<DraftPayload>("/api/admin/experience/draft", {
+      method: "PUT",
+      body: JSON.stringify({ config, expectedVersion: version }),
+    });
+    const saved = ExperienceConfigSchema.parse(data.config);
+    setConfig((current) => current === config ? saved : current);
+    setSavedConfig(saved);
+    setVersion(data.version);
+    setHasDraft(true);
+    return data.version;
+  }
+
+  async function runAction(action: NonNullable<typeof busy>, operationBody: () => Promise<void>) {
+    if (operation.current || loadState !== "ready" || conflict || uploads) return;
+    operation.current = true;
+    setBusy(action);
+    setError("");
+    try {
+      await operationBody();
+    } catch (failure) {
+      const code = failure instanceof ExperienceRequestError ? failure.status : 0;
+      setConflict(code === 409);
+      setError(code === 409
+        ? "Another administrator or tab updated the draft. Load the latest draft to continue."
+        : `Couldn't ${action === "save" ? "save the draft" : action === "publish" ? "publish the draft" : "restore this version"}. Try again.`);
+    } finally {
+      operation.current = false;
+      setBusy(null);
+    }
+  }
+
+  function saveDraft() {
+    if (invalidDraft) {
+      navigate("review");
       return;
     }
-    setConfirmState({
-      title: "Leave without saving?",
-      body: <p>You have unsaved changes. If you leave now, they will be lost.</p>,
-      confirmLabel: "Leave studio",
-      danger: true,
-      onConfirm: () => {
-        leaveConfirmed.current = true;
-        window.location.assign("/admin/Components/admin_settings.html");
-      },
+    void runAction("save", async () => {
+      await persistDraft();
+      setStatus("");
     });
-  };
+  }
 
-  // Cmd/Ctrl+Z to undo, Shift+Cmd/Ctrl+Z or Ctrl+Y to redo — except while
-  // typing in a field, where the browser's own text undo should win.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable]")) return;
-      const key = event.key.toLowerCase();
-      if (key === "z" && !event.shiftKey) {
-        event.preventDefault();
-        undo();
-      } else if ((key === "z" && event.shiftKey) || key === "y") {
-        event.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+  const autosave = useEffectEvent(() => {
+    void runAction("save", async () => {
+      await persistDraft();
+      setStatus("");
+    });
   });
-
-  // Autosave the draft half a minute after the last change
   useEffect(() => {
-    if (!dirty || busy !== null) return;
-    const timer = setTimeout(() => {
-      persistDraft()
-        .then(() => setStatus("Saved automatically"))
-        .catch((error) => {
-          console.error("Autosave failed:", error);
-          setStatus("Couldn't save automatically — click Save draft");
-        });
-    }, 25000);
+    if (!dirty || invalidDraft || working || conflict || loadState !== "ready" || error || confirm || screen === "review") return;
+    const timer = setTimeout(() => autosave(), 25000);
     return () => clearTimeout(timer);
-  }, [dirty, busy, config]);
+  }, [config, dirty, invalidDraft, working, conflict, loadState, error, confirm, screen]);
 
-  const guardrails = useMemo(() => getGuardrails(config, activePage), [config, activePage]);
+  function publishChanges() {
+    if (issues.length || !changes.length) return;
+    void runAction("publish", async () => {
+      const expectedVersion = dirty || !hasDraft ? await persistDraft() : version;
+      const result = await fetchJson<DraftPayload>("/api/admin/experience/publish", {
+        method: "POST",
+        body: JSON.stringify({ expectedVersion }),
+      });
+      const live = ExperienceConfigSchema.parse(result.config);
+      setConfig(live);
+      setSavedConfig(live);
+      setPublished(live);
+      setVersion(result.version);
+      setHasDraft(false);
+      setStatus("Changes published. Visitors can see the updated website.");
+      navigate("pages");
+    });
+  }
 
-  // The canvas is the real public page in an iframe; the draft config is
-  // streamed into it so the preview matches what visitors will see exactly.
-  const canvasRef = useRef<HTMLIFrameElement>(null);
-  const canvasSrc = activePage === "login"
-    ? "/log-in.html?experienceCanvas=1"
-    : activePage === "faq"
-      ? "/faq.html?experienceCanvas=1"
-      : "/index.html?experienceCanvas=1";
+  function restore(item: VersionSummary) {
+    setConfirm({
+      title: `Restore version ${item.version} to the draft?`,
+      body: "This replaces the current draft. Visitors will see the restored content after you review and publish it.",
+      label: "Restore to draft",
+      action: () => void runAction("restore", async () => {
+        const data = await fetchJson<DraftPayload>("/api/admin/experience/rollback", {
+          method: "POST",
+          body: JSON.stringify({ versionId: item.id, expectedVersion: version }),
+        });
+        history.current.past = [...history.current.past.slice(-59), config];
+        history.current.future = [];
+        const restored = ExperienceConfigSchema.parse(data.config);
+        setConfig(restored);
+        setSavedConfig(restored);
+        setVersion(data.version);
+        setHasDraft(true);
+        setStatus(`Version ${item.version} restored to the draft.`);
+        navigate("review");
+      }),
+    });
+  }
 
-  const postConfigToCanvas = () => {
-    canvasRef.current?.contentWindow?.postMessage(
-      { type: "experience-config", config },
-      window.location.origin,
-    );
-  };
+  function sendPreview(scroll: boolean) {
+    const iframe = canvasRef.current;
+    iframe?.contentWindow?.postMessage({ type: "experience-config", config }, window.location.origin);
+    if (scroll && iframe?.contentWindow) {
+      const target = iframe.contentDocument?.querySelector(sections[section]?.preview);
+      if (target) iframe.contentWindow.scrollTo(0, iframe.contentWindow.scrollY + target.getBoundingClientRect().top - 96);
+    }
+  }
 
-  useEffect(() => {
-    postConfigToCanvas();
-  }, [config, activePage]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "experience-canvas-ready") postConfigToCanvas();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+  const refreshPreview = useEffectEvent((event: MessageEvent) => {
+    if (event.origin === window.location.origin && event.source === canvasRef.current?.contentWindow && event.data?.type === "experience-canvas-ready") {
+      sendPreview(true);
+    }
   });
+  const syncPreview = useEffectEvent(() => sendPreview(false));
+  useEffect(() => {
+    const listener = (event: MessageEvent) => refreshPreview(event);
+    window.addEventListener("message", listener);
+    return () => window.removeEventListener("message", listener);
+  }, []);
+  useEffect(() => {
+    if (preview) syncPreview();
+  }, [config, preview]);
 
-  const setNextConfig = (next: ExperienceConfig, nextStatus = "You have unsaved changes") => {
-    pushHistory(config);
-    next.updatedAt = new Date().toISOString();
-    setConfig(next);
-    setStatus(nextStatus);
-    setDirty(true);
-  };
-
-  const updatePageBlocks = (blocks: BlockData[]) => {
-    const next = cloneConfig(config);
-    next.pages[activePage].data.content = blocks as any;
-    setNextConfig(next);
-  };
-
-  const updateSelectedBlock = (nextProps: Record<string, any>) => {
-    if (!selectedBlock) return;
-    updatePageBlocks(pageBlocks.map((block, index) =>
-      index === selectedIndex ? { ...block, props: nextProps } : block
-    ));
-  };
-
-  const addBlock = (type: string) => {
-    const component = componentMap[type] || {};
-    const nextBlock = {
-      type,
-      props: {
-        ...(component.defaultProps || {}),
-        id: `${type.replace(/Block$/, "").toLowerCase()}-${Date.now()}`,
-      },
+  useLayoutEffect(() => {
+    const frame = canvasRef.current?.parentElement;
+    if (!preview || !frame) return;
+    const width = previewWidths[device];
+    const fitPreview = () => {
+      frame.style.setProperty("--preview-width", `${width}px`);
+      frame.style.setProperty("--preview-scale", String(Math.min(1, frame.clientWidth / width)));
     };
-    updatePageBlocks([...pageBlocks, nextBlock]);
-    setSelectedIndex(pageBlocks.length);
-    setInspectorTab("content");
-  };
+    fitPreview();
+    const observer = new ResizeObserver(fitPreview);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [preview, device]);
 
-  const moveBlock = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= pageBlocks.length) return;
-    const nextBlocks = [...pageBlocks];
-    const [block] = nextBlocks.splice(index, 1);
-    nextBlocks.splice(target, 0, block);
-    updatePageBlocks(nextBlocks);
-    setSelectedIndex(target);
-  };
+  function togglePreview() {
+    setPreview(!preview);
+    setFocusRequest({ id: preview ? lastField.current || "studio-title" : "preview-heading" });
+  }
 
-  const duplicateBlock = (index: number) => {
-    const block = pageBlocks[index];
-    if (!block) return;
-    const nextBlock = JSON.parse(JSON.stringify(block));
-    nextBlock.props = {
-      ...nextBlock.props,
-      id: `${nextBlock.props?.id || block.type}-${Date.now()}`,
-    };
-    updatePageBlocks([...pageBlocks.slice(0, index + 1), nextBlock, ...pageBlocks.slice(index + 1)]);
-    setSelectedIndex(index + 1);
-  };
-
-  const deleteBlock = (index: number) => {
-    const block = pageBlocks[index];
-    if (!block) return;
-    setConfirmState({
-      title: `Delete “${sectionName(block.type)}”?`,
-      body: <p>The section is removed from this page. If you change your mind, press Undo.</p>,
-      confirmLabel: "Delete section",
-      danger: true,
-      onConfirm: () => {
-        updatePageBlocks(pageBlocks.filter((_, itemIndex) => itemIndex !== index));
-        setSelectedIndex(Math.max(0, index - 1));
-      },
-    });
-  };
-
-  const persistDraft = async () => {
-    const parsed = ExperienceConfigSchema.parse(config);
-    const result = await fetchJson<{ config: ExperienceConfig; version: number }>("/api/admin/experience/draft", {
-      method: "PUT",
-      body: JSON.stringify({ config: parsed }),
-    });
-    setConfig(ExperienceConfigSchema.parse(result.config));
-    setVersion(result.version);
-    setDirty(false);
-    await loadVersions();
-    return result;
-  };
-
-  const saveDraft = async () => {
-    setBusy("save");
-    setStatus("Saving…");
-    try {
-      await persistDraft();
-      setStatus("All changes saved");
-    } catch (error) {
-      console.error("Save failed:", error);
-      setStatus("Couldn't save — check your connection and try again");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const publish = () => {
-    const pageWarnings = (page: PageKey) =>
-      getGuardrails(config, page).filter((warning) => !warning.startsWith("No issues"));
-    const allWarnings = [...pageWarnings("landing"), ...pageWarnings("login"), ...pageWarnings("faq")];
-
-    setConfirmState({
-      title: "Publish to the live site?",
-      body: (
-        <>
-          <p>Your draft replaces the current public pages, and every visitor sees it right away.</p>
-          {allWarnings.length ? (
-            <>
-              <p>You may want to fix these first:</p>
-              <ul>
-                {allWarnings.map((warning) => <li key={warning}>{warning}</li>)}
-              </ul>
-            </>
-          ) : (
-            <p>Checks found no issues.</p>
-          )}
-        </>
-      ),
-      confirmLabel: allWarnings.length ? "Publish anyway" : "Publish now",
-      onConfirm: async () => {
-        setBusy("publish");
-        setStatus("Publishing…");
-        try {
-          await persistDraft();
-          const result = await fetchJson<{ version: number }>("/api/admin/experience/publish", {
-            method: "POST",
-            body: JSON.stringify({}),
-          });
-          setVersion(result.version);
-          setStatus("Published — the live site is updated");
-          await loadVersions();
-        } catch (error) {
-          console.error("Publish failed:", error);
-          setStatus("Couldn't publish — please try again");
-        } finally {
-          setBusy(null);
-        }
-      },
-    });
-  };
-
-  const previewDraft = async () => {
-    setBusy("preview");
-    setStatus("Saving your draft…");
-    try {
-      await persistDraft();
-      setStatus("All changes saved");
-      const target = activePage === "login" ? "/log-in.html" : activePage === "faq" ? "/faq.html" : "/index.html";
-      window.open(`${target}?experiencePreview=draft`, "_blank");
-    } catch (error) {
-      console.error("Preview failed:", error);
-      setStatus("Couldn't open the preview — please try again");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const formatWhen = (iso?: string | null) => {
-    if (!iso) return "";
-    const date = new Date(iso);
-    return Number.isNaN(date.getTime())
-      ? ""
-      : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  };
-
-  const rollback = (item: VersionSummary) => {
-    const when = formatWhen(item.updatedAt);
-    setConfirmState({
-      title: "Restore this version?",
-      body: (
-        <p>
-          Your draft becomes the version saved {when || "earlier"}. Nothing goes live until you
-          publish, and you can undo this.
-        </p>
-      ),
-      confirmLabel: "Restore version",
-      onConfirm: async () => {
-        try {
-          const result = await fetchJson<{ config: ExperienceConfig; version: number; sourceVersion: number }>("/api/admin/experience/rollback", {
-            method: "POST",
-            body: JSON.stringify({ versionId: item.id }),
-          });
-          const parsed = ExperienceConfigSchema.parse(result.config);
-          pushHistory(config, true);
-          setConfig(parsed);
-          setVersion(result.version);
-          setDirty(false);
-          setStatus("Version restored — click Publish to make it live");
-          await loadVersions();
-        } catch (error) {
-          console.error("Restore failed:", error);
-          setStatus("Couldn't restore that version — please try again");
-        }
-      },
-    });
-  };
-
-  const applyRecipe = (recipe: string) => {
-    setConfirmState({
-      title: `Use the “${recipe}” starter?`,
-      body: <p>It replaces the sections on your pages with the starter layout. If you change your mind, press Undo.</p>,
-      confirmLabel: "Use starter",
-      onConfirm: () => {
-        const next = recipe === "Current PeAS" ? cloneConfig(defaultExperienceConfig) : buildRecipe(recipe, config);
-        setNextConfig(next, "Starter applied — press Undo to go back");
-      },
-    });
-  };
+  const resumeLocation = resume ?? changes.find((change) => editableFields[change.section]);
+  const pageName = pages[activePage].name;
+  const title = screen === "pages" ? "Which page do you want to update?"
+    : screen === "sections" ? `${pageName} sections`
+    : screen === "review" ? "Review changes"
+    : screen === "tools" ? "Version history and images"
+    : sectionName(section);
 
   return (
     <div className="xp-studio-shell">
-      <header className="xp-studio-topbar">
-        <button
-          type="button"
-          className="xp-studio-exit"
-          onClick={exitStudio}
-          title="Exit to PeAS Admin"
-          aria-label="Exit to Admin"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M15 6l-6 6l6 6" />
-          </svg>
-          <span>Exit to Admin</span>
-        </button>
-        <div className="xp-studio-brand">
-          <strong>PeAS Experience Studio</strong>
-          <span>
-            {dirty ? <em className="xp-dirty-dot" aria-hidden="true" /> : null}
-            {status}
-          </span>
-        </div>
-
-        <div className="xp-studio-center-actions">
-          <div className="xp-studio-segment" aria-label="Page">
-            <button className={activePage === "landing" ? "is-active" : ""} onClick={() => setActivePage("landing")}>{pageNames.landing}</button>
-            <button className={activePage === "login" ? "is-active" : ""} onClick={() => setActivePage("login")}>{pageNames.login}</button>
-            <button className={activePage === "faq" ? "is-active" : ""} onClick={() => setActivePage("faq")}>{pageNames.faq}</button>
-          </div>
-          <div className="xp-studio-segment" aria-label="Device preview">
-            {(["desktop", "tablet", "mobile"] as DeviceKey[]).map((item) => (
-              <button key={item} className={device === item ? "is-active" : ""} onClick={() => setDevice(item)} title={`See how the page looks on a ${item === "desktop" ? "computer" : item}`}>
-                {item.charAt(0).toUpperCase() + item.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="xp-studio-actions">
-          <div className="xp-studio-identity" aria-label="Authenticated identity">
-            <strong>{identityName || "Loading identity…"}</strong>
-            <small>Administrator</small>
-          </div>
-          <button className="xp-studio-button" onClick={undo} disabled={!canUndo} title="Undo the last change (Cmd/Ctrl+Z)">
-            Undo
-          </button>
-          <button className="xp-studio-button" onClick={redo} disabled={!canRedo} title="Redo the change you undid">
-            Redo
-          </button>
-          <button className="xp-studio-button" onClick={previewDraft} disabled={busy !== null} title="Saves your draft and opens it in a new tab">
-            {busy === "preview" ? "Opening…" : "Preview draft"}
-          </button>
-          <button className="xp-studio-button primary" onClick={saveDraft} disabled={busy !== null}>
-            {busy === "save" ? "Saving…" : "Save draft"}
-          </button>
-          <button className="xp-studio-button gold" onClick={publish} disabled={busy !== null} title="Puts your draft on the public site">
-            {busy === "publish" ? "Publishing…" : "Publish"}
-          </button>
-        </div>
+      <header className="xp-workspace-header">
+        <button className="xp-studio-button" type="button" onClick={exit} disabled={working}>Exit to Admin</button>
+        <strong>Edit website pages</strong>
+        {loadState === "ready" && (
+          <p role="status">
+            {statusText}
+          </p>
+        )}
       </header>
-
-      <div className="xp-simple-studio">
-        <aside className="xp-section-list" aria-label="Page sections">
-          <div className="xp-panel-heading">
-            <span>{pageNames[activePage]} sections</span>
-            <small>{pageBlocks.length} {pageBlocks.length === 1 ? "section" : "sections"}</small>
+      <main className="xp-workspace-main">
+        {loadState === "loading" && <p role="status">Loading website pages…</p>}
+        {loadState === "error" && (
+          <div className="xp-workspace-notice">
+            <h1>Couldn't load the website draft</h1>
+            <p role="alert">Try loading it again before making changes.</p>
+            <button className="xp-studio-button primary" type="button" onClick={() => {
+              setFocusRequest({ id: "studio-title" });
+              void loadDraft();
+            }}>Retry</button>
+          </div>
+        )}
+        {loadState === "ready" && <>
+          {screen !== "pages" && (
+            <nav aria-label="Website editor navigation" className="xp-workspace-nav">
+              <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("pages")}>Website pages</button>
+              {screen === "edit" && activePage === "landing" && (
+                <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("sections", `section-${section}`)}>Home page sections</button>
+              )}
+            </nav>
+          )}
+          {error && <p className="xp-workspace-error" role="alert">{error}</p>}
+          {conflict && (
+            <button className="xp-studio-button" type="button" onClick={() => {
+              const reload = () => { navigate("pages"); void loadDraft(); };
+              if (dirty) setConfirm({ title: "Load the latest draft?", body: "This will discard your unsaved edits in this tab.", label: "Load draft", action: reload });
+              else reload();
+            }}>Load latest draft</button>
+          )}
+          <div className="xp-workspace-title">
+            <h1 id="studio-title" tabIndex={-1}>{title}</h1>
+            {screen === "edit" && activePage !== "landing" && <p>{pageName}</p>}
           </div>
 
-          <div className="xp-block-stack">
-            {pageBlocks.map((block, index) => (
-              <button
-                key={`${block.type}-${block.props?.id || index}`}
-                className={selectedIndex === index ? "is-active" : ""}
-                type="button"
-                onClick={() => {
-                  setSelectedIndex(index);
-                  setInspectorTab("content");
-                }}
-              >
-                <span>{sectionName(block.type)}</span>
-                <small>{block.props?.title || block.props?.text || block.props?.brandText || "Click to edit"}</small>
-              </button>
-            ))}
-          </div>
-
-          <p className="xp-locked-layout-note">Layout and section order are managed by the PeAS application. Select a section to edit its approved text and photos.</p>
-
-          <details className="xp-sidebar-details">
-            <summary>Version history{version ? ` (v${version})` : ""}</summary>
-            <div className="xp-mini-list">
-              {versions.map((item) => (
-                <button key={item.id} type="button" onClick={() => rollback(item)} disabled={item.status === "published"}>
-                  <strong>{item.status === "published" ? "Currently live" : "Restore this version"}</strong>
-                  <small>
-                    {formatWhen(item.publishedAt || item.updatedAt) || `Version ${item.version}`}
-                    {(item.publishedBy || item.updatedBy) ? ` · by ${item.publishedBy || item.updatedBy}` : ""}
-                  </small>
-                </button>
+          {screen === "pages" && <>
+            <ul className="xp-choice-list">
+              {pageKeys.map((page) => (
+                <li key={page}>
+                  <button className="xp-choice" type="button" onClick={() => openPage(page)}>
+                    <strong>{pages[page].name}</strong>
+                    <span>{pages[page].description}</span>
+                  </button>
+                </li>
               ))}
-            </div>
-          </details>
-        </aside>
-
-        <main className="xp-preview-workspace" aria-label="Live page preview">
-          <div className="xp-preview-toolbar">
-            <div>
-              <strong>{page.title}</strong>
-              <span>{activePage === "landing" ? "This is your public home page" : activePage === "faq" ? "This is your public FAQ page" : "This is your public sign-in page"}</span>
-            </div>
-            <span className="xp-layout-locked-badge">Layout locked</span>
-          </div>
-          <div className={`xp-preview-frame ${device} is-${activePage}`}>
-            <iframe
-              ref={canvasRef}
-              title="Live page preview"
-              src={canvasSrc}
-              onLoad={postConfigToCanvas}
-            />
-          </div>
-        </main>
-
-        <aside className="xp-inspector" aria-label="Editor inspector">
-          <div className="xp-inspector-tabs">
-            {([
-              ["content", "Edit"],
-              ["checks", "Checks"],
-              ["assets", "Images"],
-            ] as Array<[InspectorTab, string]>).map(([key, label]) => (
-              <button key={key} className={inspectorTab === key ? "is-active" : ""} type="button" onClick={() => setInspectorTab(key)}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {inspectorTab === "content" ? <BlockInspector block={selectedBlock} onChange={updateSelectedBlock} /> : null}
-          {inspectorTab === "checks" ? (
-            <ul className="xp-guardrail-list">
-              {guardrails.map((warning) => <li key={warning}>{warning}</li>)}
             </ul>
-          ) : null}
-          {inspectorTab === "assets" ? <AssetUploader /> : null}
-        </aside>
-      </div>
-
-      {confirmState ? (
-        <div className="xp-modal-overlay" role="dialog" aria-modal="true" aria-label={confirmState.title}>
-          <div className="xp-modal">
-            <h2>{confirmState.title}</h2>
-            <div className="xp-modal-body">{confirmState.body}</div>
-            <div className="xp-modal-actions">
-              <button type="button" className="xp-studio-button" onClick={() => setConfirmState(null)}>
-                Go back
+            {resumeLocation && (hasDraft || dirty) && (
+              <button className="xp-studio-button" type="button" onClick={() => openSection(resumeLocation)}>
+                Continue editing {pages[resumeLocation.page].name} · {sectionName(resumeLocation.section)}
               </button>
-              <button
-                type="button"
-                className={`xp-studio-button ${confirmState.danger ? "danger" : "primary"}`}
-                onClick={() => {
-                  const action = confirmState.onConfirm;
-                  setConfirmState(null);
-                  action();
-                }}
-              >
-                {confirmState.confirmLabel}
-              </button>
+            )}
+            <div className="xp-workspace-actions">
+              {(dirty || hasDraft) && <button className="xp-studio-button primary" type="button" disabled={working} onClick={() => navigate("review")}>Review changes</button>}
+              <button className="xp-text-button" type="button" disabled={working} onClick={() => { navigate("tools"); void loadVersions(); }}>Version history and images</button>
             </div>
+          </>}
+
+          {screen === "sections" && (
+            <ul className="xp-choice-list">
+              {config.pages[activePage].data.content.map((block) => (
+                <li key={block.type}>
+                  {editableFields[block.type]
+                    ? <button id={`section-${block.type}`} className="xp-choice" type="button" onClick={() => openSection({ page: activePage, section: block.type })}>
+                      <strong>{sectionName(block.type)}</strong>
+                      <span>{sections[block.type]?.description}</span>
+                    </button>
+                    : <div className="xp-choice xp-choice-readonly">
+                      <strong>{sectionName(block.type)} <small>Read-only</small></strong>
+                      <span>{sections[block.type]?.description}</span>
+                    </div>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {screen === "edit" && selected && <>
+            <div className="xp-workspace-actions">
+              <button className="xp-studio-button" type="button" onClick={togglePreview} disabled={working}>{preview ? "Back to editing" : "Preview"}</button>
+              <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}>Undo</button>
+              <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}>Redo</button>
+            </div>
+            <div className={`xp-editor-layout${preview ? " is-previewing" : ""}`}>
+              <div className="xp-editor-fields" onFocusCapture={(event) => {
+                if (event.target.matches("input[id], textarea[id], select[id]")) lastField.current = event.target.id;
+              }}>
+                <fieldset disabled={busy === "publish" || busy === "restore"}>
+                  <legend className="xp-sr-only">{sectionName(section)} fields</legend>
+                  <UploadActivity.Provider value={(change) => setUploads((count) => count + change)}>
+                    <BlockInspector key={section} block={selected} onChange={updateBlock} />
+                  </UploadActivity.Provider>
+                </fieldset>
+                <div className="xp-workspace-actions">
+                  <button className="xp-studio-button" type="button" disabled={working || conflict || !dirty} onClick={saveDraft}>Save draft</button>
+                  <button className="xp-studio-button primary" type="button" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}>Review changes</button>
+                </div>
+                <p className="xp-help-text">Visitors see the published version until you publish your changes.</p>
+              </div>
+              {preview && (
+                <section className="xp-workspace-preview" aria-labelledby="preview-heading">
+                  <div className="xp-preview-controls">
+                    <h2 tabIndex={-1} id="preview-heading">Draft preview</h2>
+                    <label>Preview width
+                      <select value={device} onChange={(event) => setDevice(event.target.value as DeviceKey)}>
+                        <option value="desktop">Desktop</option>
+                        <option value="tablet">Tablet</option>
+                        <option value="mobile">Mobile</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className={`xp-preview-frame ${device}`}>
+                    <iframe ref={canvasRef} title={`Draft preview of ${pageName}`} src={`${pages[activePage].url}?experienceCanvas=1`} onLoad={() => sendPreview(true)} />
+                  </div>
+                </section>
+              )}
+            </div>
+          </>}
+
+          {screen === "review" && <section className="xp-workspace-surface">
+            <p>Publishing applies the shared draft to the public website.</p>
+            {changes.length ? <ul className="xp-review-list">
+              {pageKeys.filter((page) => changes.some((change) => change.page === page)).map((page) => (
+                <li key={page}>
+                  <strong>{pages[page].name}</strong>
+                  <ul>{changes.filter((change) => change.page === page).map((change) => (
+                    <li key={change.section}>
+                      <button className="xp-text-button" type="button" disabled={working} onClick={() => openSection(change)}>{sectionName(change.section)}</button>
+                    </li>
+                  ))}</ul>
+                </li>
+              ))}
+            </ul> : <p>The draft matches the published pages.</p>}
+            {issues.length > 0 && <>
+              <h2>Fix before publishing</h2>
+              <ul className="xp-review-list">
+                {issues.map((issue, index) => (
+                  <li key={`${issue.page}-${issue.block}-${issue.field}-${index}`}>
+                    <button className="xp-text-button" type="button" onClick={() => openSection({ page: issue.page, section: issue.block }, issue.field)}>
+                      {pages[issue.page].name} · {sectionName(issue.block)} · {issueLabel(issue)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>}
+            <div className="xp-workspace-actions">
+              <button className="xp-studio-button" type="button" disabled={working} onClick={() => resumeLocation ? openSection(resumeLocation) : navigate("pages")}>{resumeLocation ? "Back to editing" : "Back to pages"}</button>
+              <button className="xp-studio-button primary" type="button" disabled={working || conflict || !changes.length || issues.length > 0} onClick={publishChanges}>Publish changes</button>
+            </div>
+          </section>}
+
+          {screen === "tools" && <div className="xp-workspace-surface">
+            <h2>Version history</h2>
+            {historyStatus === "loading" && <p role="status">Loading versions…</p>}
+            {historyStatus === "error" && <button className="xp-studio-button" type="button" onClick={loadVersions}>Retry loading versions</button>}
+            {historyStatus === "ready" && !versions.length && <p>No versions available.</p>}
+            <ul className="xp-version-list">
+              {versions.map((item) => (
+                <li key={item.id}>
+                  <span>
+                    <strong>Version {item.version}</strong> · {item.status === "published" ? "Published" : item.status === "draft" ? "Saved draft" : "Archived"}
+                    {(item.publishedAt || item.updatedAt) && <small>{new Date((item.publishedAt || item.updatedAt)!).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</small>}
+                  </span>
+                  {item.status !== "published" && <button className="xp-studio-button" type="button" disabled={working || conflict} onClick={() => restore(item)} aria-label={`Restore version ${item.version} to draft`}>Restore to draft</button>}
+                </li>
+              ))}
+            </ul>
+            <details className="xp-image-tools">
+              <summary>Upload reusable images</summary>
+              <AssetUploader />
+            </details>
+          </div>}
+        </>}
+      </main>
+      {confirm && (
+        <dialog ref={dialogRef} className="xp-modal" aria-labelledby="studio-dialog-title" aria-describedby="studio-dialog-description" onClose={() => setConfirm(null)}>
+          <h2 id="studio-dialog-title">{confirm.title}</h2>
+          <p id="studio-dialog-description">{confirm.body}</p>
+          <div className="xp-modal-actions">
+            <form method="dialog"><button className="xp-studio-button" autoFocus>Go back</button></form>
+            <button className="xp-studio-button primary" type="button" onClick={() => { dialogRef.current?.close(); confirm.action(); }}>{confirm.label}</button>
           </div>
-        </div>
-      ) : null}
+        </dialog>
+      )}
     </div>
   );
 }

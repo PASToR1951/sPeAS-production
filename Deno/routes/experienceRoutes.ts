@@ -1,6 +1,7 @@
 import { Router } from "../deps.ts";
 import { isAdmin, isAuthenticated } from "../middleware/authMiddleware.ts";
 import {
+  ExperienceVersionConflict,
   getDraftExperienceConfig,
   getExperienceVersions,
   getPublicExperienceConfig,
@@ -25,6 +26,14 @@ async function readJsonBody(ctx: any): Promise<unknown> {
   if (!ctx.request.hasBody) return {};
   const body = ctx.request.body({ type: "json" });
   return await body.value;
+}
+
+function readExpectedVersion(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Invalid experience revision");
+  }
+  return value;
 }
 
 router.get("/api/experience/public", async (ctx) => {
@@ -57,14 +66,14 @@ router.get("/api/admin/experience/draft", isAuthenticated, isAdmin, async (ctx) 
 router.put("/api/admin/experience/draft", isAuthenticated, isAdmin, async (ctx) => {
   try {
     const body = await readJsonBody(ctx);
-    const config = (body as Record<string, unknown>).config ?? body;
-    const result = await saveDraftExperienceConfig(config, ctx.state.user.id);
+    const { config, expectedVersion } = body as Record<string, unknown>;
+    const result = await saveDraftExperienceConfig(config ?? body, ctx.state.user.id, readExpectedVersion(expectedVersion));
     json(ctx, 200, {
       message: "Experience draft saved",
       ...result,
     });
   } catch (error) {
-    json(ctx, 400, {
+    json(ctx, error instanceof ExperienceVersionConflict ? 409 : 400, {
       error: "Invalid experience draft",
       details: error instanceof Error ? error.message : String(error),
     });
@@ -73,13 +82,14 @@ router.put("/api/admin/experience/draft", isAuthenticated, isAdmin, async (ctx) 
 
 router.post("/api/admin/experience/publish", isAuthenticated, isAdmin, async (ctx) => {
   try {
-    const result = await publishDraftExperienceConfig(ctx.state.user.id);
+    const body = await readJsonBody(ctx) as Record<string, unknown>;
+    const result = await publishDraftExperienceConfig(ctx.state.user.id, readExpectedVersion(body.expectedVersion));
     json(ctx, 200, {
       message: "Experience published",
       ...result,
     });
   } catch (error) {
-    json(ctx, 500, {
+    json(ctx, error instanceof ExperienceVersionConflict ? 409 : 500, {
       error: "Failed to publish experience",
       details: error instanceof Error ? error.message : String(error),
     });
@@ -96,13 +106,13 @@ router.post("/api/admin/experience/rollback", isAuthenticated, isAdmin, async (c
       return;
     }
 
-    const result = await rollbackExperienceVersion(versionId, ctx.state.user.id);
+    const result = await rollbackExperienceVersion(versionId, ctx.state.user.id, readExpectedVersion(body.expectedVersion));
     json(ctx, 200, {
       message: "Experience version restored",
       ...result,
     });
   } catch (error) {
-    json(ctx, 500, {
+    json(ctx, error instanceof ExperienceVersionConflict ? 409 : 500, {
       error: "Failed to roll back experience",
       details: error instanceof Error ? error.message : String(error),
     });

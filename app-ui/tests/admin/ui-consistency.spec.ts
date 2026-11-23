@@ -12,7 +12,7 @@ const ADMIN_LINKS = [
   "Contact Inquiries",
 ];
 
-const SETTINGS_LINKS = ["Profile", "Operational Reports", "System Logs", "Experience Studio", "Role Management", "Research Agenda"];
+const SETTINGS_LINKS = ["Profile", "Operational Reports", "System Logs", "Edit website pages", "Role Management", "Research Agenda"];
 
 test.beforeEach(async ({ page }) => {
   await mockAdminIdentity(page);
@@ -271,7 +271,7 @@ test("settings remains available from the administrator profile menu", async ({ 
 
   const settingsNavigation = page.getByRole("navigation", { name: "Settings", exact: true });
   await expect(settingsNavigation.getByRole("link")).toHaveText(SETTINGS_LINKS);
-  await expect(settingsNavigation.getByRole("link", { name: "Experience Studio" })).toHaveAttribute("href", "/admin/Components/experience-studio.html");
+  await expect(settingsNavigation.getByRole("link", { name: "Edit website pages" })).toHaveAttribute("href", "/admin/Components/experience-studio.html");
   await expect(page.locator(".peas-settings-tool-card")).toHaveCount(0);
 
   const navigation = page.getByRole("navigation", { name: "Utilities" });

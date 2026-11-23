@@ -67,7 +67,10 @@ export const FAQ_CATEGORY_LIMITS = {
 
 const FAQ_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/;
 const FAQ_HTML_PATTERN = /<[^>]*>/;
-const faqPlainText = (label: string, max: number) => z.string().trim().min(1).max(max).refine((value) => !FAQ_HTML_PATTERN.test(value), `${label} must be plain text`);
+const faqPlainText = (label: string, max: number) => z.string().trim()
+  .min(1, `${label} cannot be blank.`)
+  .max(max, `${label} must be ${max} characters or fewer.`)
+  .refine((value) => !FAQ_HTML_PATTERN.test(value), `${label} must be plain text.`);
 
 const FaqItemSchema = z.object({
   id: z.string().regex(FAQ_ID_PATTERN),
@@ -83,7 +86,7 @@ const FaqCategorySchema = z.object({
 
 export const FaqBlockPropsSchema = z.object({
   id: z.literal("faq-content"),
-  eyebrow: faqPlainText("FAQ eyebrow", 80),
+  eyebrow: faqPlainText("The line above the FAQ title", 80),
   title: faqPlainText("FAQ title", 140),
   description: faqPlainText("FAQ description", 600),
   categories: z.array(FaqCategorySchema).min(FAQ_CATEGORY_LIMITS.min).max(FAQ_CATEGORY_LIMITS.max),
@@ -927,19 +930,29 @@ function faqItemMatches(item: Record<string, unknown>, expected: FaqSeedItem): b
   return item.id === expected.id && item.question === expected.question && item.answer === expected.answer;
 }
 
-export function getExperiencePublishErrors(config: ExperienceConfig): string[] {
-  const errors: string[] = [];
-  for (const page of [config.pages.landing, config.pages.login, config.pages.faq]) {
-    for (const block of page.data.content) {
+export type ExperiencePageKey = keyof ExperienceConfig["pages"];
+
+export type ExperiencePublishIssue = {
+  page: ExperiencePageKey;
+  block: string;
+  field: string;
+  message: string;
+};
+
+export function getExperiencePublishIssues(config: ExperienceConfig): ExperiencePublishIssue[] {
+  const issues: ExperiencePublishIssue[] = [];
+  for (const page of ["landing", "login", "faq"] as const) {
+    for (const block of config.pages[page].data.content) {
       const props = asRecord(block.props);
+      const add = (field: string, message: string) => issues.push({ page, block: block.type, field, message });
       if (typeof props.imageUrl === "string" && props.imageUrl.trim() && !String(props.imageAlt ?? "").trim()) {
-        errors.push(`${block.type} image requires alternative text.`);
+        add("imageAlt", `${block.type} image requires alternative text.`);
       }
       if (Array.isArray(props.images)) {
         props.images.forEach((item, index) => {
           const image = asRecord(item);
           if (String(image.url ?? "").trim() && !String(image.alt ?? "").trim()) {
-            errors.push(`${block.type} image ${index + 1} requires alternative text.`);
+            add(`images-${index}-alt`, `${block.type} image ${index + 1} requires alternative text.`);
           }
         });
       }
@@ -948,17 +961,25 @@ export function getExperiencePublishErrors(config: ExperienceConfig): string[] {
           const role = asRecord(item);
           if (String(role.photo ?? "").trim() && !String(role.photoAlt ?? "").trim()) {
             const roleLabel = String(role.title ?? role.label ?? "").trim() || `role ${index + 1}`;
-            errors.push(`${roleLabel} photo requires alternative text.`);
+            add(`roles-${index}-photoAlt`, `${roleLabel} photo requires alternative text.`);
           }
         });
       }
       if (block.type === "FaqBlock") {
         const result = FaqBlockPropsSchema.safeParse(props);
-        if (!result.success) errors.push("FAQ content has missing, duplicate, or invalid plain-text fields.");
+        if (!result.success) {
+          for (const issue of result.error.issues) add(issue.path.join("-"), issue.message);
+        }
       }
     }
   }
-  return errors;
+  return issues;
+}
+
+export function getExperiencePublishErrors(config: ExperienceConfig): string[] {
+  return [...new Set(getExperiencePublishIssues(config).map(({ block, message }) =>
+    block === "FaqBlock" ? "FAQ content has missing, duplicate, or invalid plain-text fields." : message
+  ))];
 }
 
 function migrateBlockProps(type: string, defaults: Record<string, unknown>, source: Record<string, unknown>) {

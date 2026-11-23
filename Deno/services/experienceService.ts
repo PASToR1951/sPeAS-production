@@ -131,11 +131,50 @@ function parseConfigFromRow(
   return parseExperienceConfig(rawConfig);
 }
 
-async function nextExperienceVersion(): Promise<number> {
-  const result = await client.queryObject<{ next_version: number }>(
+type ExperienceConnection = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+async function nextExperienceVersion(connection: ExperienceConnection): Promise<number> {
+  const result = await connection.queryObject<{ next_version: number }>(
     "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM site_experience_versions",
   );
   return Number(result.rows[0]?.next_version ?? 1);
+}
+
+async function currentExperienceVersions(connection: Pick<typeof client, "queryObject">) {
+  const result = await connection.queryObject<ExperienceRow>(
+    `SELECT DISTINCT ON (status) * FROM site_experience_versions
+     WHERE status IN ('draft', 'published')
+     ORDER BY status, CASE WHEN status = 'published' THEN published_at ELSE updated_at END DESC NULLS LAST, version DESC, id DESC`,
+  );
+  return {
+    draft: result.rows.find((row) => row.status === "draft"),
+    published: result.rows.find((row) => row.status === "published"),
+  };
+}
+
+export class ExperienceVersionConflict extends Error {
+  constructor() {
+    super("The website draft changed in another session. Reopen the latest draft before saving or publishing.");
+  }
+}
+
+function writeExperienceVersion<T>(action: (connection: ExperienceConnection) => Promise<T>) {
+  return withTransaction(async (connection) => {
+    // Serialize writes so a reviewed revision cannot change between the check and the write.
+    await connection.queryArray("LOCK TABLE site_experience_versions IN SHARE ROW EXCLUSIVE MODE");
+    return await action(connection);
+  });
+}
+
+async function insertExperienceDraft(connection: ExperienceConnection, config: ExperienceConfig, userId: string) {
+  const version = await nextExperienceVersion(connection);
+  await connection.queryObject(
+    `INSERT INTO site_experience_versions
+      (status, version, config, created_by, updated_by)
+     VALUES ('draft', $1, $2::jsonb, $3, $3)`,
+    [version, JSON.stringify(config), userId],
+  );
+  return version;
 }
 
 export async function ensureExperienceTablesExist(): Promise<void> {
@@ -211,73 +250,41 @@ export async function getPublicExperienceConfig(): Promise<ExperienceConfig> {
     withTimestamp(defaultExperienceConfig);
 }
 
-export async function getDraftExperienceConfig(): Promise<{
-  config: ExperienceConfig;
-  version: number;
-  status: string;
-}> {
-  const result = await client.queryObject<ExperienceRow>(
-    `SELECT * FROM site_experience_versions
-     WHERE status = 'draft'
-     ORDER BY updated_at DESC, version DESC
-     LIMIT 1`,
-  );
-
-  const draft = result.rows[0];
-  if (draft) {
-    return {
-      config: parseConfigFromRow(draft) ??
-        withTimestamp(defaultExperienceConfig),
-      version: Number(draft.version),
-      status: "draft",
-    };
-  }
-
-  const published = await getPublicExperienceConfig();
+export async function getDraftExperienceConfig() {
+  const { draft, published } = await currentExperienceVersions(client);
+  const publishedConfig = parseConfigFromRow(published) ?? withTimestamp(defaultExperienceConfig);
   return {
-    config: published,
-    version: await nextExperienceVersion(),
-    status: "published-copy",
+    config: parseConfigFromRow(draft) ?? publishedConfig,
+    publishedConfig,
+    version: Number((draft ?? published)?.version ?? 0),
+    status: draft ? "draft" : "published-copy",
   };
 }
 
-export async function saveDraftExperienceConfig(
-  input: unknown,
-  userId: string,
-): Promise<{ config: ExperienceConfig; version: number }> {
+export async function saveDraftExperienceConfig(input: unknown, userId: string, expectedVersion?: number) {
   const config = withTimestamp(parseExperienceConfig(input));
-  const version = await nextExperienceVersion();
-
-  await client.queryObject(
-    `INSERT INTO site_experience_versions
-      (status, version, config, created_by, updated_by)
-     VALUES ('draft', $1, $2::jsonb, $3, $3)`,
-    [version, JSON.stringify(config), userId],
-  );
-
-  return { config, version };
+  return await writeExperienceVersion(async (connection) => {
+    if (expectedVersion !== undefined) {
+      const { draft, published } = await currentExperienceVersions(connection);
+      if (Number((draft ?? published)?.version ?? 0) !== expectedVersion) throw new ExperienceVersionConflict();
+    }
+    const version = await insertExperienceDraft(connection, config, userId);
+    return { config, version };
+  });
 }
 
-export async function publishDraftExperienceConfig(
-  userId: string,
-): Promise<{ config: ExperienceConfig; version: number }> {
-  const draftResult = await client.queryObject<ExperienceRow>(
-    `SELECT * FROM site_experience_versions
-     WHERE status = 'draft'
-     ORDER BY updated_at DESC, version DESC
-     LIMIT 1`,
-  );
+export async function publishDraftExperienceConfig(userId: string, expectedVersion?: number) {
+  return await writeExperienceVersion(async (connection) => {
+    const { draft, published } = await currentExperienceVersions(connection);
+    if (expectedVersion !== undefined && Number(draft?.version) !== expectedVersion) {
+      throw new ExperienceVersionConflict();
+    }
+    const config = parseConfigFromRow(draft ?? published) ?? defaultExperienceConfig;
+    const publishErrors = getExperiencePublishErrors(config);
+    if (publishErrors.length) throw new Error(publishErrors.join(" "));
 
-  const config = parseConfigFromRow(draftResult.rows[0]) ??
-    await getPublicExperienceConfig();
-  const publishErrors = getExperiencePublishErrors(config);
-  if (publishErrors.length) {
-    throw new Error(publishErrors.join(" "));
-  }
-  const version = await nextExperienceVersion();
-  const publishedConfig = withTimestamp(config);
-
-  await withTransaction(async (connection) => {
+    const version = await nextExperienceVersion(connection);
+    const publishedConfig = withTimestamp(config);
     await connection.queryArray(
       `UPDATE site_experience_versions
        SET status = 'archived', updated_at = CURRENT_TIMESTAMP
@@ -289,46 +296,27 @@ export async function publishDraftExperienceConfig(
        VALUES ('published', $1, $2::jsonb, $3, $3, $3, CURRENT_TIMESTAMP)`,
       [version, JSON.stringify(publishedConfig), userId],
     );
+    return { config: publishedConfig, version };
   });
-
-  return { config: publishedConfig, version };
 }
 
-export async function rollbackExperienceVersion(
-  versionId: number,
-  userId: string,
-): Promise<
-  { config: ExperienceConfig; version: number; sourceVersion: number }
-> {
-  const sourceResult = await client.queryObject<ExperienceRow>(
-    `SELECT * FROM site_experience_versions
-     WHERE id = $1
-     LIMIT 1`,
-    [versionId],
-  );
+export async function rollbackExperienceVersion(versionId: number, userId: string, expectedVersion?: number) {
+  return await writeExperienceVersion(async (connection) => {
+    if (expectedVersion !== undefined) {
+      const { draft, published } = await currentExperienceVersions(connection);
+      if (Number((draft ?? published)?.version ?? 0) !== expectedVersion) throw new ExperienceVersionConflict();
+    }
+    const result = await connection.queryObject<ExperienceRow>(
+      "SELECT * FROM site_experience_versions WHERE id = $1",
+      [versionId],
+    );
+    const source = result.rows[0];
+    if (!source) throw new Error("Experience version not found");
 
-  const source = sourceResult.rows[0];
-  if (!source) {
-    throw new Error("Experience version not found");
-  }
-
-  const restoredConfig = withTimestamp(
-    parseConfigFromRow(source) ?? defaultExperienceConfig,
-  );
-  const version = await nextExperienceVersion();
-
-  await client.queryObject(
-    `INSERT INTO site_experience_versions
-      (status, version, config, created_by, updated_by)
-     VALUES ('draft', $1, $2::jsonb, $3, $3)`,
-    [version, JSON.stringify(restoredConfig), userId],
-  );
-
-  return {
-    config: restoredConfig,
-    version,
-    sourceVersion: Number(source.version),
-  };
+    const config = withTimestamp(parseConfigFromRow(source) ?? defaultExperienceConfig);
+    const version = await insertExperienceDraft(connection, config, userId);
+    return { config, version, sourceVersion: Number(source.version) };
+  });
 }
 
 export async function getExperienceVersions(limit = 20): Promise<
