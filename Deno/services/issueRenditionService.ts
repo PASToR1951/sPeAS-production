@@ -13,7 +13,11 @@ import {
   issuePaperRange,
   validateIssueRanges,
 } from "../../shared/issuePreparation.ts";
-import type { ImportCollection, RecipePart } from "../../shared/imports.ts";
+import type {
+  ImportCollection,
+  PageMapping,
+  RecipePart,
+} from "../../shared/imports.ts";
 import { canViewCompilation } from "./contentAuthorizationService.ts";
 
 type Row = Record<string, any>;
@@ -62,6 +66,12 @@ export async function storedIssuePdfIntact(
 }
 const intactRendition = (row: Row) =>
   storedIssuePdfIntact(row.file_path, row.sha256);
+const includesForeword = (parent: Row, row: Row) =>
+  !parent.foreword || row.manifest.components?.some((part: PageMapping) =>
+    part.assetId.startsWith("Front matter-") &&
+    (!parent.foreword_content_sha256 ||
+      part.sourceSha256 === parent.foreword_content_sha256)
+  );
 
 /** Snapshot the actual catalog, never a caller-supplied storage path. */
 export async function issueCatalogSnapshot(
@@ -198,7 +208,9 @@ export async function prepareIssueRendition(id: number) {
     "SELECT * FROM issue_renditions WHERE compiled_document_id=$1 AND fingerprint=$2",
     [id, current.fingerprint],
   )).rows[0];
-  if (existing && await intactRendition(existing)) {
+  const existingIncludesForeword = existing &&
+    includesForeword(current.parent, existing);
+  if (existingIncludesForeword && await intactRendition(existing)) {
     return renditionDto(existing);
   }
   const batch = (await client.queryObject<Row>(
@@ -228,8 +240,9 @@ export async function prepareIssueRendition(id: number) {
     )).rows[0];
     // Another preparer may have repaired this revision while we were assembling.
     if (
-      concurrent && await intactRendition(concurrent) &&
-      (!existing || concurrent.sha256 !== existing.sha256)
+      concurrent && includesForeword(current.parent, concurrent) &&
+      await intactRendition(concurrent) &&
+      (!existingIncludesForeword || concurrent.sha256 !== existing.sha256)
     ) return renditionDto(concurrent);
     const row = (await db.queryObject<Row>(
       `INSERT INTO issue_renditions(compiled_document_id,fingerprint,file_path,sha256,page_count,manifest)
@@ -272,6 +285,13 @@ export async function buildIssueRendition(
     parts.push({ assetId, included: true, role, firstPage, lastPage });
   };
   const p = current.parent;
+  const appendForeword = async () => {
+    await append(p.foreword, "Front matter");
+    if (
+      p.foreword_content_sha256 &&
+      sources.at(-1)!.sha256 !== p.foreword_content_sha256
+    ) throw new ImportError("Foreword PDF integrity check failed.", 409);
+  };
   let sourceRanges: Row[] = [];
   if (batch && collection?.sourceArrangement === "complete_issue") {
     const plan = await validateBatchIssueRanges(batch.id);
@@ -300,6 +320,9 @@ export async function buildIssueRendition(
         p.front_cover_page,
       );
     }
+    const forewordPage = p.foreword
+      ? (embeddedCovers ? p.front_cover_page + 1 : 1)
+      : null;
     const excluded = (collection.pageSections ?? []).filter((s) =>
       s.role === "excluded"
     );
@@ -313,6 +336,7 @@ export async function buildIssueRendition(
     const replacements = plan.ranges.filter((range) => range.replacement);
     // Consecutive kept spans preserve editorial pages in their original order.
     for (let page = 1; page <= main.page_count;) {
+      if (page === forewordPage) await appendForeword();
       const replacement = replacements.find((range) => range.first === page);
       if (replacement) {
         const item = sourceRanges.find((item) => item.id === replacement.id)!;
@@ -342,6 +366,7 @@ export async function buildIssueRendition(
       const first = page;
       while (
         page <= main.page_count &&
+        (page === first || page !== forewordPage) &&
         !excluded.some((s) => page >= s.first && page <= s.last) &&
         !replacements.some((range) => range.first === page)
       ) page++;
@@ -355,6 +380,7 @@ export async function buildIssueRendition(
         lastPage: page - 1,
       });
     }
+    if (forewordPage === main.page_count + 1) await appendForeword();
     if (!embeddedCovers) {
       await append(
         p.cover_file_path,
@@ -386,7 +412,7 @@ export async function buildIssueRendition(
         p.front_cover_page,
       );
     }
-    if (p.foreword) await append(p.foreword, "Front matter");
+    if (p.foreword) await appendForeword();
     for (const paper of current.papers) {
       await append(paper.file_path, `Paper ${paper.id}`);
       if (
@@ -497,7 +523,10 @@ export async function currentIssueRendition(id: number, reviewed = true) {
     "SELECT * FROM issue_renditions WHERE compiled_document_id=$1 AND fingerprint=$2 AND ($3=false OR reviewed_at IS NOT NULL)",
     [id, current.fingerprint, reviewed],
   )).rows[0];
-  return row && await intactRendition(row) ? row : null;
+  return row && includesForeword(current.parent, row) &&
+      await intactRendition(row)
+    ? row
+    : null;
 }
 export async function reviewIssueRendition(
   id: number,

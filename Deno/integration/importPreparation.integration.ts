@@ -1005,17 +1005,38 @@ Deno.test({
         const batch=await createImportBatch(owner,"compiled",crypto.randomUUID());
         const main=await stageImportAsset(batch.id,owner,"embedded-issue.pdf",stream(await syntheticPdf(8)));
         const separate=await stageImportAsset(batch.id,owner,"separate-covers.pdf",stream(await syntheticPdf(2)));
+        const forewordPdf = await PDFDocument.create();
+        forewordPdf.addPage([444, 800]);
+        const foreword = await stageImportAsset(batch.id, owner, "foreword.pdf", stream(await forewordPdf.save()));
         const collection={category:"SYNERGY" as const,startYear:2022,endYear:2023,volume:7,issue:null,department:"CASE",coverAssetId:separate.id,frontPage:1,backPage:2,mainAssetId:main.id,sourceArrangement:"complete_issue" as const,reviewed:true,pageSections:[{first:1,last:1,role:"cover" as const},{first:2,last:2,role:"front_matter" as const},{first:8,last:8,role:"cover" as const}]};
         await saveImportCollection(batch.id,owner,(await getImportBatch(batch.id,owner)).revision,collection);
         let item=await createImportItem(batch.id,owner,`embedded:${batch.id}`,{...emptyImportMetadata(),title:"Embedded cover paper",documentType:"SYNERGY",publicationDate:"2023",authorIds:[author],topicIds:[topic]});
         item=await updateImportItem(batch.id,item.id,owner,{revision:item.revision,recipe:{parts:[{assetId:main.id,included:true,role:"Paper range",firstPage:3,lastPage:7}]}});
         item=await approve(await prepare(item));
         await assertRejects(()=>commitImportItem(batch.id,item.id,owner),Error,"embedded covers");
-        await saveImportCollection(batch.id,owner,(await getImportBatch(batch.id,owner)).revision,{...collection,coverAssetId:main.id,frontPage:1,backPage:8});
+        await saveImportCollection(batch.id,owner,(await getImportBatch(batch.id,owner)).revision,{...collection,coverAssetId:main.id,frontPage:1,backPage:8,forewordAssetId:foreword.id});
         await commitImportItem(batch.id,item.id,owner);
         const saved=await getImportBatch(batch.id,owner);assert(saved.compiledDocumentId);
         const output=await prepareIssueRendition(saved.compiledDocumentId);
-        assertEquals(output.pages,8);assertEquals(output.sha256,main.sha256);
+        assertEquals(output.pages, 9);
+        assertEquals(output.manifest.components.map((part: { sourceFirst: number; sourceLast: number; finalFirst: number; finalLast: number }) =>
+          [part.sourceFirst, part.sourceLast, part.finalFirst, part.finalLast]
+        ), [[1, 1, 1, 1], [1, 1, 2, 2], [2, 8, 3, 9]]);
+        assertEquals(output.manifest.sourceRanges.map((range: { issueFirst: number; issueLast: number }) =>
+          [range.issueFirst, range.issueLast]
+        ), [[4, 8]]);
+        const row = await currentIssueRendition(saved.compiledDocumentId, false);
+        assert(row);
+        const pdf = await PDFDocument.load(await Deno.readFile(resolveStoredPdfPath(row.file_path)!));
+        assertEquals(pdf.getPage(1).getWidth(), 444);
+
+        // Recreate the manifest of an output saved by the old complete-issue assembly.
+        const oldComponents = output.manifest.components.filter((part: { sourceSha256: string }) => part.sourceSha256 !== foreword.sha256);
+        await client.queryArray("UPDATE issue_renditions SET manifest=jsonb_set(manifest,'{components}',$2::jsonb),reviewed_at=now() WHERE id=$1", [output.id, JSON.stringify(oldComponents)]);
+        assertEquals(await currentIssueRendition(saved.compiledDocumentId), null);
+        const repaired = await prepareIssueRendition(saved.compiledDocumentId);
+        assertEquals(repaired.reviewed, false);
+        assertEquals(repaired.manifest.components, output.manifest.components);
       });
       await t.step("Published issue correction preserves live assets and IDs until atomic reviewed replacement", async () => {
         let { batch, item } = await paper("compiled");

@@ -467,7 +467,7 @@ export async function fetchDocuments(
           'compiled'::TEXT as doc_source,
           true as is_parent,
           true as is_compiled,
-          NULL::BIGINT as parent_id,
+          NULL::INTEGER as parent_id,
           (
             SELECT COUNT(*) 
             FROM compiled_document_items cdi 

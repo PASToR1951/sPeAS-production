@@ -36,7 +36,7 @@ test("compiled UUID links retain public children and attachment references", asy
   ] }));
   await page.goto(`/pages/guest-compiled.html?id=${collectionId}`);
   await expect(page.getByRole("heading", { name: "UUID collection" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "View details for UUID child" })).toHaveAttribute("href", `/pages/guest-single.html?id=${paperId}`);
+  await expect(page.getByRole("link", { name: "Read paper titled UUID child" })).toHaveAttribute("href", `/pages/guest-single.html?id=${paperId}`);
   await expect(page.getByRole("link", { name: "Download PDF for UUID child" })).toHaveAttribute("href", `/api/public/documents/${paperId}/download`);
   await expect(page.locator(`a[href="/api/public/compiled-documents/${collectionId}/foreword/download"]`)).toBeVisible();
 });

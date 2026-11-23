@@ -15,7 +15,7 @@ test("native complete issue import preserves front matter and serves independent
     page.getByRole("radio", { name: "Upload a complete issue", exact: true }),
   ).toBeChecked();
   await page.getByLabel("Choose multiple files", { exact: true }).setInputFiles(
-    ["issue-main.pdf", "covers.pdf"].map((name) => path.join(artifacts!, name)),
+    ["issue-main.pdf", "covers.pdf", "front.pdf"].map((name) => path.join(artifacts!, name)),
   );
   await page.getByRole("button", { name: "Stage selected files", exact: true })
     .click();
@@ -43,6 +43,8 @@ test("native complete issue import preserves front matter and serves independent
   await collection.getByLabel("Cover PDF", { exact: true }).selectOption({
     label: "covers.pdf",
   });
+  await collection.getByLabel("Optional foreword PDF", { exact: true })
+    .selectOption({ label: "front.pdf" });
   await collection.getByRole("button", {
     name: "Add page section",
     exact: true,
@@ -52,6 +54,10 @@ test("native complete issue import preserves front matter and serves independent
     .click();
   await expect(collection.locator(".textLayer")).toContainText(
     "Synthetic covers.pdf",
+  );
+  await collection.getByRole("button", { name: "Review foreword", exact: true }).click();
+  await expect(collection.locator(".textLayer")).toContainText(
+    "Synthetic front.pdf page 1",
   );
   await collection.getByRole("checkbox", {
     name: /I reviewed the collection metadata/,
@@ -89,7 +95,7 @@ test("native complete issue import preserves front matter and serves independent
   const getBatch = async () =>
     (await page.request.get(`/api/admin/import-batches/${selected.id}`)).json();
   let batch = await getBatch();
-  expect(batch.assets).toHaveLength(2);
+  expect(batch.assets).toHaveLength(3);
   expect(batch.items).toHaveLength(2);
   for (const title of ["Native journal paper 1", "Native journal paper 2"]) {
     const item = batch.items.find((i: any) => i.metadata.title === title);
@@ -226,7 +232,7 @@ test("native complete issue import preserves front matter and serves independent
   }).click();
   await expect(
     complete.getByRole("spinbutton", { name: "Page number", exact: true }),
-  ).toHaveAttribute("max", "10");
+  ).toHaveAttribute("max", "11");
   await complete.getByRole("checkbox", {
     name: /I checked the complete PDF against the source/,
   }).check();
@@ -251,11 +257,11 @@ test("native complete issue import preserves front matter and serves independent
   await expect(complete.getByRole("alert")).toHaveText("Temporary saved-output lookup failure");
   await complete.getByRole("button", { name: "Retry loading saved issue output", exact: true }).click();
   await expect(complete.getByRole("button", { name: "Reload current issue output", exact: true })).toBeVisible();
-  await expect(complete.getByText("10 pages · Reviewed", { exact: true })).toBeVisible();
+  await expect(complete.getByText("11 pages · Reviewed", { exact: true })).toBeVisible();
   expect(prepareRequests).toBe(0);
   await page.unroute(lookupUrl);
   await page.reload();
-  await expect(complete.getByText("10 pages · Reviewed", { exact: true })).toBeVisible();
+  await expect(complete.getByText("11 pages · Reviewed", { exact: true })).toBeVisible();
   const completeDownload = complete.getByRole("link", { name: "Download complete issue (PDF)", exact: true });
   await expect(completeDownload).toHaveAttribute("href", `/api/compiled-documents/${batch.compiledDocumentId}/complete/download`);
   const savedWorkspaces = await (await page.request.get("/api/admin/import-batches")).json();
@@ -264,7 +270,7 @@ test("native complete issue import preserves front matter and serves independent
   const resume = page.getByRole("combobox", { name: "Resume a workspace", exact: true });
   await expect(resume.locator(`option[value="${batch.id}"]`)).toHaveText(`compiled · Saved privately · pending review · ${batch.id.slice(0, 8)}`);
   await resume.selectOption(batch.id);
-  await expect(complete.getByText("10 pages · Reviewed", { exact: true })).toBeVisible();
+  await expect(complete.getByText("11 pages · Reviewed", { exact: true })).toBeVisible();
   await page.getByRole("checkbox", {
     name: "I approve publishing 2 included papers and this compiled volume.",
     exact: true,
@@ -296,10 +302,13 @@ test("native complete issue import preserves front matter and serves independent
     useSystemFonts: true,
   });
   const issuePdf = await issueTask.promise, paperPdf = await paperTask.promise;
-  expect(issuePdf.numPages).toBe(10);
+  expect(issuePdf.numPages).toBe(11);
   const frontCover = await issuePdf.getPage(1);
   expect((await frontCover.getTextContent()).items.map((i: any) => i.str).join(" "))
     .toContain("Synthetic covers.pdf page 1");
+  const foreword = await issuePdf.getPage(2);
+  expect((await foreword.getTextContent()).items.map((i: any) => i.str).join(" "))
+    .toContain("Synthetic front.pdf page 1");
   expect(paperPdf.numPages).toBe(3);
   const metadata = await (await anonymous.request.get(
     `/api/public/documents/${batch.items[0].documentId}`,
@@ -321,12 +330,15 @@ test("native complete issue import preserves front matter and serves independent
       `/pages/guest-compiled.html?id=${metadata.document.parent_issue.id}`,
     );
   await publicPage.getByRole("link", { name: /View complete issue/ }).click();
-  await publicPage.getByRole("button", { name: "Read complete issue", exact: true }).click();
+  await publicPage.getByRole("button", { name: "Read issue", exact: true }).click();
   const reader = publicPage.getByRole("region", { name: "Complete issue reader", exact: true });
   await expect(reader.getByRole("group", { name: "Text on page 1", exact: true })).toContainText("Synthetic covers.pdf page 1");
   await expect(publicPage.getByRole("link", { name: "Download cover PDF" })).toHaveCount(0);
+  await expect(publicPage.getByRole("link", { name: "Download foreword" })).toHaveCount(0);
   await reader.getByRole("button", { name: "Next page", exact: true }).click();
-  await expect(reader.getByRole("group", { name: "Text on page 2", exact: true })).toContainText("Synthetic issue-main.pdf page 1");
+  await expect(reader.getByRole("group", { name: "Text on page 2", exact: true })).toContainText("Synthetic front.pdf page 1");
+  await reader.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(reader.getByRole("group", { name: "Text on page 3", exact: true })).toContainText("Synthetic issue-main.pdf page 1");
   const first = await paperPdf.getPage(1);
   const last = await paperPdf.getPage(3);
   expect((await first.getTextContent()).items.map((i: any) => i.str).join(" "))

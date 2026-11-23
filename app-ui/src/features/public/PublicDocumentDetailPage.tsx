@@ -1,13 +1,14 @@
 import { formatPublicationDate } from "../../lib/formatters/date";
 import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { useEffect, useState } from "react";
-import { BookOpen, CalendarDays, Download } from "lucide-react";
+import { BookOpen, CalendarDays } from "lucide-react";
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import { PublicErrorPage, PublicPageShell } from "../../components/public/PublicPageShell";
 import type { LooseRecord } from "../../lib/api/account";
 import { fetchPublicDocumentDetail, getPublicDocumentErrorStatus } from "../../lib/api/publicDocument";
 import type { PublicAuthorReference } from "../../lib/api/types";
 import { CompiledPublicationTemplate } from "./CompiledPublicationTemplate";
+import { PublicationActions } from "./PublicationActions";
 
 import { SimplePdfReader } from "../../components/documents/SimplePdfReader";
 
@@ -68,7 +69,19 @@ function TermSection({ title, values, parameter }: { title: string; values: Arra
 
 function DocumentDownloadPanel({ id, available }: { id: string; available: boolean }) {
   const [reading, setReading] = useState(false), [error, setError] = useState("");
-  return <section className="peas-document-access-popup" aria-labelledby="document-access-title"><header><div><BookOpen aria-hidden="true" /><h2 id="document-access-title">Full paper</h2></div></header><p>{available ? "This PDF is publicly available and can be downloaded immediately." : "The PDF file is currently unavailable. The reviewed repository record remains accessible."}</p>{available ? <a className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" href={`/api/public/documents/${encodeURIComponent(id)}/download`}><Download aria-hidden="true" /> Download PDF</a> : null}{available ? <button className="peas-ui-button peas-ui-button--outline peas-ui-button--size-default" onClick={() => { setReading(!reading); setError(""); }}>{reading ? "Close paper" : "Read paper"}</button> : null}{reading ? error ? <p role="alert">{error}<button onClick={() => setError("")}>Retry paper</button></p> : <SimplePdfReader onLoaded={() => {}} title="Paper" url={`/api/public/documents/${encodeURIComponent(id)}/inline`} onError={() => setError("This paper PDF is unavailable. Please retry later.")} /> : null}</section>;
+  const pdfUrl = `/api/public/documents/${encodeURIComponent(id)}`;
+  return (
+    <section className="peas-document-access-popup" aria-labelledby="document-access-title">
+      <header><div><BookOpen aria-hidden="true" /><h2 id="document-access-title">Full paper</h2></div></header>
+      {available ? (
+        <PublicationActions
+          read={{ label: reading ? "Close paper" : "Read paper", expanded: reading, onClick: () => { setReading(!reading); setError(""); } }}
+          download={{ label: "Download PDF", href: `${pdfUrl}/download` }}
+        />
+      ) : <p>The PDF file is currently unavailable. The reviewed repository record remains accessible.</p>}
+      {reading ? error ? <p role="alert">{error}<button onClick={() => setError("")}>Retry paper</button></p> : <SimplePdfReader onLoaded={() => {}} title="Paper" url={`${pdfUrl}/inline`} onError={() => setError("This paper PDF is unavailable. Please retry later.")} /> : null}
+    </section>
+  );
 }
 
 function titleOf(item: LooseRecord) { return String(item.title || item.document_title || `${item.category || "Document"}${item.volume ? ` Volume ${item.volume}` : ""}`); }

@@ -14,12 +14,13 @@ if (Deno.env.get("DENO_ENV") !== "test" || Deno.env.get("PGDATABASE") !== "peas_
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-async function request(pattern: string, reference: string | number) {
-  const route = routes.find((r) => r.method === "GET" && r.path === pattern);
+async function request(pattern: string, reference: string | number = "") {
+  const [routePath] = pattern.split("?");
+  const route = routes.find((r) => r.method === "GET" && r.path === routePath);
   assert(route, `Missing route ${pattern}`);
   const ctx = {
     params: { id: String(reference) }, state: {},
-    request: { url: new URL(`http://localhost${pattern.replace(":id", String(reference))}`), headers: new Headers() },
+    request: { url: new URL(`http://localhost${pattern.replace(":id", String(reference))}`), headers: new Headers(), method: "GET" },
     response: { status: 200, headers: new Headers(), body: undefined as any },
   };
   await route.handler(ctx);
@@ -115,6 +116,27 @@ Deno.test("public UUID migration and routes retain publication boundaries", asyn
       const { suggestions } = await getSearchSuggestions("UUID");
       assert(suggestions.work.length > 0);
       for (const work of suggestions.work) assertMatch(new URL(work.href, "http://localhost").searchParams.get("id")!, uuid);
+    });
+
+    await t.step("topic search returns public papers and their issue as JSON", async () => {
+      const { rows: [{ id: topicId }] } = await client.queryObject<{ id: number }>(`
+        INSERT INTO topics (name, normalized_name, status)
+        VALUES ('Education fixture', 'education fixture', 'approved') RETURNING id
+      `);
+      await client.queryObject(`
+        INSERT INTO document_topics (document_id, topic_id)
+        SELECT id, $1 FROM documents WHERE id IN (6, 7, 11, 12)
+      `, [topicId]);
+
+      const response = await request(`/api/documents?page=1&size=8&sort=latest&topic=${topicId}`);
+      assertEquals(response.status, 200, response.body.message);
+      assertEquals(response.body.paperCount, 2);
+      assertEquals(response.body.issueCount, 1);
+      assertEquals(response.body.documents.map((d: { public_id: string }) => d.public_id).sort(),
+        [paper(6), paper(11), compiled(8)].sort());
+      const child = response.body.documents.find((d: { public_id: string }) => d.public_id === paper(11));
+      assertEquals(child.parent_compiled_id, 8);
+      assertEquals(child.parent_issue.id, compiled(8));
     });
   } finally { await pool.end(); }
 });

@@ -383,6 +383,9 @@ async function draftSnapshot(batchId: string, owner: string) {
   }
   const hash = fingerprint({
     collection,
+    ...(collection.sourceArrangement === "complete_issue" && collection.forewordAssetId
+      ? { includesSeparateForeword: true }
+      : {}),
     items: items.map((i) => ({
       id: i.id,
       revision: i.revision,

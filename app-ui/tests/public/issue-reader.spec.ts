@@ -1,9 +1,22 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { source as axeSource } from "axe-core";
 
 const issue = "5f31be70-1edf-4079-adfa-f85754bc0f20";
 const paper = "a713db79-7464-4c87-897c-5223db16b3c3";
+
+async function expectSingleActionRow(read: Locator, download: Locator) {
+  await expect(read).toBeVisible();
+  await expect(download).toBeVisible();
+  const [readBox, downloadBox] = await Promise.all([read.boundingBox(), download.boundingBox()]);
+  expect(downloadBox!.y).toBeCloseTo(readBox!.y);
+  expect(downloadBox!.x).toBeGreaterThanOrEqual(readBox!.x + readBox!.width);
+  expect(Math.min(readBox!.height, downloadBox!.height)).toBeGreaterThanOrEqual(44);
+}
+
 test.beforeEach(async ({ page }) => {
+  if (test.info().project.name === "pixel-7") {
+    await page.setViewportSize({ width: 320, height: 800 });
+  }
   await page.route("**/api/**", (route) => route.fulfill({ json: {} }));
   await page.route(
     "**/api/auth/get-session",
@@ -26,6 +39,7 @@ test.beforeEach(async ({ page }) => {
           end_year: 2023,
           department: "CASE",
           complete_download_available: true,
+          foreword_download_available: true,
         },
       }),
   );
@@ -55,12 +69,17 @@ test("issue actions keep paper downloads distinct, filter contents and remain us
   await expect(page.getByRole("heading", { name: "Papers in this issue" }))
     .toBeVisible();
   const complete = page.getByRole("link", {
-    name: "Download complete issue (PDF)",
+    name: "Download issue",
   });
   await expect(complete).toHaveAttribute(
     "href",
     `/api/public/compiled-documents/${issue}/complete/download`,
   );
+  await expectSingleActionRow(page.getByRole("button", { name: "Read issue" }), complete);
+  await expect(page.getByRole("heading", { name: "Collection foreword" }))
+    .toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download foreword" }))
+    .toHaveCount(0);
   const download = page.getByRole("link", {
     name: /Download PDF for Implementing/,
   });
@@ -68,6 +87,7 @@ test("issue actions keep paper downloads distinct, filter contents and remain us
     "href",
     `/api/public/documents/${paper}/download`,
   );
+  await expectSingleActionRow(page.getByRole("link", { name: /Read paper titled Implementing/ }), download);
   await download.focus();
   await expect(download).toBeFocused();
   await page.getByRole("searchbox", { name: "Find a paper by title or author" })
@@ -117,10 +137,13 @@ test("paper details link back to the issue and expose only the paper asset", asy
   await expect(page.getByText("Printed pages 1–17 · 17 PDF pages", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /View complete issue/ }))
     .toHaveAttribute("href", `/pages/guest-compiled.html?id=${issue}`);
-  await expect(page.getByRole("link", { name: "Download PDF", exact: true }))
-    .toHaveAttribute("href", `/api/public/documents/${paper}/download`);
-  await expect(page.getByRole("button", { name: "Read paper", exact: true }))
-    .toBeVisible();
+  const read = page.getByRole("button", { name: "Read paper", exact: true });
+  const download = page.getByRole("link", { name: "Download PDF", exact: true });
+  await expect(download).toHaveAttribute("href", `/api/public/documents/${paper}/download`);
+  await expectSingleActionRow(read, download);
+  await page.getByRole("region", { name: "Full paper" }).screenshot({
+    path: test.info().outputPath("full-paper.png"),
+  });
 });
 test("unavailable complete output preserves the table of contents", async ({ page }) => {
   await page.route(
@@ -133,15 +156,20 @@ test("unavailable complete output preserves the table of contents", async ({ pag
           title: "Synergy issue",
           complete_download_available: false,
           cover_download_available: true,
+          foreword_download_available: true,
         },
       }),
   );
   await page.goto(`/pages/guest-compiled.html?id=${issue}`);
   await expect(
-    page.getByRole("link", { name: "Download complete issue (PDF)" }),
+    page.getByRole("link", { name: "Download issue" }),
   ).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Download cover PDF" }))
     .toHaveAttribute("href", `/api/public/compiled-documents/${issue}/cover/download`);
+  await expect(page.getByRole("link", { name: "Download foreword" }))
+    .toHaveAttribute("href", `/api/public/compiled-documents/${issue}/foreword/download`);
+  await expect(page.getByRole("heading", { name: "Collection foreword" }))
+    .toHaveCount(0);
   await expect(
     page.getByText(
       "The complete issue PDF is currently unavailable. Available paper downloads are listed below.",

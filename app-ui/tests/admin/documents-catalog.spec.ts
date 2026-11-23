@@ -556,10 +556,12 @@ test("compiled view opens a collection manifest without treating the parent as a
   await dialog.getByRole("tab", { name: /Front cover/ }).click();
   await expect(dialog.getByRole("heading", { name: "Front cover" })).toBeVisible();
   await expect(dialog.getByRole("spinbutton", { name: "Page number" })).toHaveValue("2");
+  await expect(dialog.getByRole("tab", { name: "Collection foreword" })).toBeVisible();
 
   completeIssuePrepared = true;
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("peas:issue-output-changed", { detail: 3 })));
   await expect(dialog.getByRole("tab", { name: /Front cover/ })).toHaveCount(0);
+  await expect(dialog.getByRole("tab", { name: "Collection foreword" })).toHaveCount(0);
   await expect(dialog.getByRole("tab", { name: /Whole issue/ })).toHaveAttribute("aria-selected", "true");
   const issuePage = dialog.getByRole("spinbutton", { name: "Page number" });
   await expect(issuePage).toHaveAttribute("max", "5");

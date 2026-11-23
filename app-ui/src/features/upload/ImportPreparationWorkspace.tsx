@@ -1878,7 +1878,7 @@ function CollectionEditor(
           </Field>
         </div>
         {collection.sourceArrangement === "complete_issue" ? <>
-          <h4>Account for pages outside papers</h4><p>Assign inclusive physical page ranges to front matter, embedded covers or explicitly excluded material. If the main issue already includes the covers, select the main issue under Cover PDF and mark both cover pages as Embedded cover. The complete issue PDF includes the front cover and front matter.</p>
+          <h4>Account for pages outside papers</h4><p>Assign inclusive physical page ranges to front matter, embedded covers or explicitly excluded material. If the main issue already includes the covers, select the main issue under Cover PDF and mark both cover pages as Embedded cover. Select a foreword PDF only if those pages are absent from the main issue. PeAS inserts it after the front cover.</p>
           {(collection.pageSections ?? []).map((section, index) => <div className="peas-preparation-grid" key={index}>
             <Field label={`Section ${index + 1} first page`}><input type="number" min={1} value={section.first} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, first: Number(e.target.value) } : s) })} /></Field>
             <Field label={`Section ${index + 1} last page`}><input type="number" min={1} value={section.last} onChange={e => patch({ pageSections: collection.pageSections!.map((s, i) => i === index ? { ...s, last: Number(e.target.value) } : s) })} /></Field>

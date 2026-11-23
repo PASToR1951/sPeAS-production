@@ -1,58 +1,25 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { source as axeSource } from "axe-core";
 const artifacts = process.env.IMPORT_TEST_ARTIFACTS;
 test.use({ storageState: { cookies: [], origins: [] } });
 test.skip(
   !artifacts,
   "Use npm run test:imports:e2e to create isolated repository fixtures.",
 );
-test("@volume-reader V04–V10 paper/page navigation, search, history, ranges and public policy", async ({ page, browser }) => {
+test("@volume-reader public paper list, PDF ranges and collection access policy", async ({ page, browser }) => {
   const fixture = JSON.parse(
     await readFile(path.join(artifacts!, "volume.json"), "utf8"),
   );
-  const [alpha, beta, gamma, privatePaper, missing] = fixture.papers;
-  const requests: string[] = [], errors: string[] = [];
-  page.on("request", (r) => {
-    if (r.url().includes("/inline")) requests.push(r.url());
-  });
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(
-    `/pages/guest-compiled.html?id=${fixture.id}&paper=${beta.id}&page=2&version=${beta.hash}`,
-  );
-  const reader = page.getByRole("region", {
-    name: "Read papers in this collection",
-  });
-  await expect(reader.getByRole("heading", { name: beta.title, exact: true }))
+  const [, beta, , privatePaper] = fixture.papers;
+  await page.goto(`/pages/guest-compiled.html?id=${fixture.id}`);
+  const papers = page.getByRole("region", { name: "Papers in this issue" });
+  await expect(papers.getByRole("link", { name: beta.title, exact: true }))
     .toBeVisible();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("2");
-  await expect(reader.locator(".textLayer")).toContainText(
-    "Synthetic body.pdf page 2",
-  );
-  expect(requests.every((url) => url.includes(`/papers/${beta.id}/`)))
-    .toBeTruthy();
-  await reader.getByRole("searchbox").fill("no matching paper");
-  await expect(
-    reader.getByText("No matching papers. Your current paper remains open."),
-  ).toBeVisible();
-  await expect(reader.getByRole("heading", { name: beta.title, exact: true }))
+  await expect(papers.getByRole("link", { name: `Download PDF for ${beta.title}` }))
     .toBeVisible();
-  await reader.getByRole("button", { name: "Next paper", exact: true }).focus();
-  await page.keyboard.press("Enter");
-  await expect(reader.getByRole("heading", { name: gamma.title, exact: true }))
-    .toBeVisible();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("1");
-  await page.goBack();
-  await expect(reader.getByRole("heading", { name: beta.title, exact: true }))
-    .toBeVisible();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("2");
-  await page.reload();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("2");
+  await expect(page.getByRole("region", { name: "Read papers in this collection" }))
+    .toHaveCount(0);
   const response = await page.request.get(
     `/api/public/compiled-documents/${fixture.id}/papers/${beta.id}/inline`,
     { headers: { Range: "bytes=0-15" } },
@@ -107,81 +74,4 @@ test("@volume-reader V04–V10 paper/page navigation, search, history, ranges an
     })).status(),
   ).toBe(409);
   await admin.close();
-  await page.reload();
-  await expect(reader.getByRole("heading", { name: beta.title, exact: true }))
-    .toBeVisible();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("2");
-  await page.goto(
-    `/pages/guest-compiled.html?id=${fixture.id}&paper=${beta.id}&page=3&version=old-version`,
-  );
-  await expect(
-    reader.getByText(
-      "This paper has a newer PDF. Reading has restarted at page 1.",
-    ),
-  ).toBeVisible();
-  await expect(reader.getByRole("spinbutton", { name: "Page number" }))
-    .toHaveValue("1");
-  await reader.getByRole("button", { name: new RegExp(missing.title) }).click();
-  await expect(
-    reader.getByText(
-      "The PDF is currently unavailable. The paper metadata remains available.",
-    ),
-  ).toBeVisible();
-  await reader.getByRole("button", { name: new RegExp(alpha.title) }).click();
-  await expect(reader.locator(".textLayer")).toContainText(
-    "Synthetic body.pdf",
-  );
-  await page.addScriptTag({ content: axeSource });
-  for (const theme of ["light", "dark"]) {
-    await reader.evaluate((root, theme) => {
-      const values = theme === "dark"
-        ? {
-          "--surface": "#182422",
-          "--surface-muted": "#20332e",
-          "--foreground": "#f1f7f5",
-          "--muted-foreground": "#bfccc6",
-          "--secondary": "#244d40",
-          "--secondary-foreground": "#e6f7ed",
-          "--border": "#465b51",
-          "--primary": "#82d9aa",
-        }
-        : {};
-      root.removeAttribute("style");
-      for (const [key, value] of Object.entries(values)) {
-        (root as HTMLElement).style.setProperty(key, value);
-      }
-    }, theme);
-    for (const width of [320, 360, 736, 1024]) {
-      await page.setViewportSize({ width, height: 900 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth))
-        .toBeLessThanOrEqual(width);
-      const violations = await page.evaluate(async () => {
-        const result = await (window as any).axe.run(
-          document.querySelector(".peas-volume-reader"),
-        );
-        return result.violations.filter((v: any) =>
-          ["serious", "critical"].includes(v.impact)
-        ).map((v: any) => ({
-          id: v.id,
-          nodes: v.nodes.map((n: any) => ({
-            target: n.target,
-            summary: n.failureSummary,
-          })),
-        }));
-      });
-      expect(violations).toEqual([]);
-      const text = reader.locator(".textLayer span").first();
-      expect(
-        await text.evaluate((span) =>
-          Number.parseFloat(getComputedStyle(span).fontSize)
-        ),
-      ).toBeGreaterThan(0);
-      expect((await text.boundingBox())!.width).toBeGreaterThan(0);
-      await reader.screenshot({
-        path: test.info().outputPath(`volume-reader-${theme}-${width}.png`),
-      });
-    }
-  }
-  expect(errors).toEqual([]);
 });

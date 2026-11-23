@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { BookCopy, BookOpen, CalendarDays, Download, FileText } from "lucide-react";
+import { BookCopy, CalendarDays, Download, FileText } from "lucide-react";
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import type { LooseRecord } from "../../lib/api/account";
 import { formatPublicationDate } from "../../lib/formatters/date";
 import type { PublicationDatePrecision } from "../../../../shared/imports";
-import { VolumeContentsReader } from "../../components/documents/VolumeContentsReader";
-import { useDocumentPreparationFeatures } from "../../lib/useDocumentPreparationFeatures";
 import { SimplePdfReader } from "../../components/documents/SimplePdfReader";
+import { PublicationActions } from "./PublicationActions";
+import "../../styles/document-preparation.css";
 
 type DisplayAuthorReference = { id?: string; full_name: string };
 type ClassificationParameter = "topic" | "keyword";
@@ -19,10 +19,10 @@ interface CompiledPublicationTemplateProps {
 
 /** Shared public collection template for both Confluence and Synergy records. */
 export function CompiledPublicationTemplate({ id, record, children }: CompiledPublicationTemplateProps) {
-  const features = useDocumentPreparationFeatures();
   const classification = classificationOf(record);
   const period = collectionPeriodOf(record);
   const completeIssueAvailable = record.complete_download_available === true;
+  const issueUrl = `/api/public/compiled-documents/${encodeURIComponent(id)}`;
   const [query, setQuery] = useState("");
   const [readingIssue, setReadingIssue] = useState(false);
   const [readerError, setReaderError] = useState("");
@@ -33,9 +33,15 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
       <h1>{titleOf(record)}</h1>
       {period ? <div className="peas-document-hero__meta"><span className="peas-document-hero__date"><CalendarDays aria-hidden="true" /> {period}</span></div> : null}
       <p>{record.issue_number ? `Issue ${record.issue_number} · ` : ""}{record.department ? `${record.department} · ` : ""}{children.length} research {children.length === 1 ? "paper" : "papers"}</p>
-      {completeIssueAvailable ? <div className="peas-issue-actions"><button className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" onClick={() => { setReadingIssue(!readingIssue); setReaderError(""); }}><BookOpen aria-hidden="true" />{readingIssue ? "Close complete issue" : "Read complete issue"}</button><a className="peas-ui-button peas-ui-button--outline peas-ui-button--size-default" href={`/api/public/compiled-documents/${encodeURIComponent(id)}/complete/download`}><Download aria-hidden="true" />Download complete issue (PDF)</a></div> : <p>The complete issue PDF is currently unavailable. Available paper downloads are listed below.</p>}
+      {completeIssueAvailable ? <PublicationActions
+        read={{ label: readingIssue ? "Close issue" : "Read issue", expanded: readingIssue, onClick: () => { setReadingIssue(!readingIssue); setReaderError(""); } }}
+        download={{ label: "Download issue", href: `${issueUrl}/complete/download` }}
+      /> : <>
+        <p>The complete issue PDF is currently unavailable. Available paper downloads are listed below.</p>
+        {record.foreword_download_available === true ? <PublicationActions download={{ label: "Download foreword", href: `${issueUrl}/foreword/download` }} /> : null}
+      </>}
     </header>
-    {readingIssue ? <section className="peas-document-access-popup" aria-label="Complete issue reader">{readerError ? <p role="alert">{readerError}<button onClick={() => setReaderError("")}>Retry complete issue</button></p> : <SimplePdfReader onLoaded={() => {}} title="Complete issue" url={`/api/public/compiled-documents/${encodeURIComponent(id)}/complete/inline`} onError={() => setReaderError("The complete issue could not be opened. Your place in the contents is preserved.")} />}</section> : null}
+    {readingIssue ? <section className="peas-document-access-popup" aria-label="Complete issue reader">{readerError ? <p role="alert">{readerError}<button onClick={() => setReaderError("")}>Retry complete issue</button></p> : <SimplePdfReader onLoaded={() => {}} title="Complete issue" url={`${issueUrl}/complete/inline`} onError={() => setReaderError("The complete issue could not be opened. Your place in the contents is preserved.")} />}</section> : null}
     <section className="peas-document-abstract">
       <h2>Collection overview</h2>
       <p>{abstractOf(record) || "No overview is available for this collection."}</p>
@@ -51,9 +57,7 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
           frontPage={positivePage(record.front_cover_page)}
           backPage={positivePage(record.back_cover_page)}
         /> : null}
-        <CollectionForewordPanel id={id} available={record.foreword_download_available === true} />
-        {features.volumeReader ? <VolumeContentsReader id={String(record.id || id)} /> : null}
-        <section aria-labelledby="compiled-publication-contents-title">
+        <section className="peas-document-collection" aria-labelledby="compiled-publication-contents-title">
           <div className="peas-document-collection-heading">
             <div><h2 id="compiled-publication-contents-title">Papers in this issue</h2><p>Read a paper or download only that paper's PDF. Papers appear in publication order.</p></div>
             <span>{children.length} {children.length === 1 ? "paper" : "papers"}</span>
@@ -68,6 +72,7 @@ export function CompiledPublicationTemplate({ id, record, children }: CompiledPu
 
 function CompiledChildCard({ child }: { child: LooseRecord }) {
   const childId = String(child.public_id || child.id || child.doc_id || "");
+  const detailsUrl = `/pages/guest-single.html?id=${encodeURIComponent(childId)}`;
   const title = titleOf(child);
   const abstract = abstractOf(child);
   const [expanded, setExpanded] = useState(false);
@@ -81,7 +86,7 @@ function CompiledChildCard({ child }: { child: LooseRecord }) {
   return <article className="peas-document-child-card">
     <FileText aria-hidden="true" />
     <div className="peas-document-child-card__body">
-      <div className="peas-document-child-card__heading"><div><span className="peas-document-child-card__category">{category}</span><h3><a href={`/pages/guest-single.html?id=${encodeURIComponent(childId)}`}>{title}</a></h3></div></div>
+      <div className="peas-document-child-card__heading"><div><span className="peas-document-child-card__category">{category}</span><h3><a href={detailsUrl}>{title}</a></h3></div></div>
       <span className="peas-document-child-card__section-label">Metadata</span>
       <dl className="peas-document-child-card__metadata" aria-label={`${title} metadata`}>
         <div><dt>Authors</dt><dd>{authors.length ? <div className="peas-document-child-card__authors" aria-label={`Authors of ${title}`}>{authors.map((author, index) => <AuthorPreviewLink key={String(author.id ?? author.full_name ?? index)} author={author} />)}</div> : "Unknown author"}</dd></div>
@@ -98,8 +103,11 @@ function CompiledChildCard({ child }: { child: LooseRecord }) {
       <ChildTermGroup label="Keywords" values={classification.keywords} parameter="keyword" />
     </div>
     <div className="peas-document-child-card__actions">
-      <a className="peas-document-child-card__details" aria-label={`View details for ${title}`} href={`/pages/guest-single.html?id=${encodeURIComponent(childId)}`}>Read paper</a>
-      {downloadAvailable ? <a className="peas-document-child-card__download" aria-label={`Download PDF for ${title}`} href={`/api/public/documents/${encodeURIComponent(childId)}/download`}><Download aria-hidden="true" /> Download paper (PDF)</a> : <p>Paper PDF unavailable</p>}
+      <PublicationActions
+        read={{ label: "Read paper", accessibleLabel: `Read paper titled ${title}`, href: detailsUrl }}
+        download={downloadAvailable ? { label: "Download PDF", accessibleLabel: `Download PDF for ${title}`, href: `/api/public/documents/${encodeURIComponent(childId)}/download` } : undefined}
+      />
+      {downloadAvailable ? null : <p>Paper PDF unavailable</p>}
     </div>
   </article>;
 }
@@ -112,14 +120,6 @@ function ChildTermGroup({ label, values, parameter }: { label: string; values: A
 function TermSection({ title, values, parameter }: { title: string; values: Array<{ id?: number; name: string }>; parameter: ClassificationParameter }) {
   if (!values.length) return null;
   return <section className="peas-document-topics"><h2>{title}</h2><div className="peas-document-tags">{values.map((value) => <a key={`${parameter}-${value.id ?? value.name}`} href={`/pages/searchResultsPage.html?${parameter}=${encodeURIComponent(String(value.id || value.name))}`}>{value.name}</a>)}</div></section>;
-}
-
-function CollectionForewordPanel({ id, available }: { id: string; available: boolean }) {
-  return <section className="peas-document-access-popup" aria-labelledby="collection-foreword-title">
-    <header><div><BookOpen aria-hidden="true" /><h2 id="collection-foreword-title">Collection foreword</h2></div></header>
-    <p>{available ? "The foreword PDF is publicly available and can be downloaded immediately." : "The foreword PDF is currently unavailable. The reviewed collection and its studies remain accessible."}</p>
-    {available ? <a className="peas-ui-button peas-ui-button--default peas-ui-button--size-default" href={`/api/public/compiled-documents/${encodeURIComponent(id)}/foreword/download`}><Download aria-hidden="true" /> Download foreword</a> : null}
-  </section>;
 }
 
 function CollectionCoverPanel({ id, frontPage, backPage }: { id: string; frontPage: number | null; backPage: number | null }) {
