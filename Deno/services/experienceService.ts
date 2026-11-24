@@ -3,6 +3,7 @@ import { client, withTransaction } from "../db/denopost_conn.ts";
 import { WORKSPACE_ROOT } from "../config/storage.ts";
 import {
   defaultExperienceConfig,
+  EXPERIENCE_HERO_IMAGE_LIMIT,
   ExperienceConfig,
   getExperiencePublishErrors,
   parseExperienceConfig,
@@ -102,8 +103,10 @@ export function normalizeSiteAssetAltText(value?: string): string | null {
 }
 
 export function siteAssetStorageDirectory(kind: string): string {
-  const heroSlot = /^hero-slot-([1-4])$/.exec(kind);
-  return heroSlot ? `hero/slot-${heroSlot[1]}` : kind;
+  const heroSlot = /^hero-slot-([1-9][0-9]?)$/.exec(kind);
+  return heroSlot && Number(heroSlot[1]) <= EXPERIENCE_HERO_IMAGE_LIMIT
+    ? `hero/slot-${heroSlot[1]}`
+    : kind;
 }
 
 const DEFAULT_SITE_ASSET_DEPENDENCIES: SiteAssetDependencies = {

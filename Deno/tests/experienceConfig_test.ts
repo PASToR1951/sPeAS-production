@@ -2,6 +2,7 @@ import { assertEquals, assert } from "https://deno.land/std@0.190.0/testing/asse
 import {
   defaultExperienceConfig,
   EXPERIENCE_DEFAULT_ORGANIZATION_ROLES,
+  EXPERIENCE_HERO_IMAGE_LIMIT,
   EXPERIENCE_ORGANIZATION_ROLE_IDS,
   ExperienceOrganizationRolesSchema,
   FaqBlockPropsSchema,
@@ -190,7 +191,7 @@ Deno.test("overview migration preserves approved copy and locks structure", () =
   assertEquals(migratedOverview.props.visualStyle, "archive-rings");
 });
 
-Deno.test("hero keeps four stable slideshow slots while accepting replacements", () => {
+Deno.test("hero backfills the original four slideshow slots for older configurations", () => {
   const input = structuredClone(defaultExperienceConfig) as any;
   const hero = input.pages.landing.data.content.find((block: any) => block.type === "HeroBlock");
   hero.props.images = [{
@@ -210,6 +211,22 @@ Deno.test("hero keeps four stable slideshow slots while accepting replacements",
   assertEquals(images.slice(1), (defaultExperienceConfig.pages.landing.data.content.find((block) =>
     block.type === "HeroBlock"
   )!.props.images as Array<{ url: string; alt: string }>).slice(1));
+});
+
+Deno.test("hero preserves additional approved slideshow photos in order up to the limit", () => {
+  const input = structuredClone(defaultExperienceConfig);
+  const hero = input.pages.landing.data.content.find((block) => block.type === "HeroBlock")!;
+  const images = hero.props.images as Array<{ url: string; alt: string }>;
+  images.push({ url: "https://example.com/external.jpg", alt: "Unapproved photo" });
+  while (images.length <= EXPERIENCE_HERO_IMAGE_LIMIT) {
+    const slot = images.length + 1;
+    images.push({ url: `/storage/site-branding/hero/slot-${slot}/photo.jpg`, alt: slot === 6 ? "" : `Cover ${slot}` });
+  }
+
+  const normalized = migrateExperienceConfigToV6(input);
+  const savedHero = normalized.pages.landing.data.content.find((block) => block.type === "HeroBlock")!;
+  assertEquals(savedHero.props.images, [...images.slice(0, 4), ...images.slice(5, EXPERIENCE_HERO_IMAGE_LIMIT)]);
+  assert(getExperiencePublishErrors(normalized).some((error) => error.includes("image 5 requires alternative text")));
 });
 
 Deno.test("fixed quick-link destinations and agenda vocabulary cannot be changed", () => {

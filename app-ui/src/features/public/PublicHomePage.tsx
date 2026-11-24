@@ -97,9 +97,10 @@ export function PublicHomePage() {
   const agenda = experienceBlockProps(config, "landing", "ResearchAgendaBlock");
   const contactCta = experienceBlockProps(config, "landing", "CtaBlock");
   const heroImages = Array.isArray(hero.images) ? hero.images as Array<{ url?: string; alt?: string }> : [];
-  const displayedHeroImages = (heroImages.length
+  const displayedHeroImages = heroImages.length
     ? heroImages
-    : [{ url: "/Components/images/1.jpg", alt: "" }]).slice(0, 4);
+    : [{ url: "/Components/images/1.jpg", alt: "" }];
+  const heroImageIndex = Math.min(activeHeroImage, displayedHeroImages.length - 1);
   const heroImageSignature = displayedHeroImages.map((image) => image.url || "").join("|");
   const quickLinkItems = Array.isArray(quickLinks.links)
     ? quickLinks.links as Array<{ label?: string; description?: string; href?: string }>
@@ -117,11 +118,11 @@ export function PublicHomePage() {
     const showPhoto = (event: MessageEvent) => {
       if (event.source !== window.parent || event.origin !== window.location.origin || event.data?.type !== "experience-show-photo") return;
       const index = event.data.index;
-      if (Number.isInteger(index) && index >= 0 && index < displayedHeroImages.length) setActiveHeroImage(index);
+      if (Number.isInteger(index) && index >= 0) setActiveHeroImage(index);
     };
     window.addEventListener("message", showPhoto);
     return () => window.removeEventListener("message", showPhoto);
-  }, [canvasMode, displayedHeroImages.length]);
+  }, [canvasMode]);
 
   useEffect(() => {
     if (canvasMode || heroSlideshowPaused || displayedHeroImages.length <= 1) return;
@@ -143,8 +144,9 @@ export function PublicHomePage() {
             <img
               src={image.url || "/Components/images/1.jpg"}
               alt={image.alt || ""}
-              aria-hidden={index !== activeHeroImage}
-              className={`peas-public-hero__image${index === activeHeroImage ? " is-active" : ""}`}
+              fetchPriority={index === heroImageIndex ? "high" : "low"}
+              aria-hidden={index !== heroImageIndex}
+              className={`peas-public-hero__image${index === heroImageIndex ? " is-active" : ""}`}
               key={`${image.url}-${index}`}
             />
           ))}
@@ -220,8 +222,8 @@ export function PublicHomePage() {
                 <button
                   type="button"
                   aria-label={`Show background photo ${index + 1}`}
-                  aria-pressed={index === activeHeroImage}
-                  className={index === activeHeroImage ? "is-active" : ""}
+                  aria-pressed={index === heroImageIndex}
+                  className={index === heroImageIndex ? "is-active" : ""}
                   onClick={() => {
                     setActiveHeroImage(index);
                     if (canvasMode) sendCanvasMessage({ type: "experience-canvas-photo", index });
@@ -231,7 +233,7 @@ export function PublicHomePage() {
               ))}
             </span>
             {canvasMode ? (
-              <button className="peas-canvas-photo-button" type="button" onClick={() => sendCanvasMessage({ type: "experience-canvas-photo", index: activeHeroImage, open: true })}>
+              <button className="peas-canvas-photo-button" type="button" onClick={() => sendCanvasMessage({ type: "experience-canvas-photo", index: heroImageIndex, open: true })}>
                 Edit photos
               </button>
             ) : <button

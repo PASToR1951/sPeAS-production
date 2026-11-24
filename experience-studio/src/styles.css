@@ -1465,8 +1465,8 @@ body:has(.xp-studio-shell) { margin: 0; }
 .xp-photo-number { left: .35rem; font-size: .69rem; }
 .xp-slideshow .xp-image-field { grid-template-columns: 1fr auto; column-gap: .5rem; align-items: center; margin-top: .25rem; }
 .xp-slideshow .xp-image-field > img { grid-column: 1 / -1; grid-row: 1; display: block; width: 100%; max-height: none; aspect-ratio: 16 / 9; object-fit: cover; border: 0; background: var(--surface-muted); }
-.xp-slideshow .xp-image-field > .xp-studio-button { background: var(--brand-green-mist); color: var(--brand-green-dark); font-size: .82rem; }
-.xp-slideshow .xp-image-field > .xp-studio-button:hover { background: var(--brand-green-soft); }
+.xp-slideshow .xp-studio-button { justify-self: start; background: var(--brand-green-mist); color: var(--brand-green-dark); font-size: .82rem; }
+.xp-slideshow .xp-studio-button:hover { background: var(--brand-green-soft); }
 .xp-slideshow .xp-image-field > small { grid-column: 1 / -1; }
 .xp-review-list { padding-inline-start: 1.25rem; }
 .xp-review-list ul { padding-inline-start: 1rem; }

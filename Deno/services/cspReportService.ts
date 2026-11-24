@@ -109,18 +109,22 @@ export function sanitizeCspReports(
   contentType: string,
   receivedAt = new Date().toISOString(),
 ): SanitizedCspReport[] {
-  if (contentType === "application/csp-report") {
-    const envelope = record(value);
-    const body = record(envelope?.["csp-report"]);
-    if (!body) throw new CspReportValidationError("Invalid legacy CSP report");
-    return [sanitizeOne(body, "legacy", receivedAt)];
+  const isLegacyContentType = contentType === "application/csp-report";
+  if (isLegacyContentType) {
+    const body = record(record(value)?.["csp-report"]);
+    if (body) return [sanitizeOne(body, "legacy", receivedAt)];
   }
 
-  if (contentType === "application/reports+json") {
-    if (!Array.isArray(value) || value.length < 1 || value.length > 50) {
+  if (isLegacyContentType || contentType === "application/reports+json") {
+    // WebKit can send a single Reporting API record with the legacy content type.
+    const candidates = isLegacyContentType ? [value] : value;
+    if (
+      !Array.isArray(candidates) || candidates.length < 1 ||
+      candidates.length > 50
+    ) {
       throw new CspReportValidationError("Invalid Reporting API payload");
     }
-    return value.map((candidate) => {
+    return candidates.map((candidate) => {
       const report = record(candidate);
       const body = record(report?.body);
       if (!report || !body || report.type !== "csp-violation") {

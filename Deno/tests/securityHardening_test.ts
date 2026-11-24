@@ -40,7 +40,7 @@ Deno.test("security headers support staged and enforced CSP modes", () => {
   assertEquals(reportOnly.get("X-Content-Type-Options"), "nosniff");
   assertEquals(reportOnly.get("X-Frame-Options"), "SAMEORIGIN");
   assertEquals(reportOnly.get("Reporting-Endpoints"), 'peas-csp="/api/security/csp-report"');
-  assertStringIncludes(reportOnly.get("Content-Security-Policy-Report-Only") ?? "", "upgrade-insecure-requests");
+  assertEquals(reportOnly.get("Content-Security-Policy-Report-Only")?.includes("upgrade-insecure-requests"), false);
   assertStringIncludes(reportOnly.get("Content-Security-Policy-Report-Only") ?? "", "report-uri /api/security/csp-report");
   assertStringIncludes(reportOnly.get("Content-Security-Policy-Report-Only") ?? "", "report-to peas-csp");
   assertEquals(reportOnly.has("Content-Security-Policy"), false);
@@ -49,6 +49,9 @@ Deno.test("security headers support staged and enforced CSP modes", () => {
   applySecurityHeaders(enforced, { cspMode: "enforce", isProduction: false });
   assertEquals(enforced.get("Content-Security-Policy"), contentSecurityPolicy(false));
   assertEquals(enforced.has("Content-Security-Policy-Report-Only"), false);
+
+  applySecurityHeaders(enforced, { cspMode: "enforce", isProduction: true });
+  assertStringIncludes(enforced.get("Content-Security-Policy") ?? "", "upgrade-insecure-requests");
   assertEquals(readCspMode("enforce"), "enforce");
 });
 

@@ -4,29 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PeAS Experience Studio</title>
-  <script>
-    (function() {
-      const redirectHome = () => {
-        window.location.replace('/index.html?redirected=true&t=' + Date.now());
-      };
-
-      fetch('/api/auth/get-session', {
-        method: 'GET',
-        credentials: 'include',
-        cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
-      })
-      .then(response => response.ok ? response.json() : null)
-      .then(data => {
-        const user = data && data.user;
-        const role = String(user && user.role ? user.role : '').toLowerCase();
-        if (!user || role !== 'admin') {
-          redirectHome();
-        }
-      })
-      .catch(redirectHome);
-    })();
-  </script>
+  <script src="/admin/Components/js/experience-studio-session.js"></script>
   <link rel="stylesheet" href="/admin/experience-studio/style.css">
     <script src="/Components/js/system-ui.js" defer></script>
 </head>

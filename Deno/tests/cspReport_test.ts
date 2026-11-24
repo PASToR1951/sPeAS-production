@@ -86,6 +86,39 @@ Deno.test("Reporting API payloads accept only bounded CSP violation arrays", () 
   );
 });
 
+Deno.test("WebKit can send one Reporting API record with the legacy content type", () => {
+  const reports = sanitizeCspReports(
+    {
+      type: "csp-violation",
+      url: "https://peas.example.edu/admin/Components/experience-studio.html",
+      body: {
+        documentURL:
+          "https://peas.example.edu/admin/Components/experience-studio.html?draft=private",
+        disposition: "report",
+        effectiveDirective: "script-src-elem",
+        blockedURL: "inline",
+      },
+    },
+    "application/csp-report",
+  );
+  assertEquals(reports[0].format, "reporting-api");
+  assertEquals(
+    reports[0].documentLocation,
+    "https://peas.example.edu/admin/Components/experience-studio.html",
+  );
+  assertEquals(reports[0].effectiveDirective, "script-src-elem");
+  assertEquals(reports[0].blockedLocation, "inline");
+
+  assertThrows(
+    () =>
+      sanitizeCspReports(
+        { type: "deprecation", body: {} },
+        "application/csp-report",
+      ),
+    CspReportValidationError,
+  );
+});
+
 Deno.test("CSP report stream reader enforces the byte limit", async () => {
   const valid = new Blob(["valid report"]).stream();
   assertEquals(

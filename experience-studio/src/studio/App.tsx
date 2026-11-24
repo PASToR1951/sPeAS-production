@@ -11,6 +11,7 @@ import {
   FAQ_CATEGORY_LIMITS,
   EXPERIENCE_EDITABLE_PAGES,
   EXPERIENCE_FIXED_THEME,
+  EXPERIENCE_HERO_IMAGE_LIMIT,
   ExperienceConfig,
   ExperienceConfigSchema,
   type ExperiencePageKey,
@@ -220,6 +221,24 @@ const fieldPlaceholders: Record<string, string> = {
 
 const friendlyLabel = (name: string) => fieldLabels[name] || niceLabel(name);
 
+const sitePhotoTypes = "image/jpeg,image/png,image/webp";
+
+async function uploadSitePhoto(file: File, kind: string, altText?: string): Promise<string> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("kind", kind);
+  if (altText?.trim()) body.append("altText", altText.trim());
+  const response = await fetch("/api/admin/experience/assets", {
+    method: "POST",
+    credentials: "include",
+    body,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.details || data.error || "Upload failed");
+  if (!data.asset?.file_path) throw new Error("The upload did not return a photo. Try uploading it again.");
+  return data.asset.file_path;
+}
+
 function ImageUrlField(props: {
   label: string;
   value: string;
@@ -245,19 +264,8 @@ function ImageUrlField(props: {
     setUploading(true);
     setUploadError("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("kind", props.uploadKind || "branding");
-      if (props.altText?.trim()) formData.append("altText", props.altText.trim());
-      const response = await fetch("/api/admin/experience/assets", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.details || data.error || "Upload failed");
-      if (!data.asset?.file_path) throw new Error("The upload did not return a photo. Try replacing it again.");
-      changeImage.current(data.asset.file_path);
+      const path = await uploadSitePhoto(file, props.uploadKind || "branding", props.altText);
+      changeImage.current(path);
     } catch (error) {
       setUploadError(errorMessage(error));
     } finally {
@@ -300,7 +308,7 @@ function ImageUrlField(props: {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={sitePhotoTypes}
         style={{ display: "none" }}
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -468,10 +476,16 @@ function HeroImagesField(props: {
     ? defaultHero.props.images as HeroImage[]
     : [];
   const currentImages = Array.isArray(props.value) ? props.value as HeroImage[] : [];
-  const images = Array.from({ length: 4 }, (_, index) => ({
-    ...(defaultImages[index] || {}),
-    ...(currentImages[index] || {}),
+  const images = currentImages.length >= defaultImages.length ? currentImages : defaultImages.map((image, index) => ({
+    ...image,
+    ...currentImages[index],
   }));
+  const { index, select } = useContext(SlideshowSelection);
+  const reportUpload = useContext(UploadActivity);
+  const addInput = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState("");
+  const selected = images[index];
+  const availableSlots = EXPERIENCE_HERO_IMAGE_LIMIT - images.length;
 
   const updateImage = (index: number, update: Partial<HeroImage>) => {
     props.onChange(images.map((image, imageIndex) =>
@@ -479,8 +493,36 @@ function HeroImagesField(props: {
     ));
   };
 
-  const { index, select } = useContext(SlideshowSelection);
-  const selected = images[index];
+  async function addPhotos(files: File[]) {
+    if (!files.length) return;
+    if (files.length > availableSlots) {
+      setUploadError(`Choose at most ${availableSlots} more photos.`);
+      return;
+    }
+
+    reportUpload(1);
+    setUploadError("");
+    const added: HeroImage[] = [];
+    const failures: string[] = [];
+    try {
+      for (const file of files) {
+        try {
+          const url = await uploadSitePhoto(file, `hero-slot-${images.length + added.length + 1}`);
+          added.push({ url, alt: "" });
+        } catch (error) {
+          failures.push(`${file.name}: ${errorMessage(error)}`);
+        }
+      }
+      if (added.length) {
+        props.onChange([...images, ...added]);
+        select(images.length);
+      }
+      setUploadError(failures.join(" "));
+    } finally {
+      reportUpload(-1);
+    }
+  }
+
   return (
     <section className="xp-slideshow xp-array-field" aria-labelledby="slideshow-heading">
       <h3 id="slideshow-heading" tabIndex={-1}>Welcome slideshow <small>{index + 1} of {images.length}</small></h3>
@@ -501,6 +543,11 @@ function HeroImagesField(props: {
         altText={selected.alt}
         allowManualPath={false}
         onChange={(value) => updateImage(index, { url: value, alt: "" })}
+        clearLabel={images.length > defaultImages.length ? "Remove from slideshow" : undefined}
+        onClear={() => {
+          props.onChange(images.filter((_, imageIndex) => imageIndex !== index));
+          select(Math.min(index, images.length - 2));
+        }}
       />
       <label>
         <span>Photo description</span>
@@ -514,6 +561,26 @@ function HeroImagesField(props: {
         />
         <small className="xp-field-help" id="slideshow-description-help">Required before publishing. Describe what this photo shows.</small>
       </label>
+      <button className="xp-studio-button" type="button" aria-describedby="slideshow-upload-help" disabled={availableSlots <= 0} onClick={() => addInput.current?.click()}>
+        Add photos
+      </button>
+      <small className="xp-field-help" id="slideshow-upload-help">
+        Select one or more JPG, PNG, or WebP files up to 8 MB each. The slideshow holds up to {EXPERIENCE_HERO_IMAGE_LIMIT} photos.
+      </small>
+      <input
+        ref={addInput}
+        type="file"
+        aria-label="Select slideshow photos"
+        accept={sitePhotoTypes}
+        multiple
+        hidden
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          event.currentTarget.value = "";
+          void addPhotos(files);
+        }}
+      />
+      {uploadError ? <small className="xp-field-error" role="alert">{uploadError}</small> : null}
     </section>
   );
 }
@@ -867,7 +934,7 @@ function AssetUploader() {
           ))}
         </div>
       ) : (
-        <p className="xp-help-text">After you upload a reusable picture, press Copy next to it and paste it into a compatible picture box. Hero photos should be uploaded directly in their fixed slideshow slots.</p>
+        <p className="xp-help-text">After you upload a reusable picture, press Copy next to it and paste it into a compatible picture box. Upload hero photos in the slideshow editor.</p>
       )}
     </div>
   );
@@ -925,6 +992,9 @@ export default function App() {
   const dirty = config !== savedConfig;
   const working = busy !== null || uploads > 0;
   const selected = config.pages[activePage].data.content.find((block) => block.type === section);
+  const landingHero = config.pages.landing.data.content.find((block) => block.type === "HeroBlock");
+  const heroImages = landingHero?.props.images as HeroImage[] | undefined;
+  const selectedHeroPhoto = Math.min(heroPhoto, Math.max(0, (heroImages?.length ?? 0) - 1));
   const issues = useMemo(() => getExperiencePublishIssues(config), [config]);
   const invalidDraft = issues.some((issue) => issue.page === "faq");
   const changes = useMemo(() => {
@@ -1221,7 +1291,7 @@ export default function App() {
   }
 
   function showCanvasPhoto() {
-    canvasRef.current?.contentWindow?.postMessage({ type: "experience-show-photo", index: heroPhoto }, window.location.origin);
+    canvasRef.current?.contentWindow?.postMessage({ type: "experience-show-photo", index: selectedHeroPhoto }, window.location.origin);
   }
 
   const receiveCanvasMessage = useEffectEvent((event: MessageEvent) => {
@@ -1233,7 +1303,7 @@ export default function App() {
       return;
     }
     if (working) return;
-    if (type === "experience-canvas-photo" && activePage === "landing" && Number.isInteger(index) && index >= 0 && index < 4) {
+    if (type === "experience-canvas-photo" && activePage === "landing" && Number.isInteger(index) && index >= 0 && index < (heroImages?.length ?? 0)) {
       selectSection({ page: activePage, section: "HeroBlock" });
       setHeroPhoto(index);
       setHeroPanel("photos");
@@ -1293,7 +1363,7 @@ export default function App() {
 
   useEffect(() => {
     if (canvasReady && activePage === "landing") syncPhoto();
-  }, [heroPhoto, canvasReady, activePage]);
+  }, [selectedHeroPhoto, canvasReady, activePage]);
 
   useLayoutEffect(() => {
     const frame = canvasRef.current?.parentElement;
@@ -1317,8 +1387,7 @@ export default function App() {
     : pageName;
 
   const editing = !compactViewport && screen === "edit" && loadState === "ready";
-  const landingHero = config.pages.landing.data.content.find((block) => block.type === "HeroBlock");
-  const coverImage = (landingHero?.props.images as HeroImage[] | undefined)?.[0]?.url;
+  const coverImage = heroImages?.[0]?.url;
   const faqContent = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
   const firstQuestion = (faqContent?.props.categories as FaqCategory[] | undefined)?.[0]?.items[0]?.question;
 
@@ -1484,7 +1553,7 @@ export default function App() {
                 <fieldset disabled={working}>
                   <legend className="xp-sr-only">{sectionName(section)} fields</legend>
                   <UploadActivity.Provider value={(change) => setUploads((count) => count + change)}>
-                    <SlideshowSelection.Provider value={{ index: heroPhoto, select: setHeroPhoto }}>
+                    <SlideshowSelection.Provider value={{ index: selectedHeroPhoto, select: setHeroPhoto }}>
                       <BlockInspector key={section} block={selected} heroPanel={heroPanel} onChange={updateBlock} />
                     </SlideshowSelection.Provider>
                   </UploadActivity.Provider>

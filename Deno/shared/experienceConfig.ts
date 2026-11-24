@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const EXPERIENCE_SCHEMA_VERSION = 6;
+export const EXPERIENCE_HERO_IMAGE_LIMIT = 12;
 export const EXPERIENCE_EDITABLE_PAGES = ["landing", "faq"] as const;
 export type ExperiencePageKey = typeof EXPERIENCE_EDITABLE_PAGES[number];
 
@@ -999,14 +1000,19 @@ function migrateBlockProps(type: string, defaults: Record<string, unknown>, sour
   if (type === "HeroBlock" && Array.isArray(source.images)) {
     const fallback = Array.isArray(defaults.images) ? defaults.images.map(asRecord) : [];
     const sourceImages = source.images;
-    result.images = fallback.slice(0, 4).map((defaultItem, index) => {
+    const defaultSlots = fallback.map((defaultItem, index) => {
       const image = asRecord(sourceImages[index]);
-      const defaultImage = asRecord(defaultItem);
       return {
-        url: approvedImageUrl(image.url, String(defaultImage.url ?? "")),
-        alt: typeof image.alt === "string" ? image.alt.slice(0, 255) : String(defaultImage.alt ?? ""),
+        url: approvedImageUrl(image.url, String(defaultItem.url ?? "")),
+        alt: typeof image.alt === "string" ? image.alt.slice(0, 255) : String(defaultItem.alt ?? ""),
       };
     });
+    const additionalSlots = sourceImages.slice(fallback.length, EXPERIENCE_HERO_IMAGE_LIMIT).flatMap((item) => {
+      const image = asRecord(item);
+      const url = approvedImageUrl(image.url, "");
+      return url ? [{ url, alt: boundedOptionalString(image.alt, "", 255) }] : [];
+    });
+    result.images = [...defaultSlots, ...additionalSlots];
   }
 
   if (type === "QuickLinksBlock" && Array.isArray(source.links) && Array.isArray(defaults.links)) {

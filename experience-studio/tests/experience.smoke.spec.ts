@@ -253,6 +253,47 @@ test("publish blockers link to the exact field and stale drafts cannot publish",
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeDisabled();
 });
 
+test("bulk slideshow uploads keep successful photos beyond the first four", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
+  await mockStudio(page);
+  const uploadedPaths = ["/Components/images/3.jpg", "/Components/images/4.jpg"];
+  await page.route("**/api/admin/experience/assets", (route) => {
+    const body = route.request().postData() ?? "";
+    if (body.includes('filename="rejected.jpg"')) {
+      return route.fulfill({ status: 400, json: { error: "Image could not be uploaded" } });
+    }
+    const path = body.includes('filename="first.jpg"') ? uploadedPaths[0] : uploadedPaths[1];
+    return route.fulfill({ json: { asset: { file_path: path } } });
+  });
+
+  await page.goto(studioUrl);
+  await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
+  const chooser = page.getByLabel("Select slideshow photos");
+  await chooser.setInputFiles(["first.jpg", "rejected.jpg", "last.jpg"].map((name) => ({
+    name,
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("fixture"),
+  })));
+
+  await expect(page.getByRole("alert")).toContainText("rejected.jpg: Image could not be uploaded");
+  const canvas = page.frameLocator("iframe");
+  await expect(canvas.getByRole("button", { name: "Show background photo 5" })).toHaveAttribute("aria-pressed", "true");
+  await expect(canvas.locator(".peas-public-hero__image.is-active")).toHaveAttribute("src", uploadedPaths[0]);
+  await canvas.getByRole("button", { name: "Show background photo 6" }).click();
+  await expect(page.getByRole("button", { name: "Show slideshow photo 6" })).toHaveAttribute("aria-pressed", "true");
+  await expect(canvas.locator(".peas-public-hero__image.is-active")).toHaveAttribute("src", uploadedPaths[1]);
+
+  await page.getByRole("button", { name: "Remove from slideshow" }).click();
+  await expect(canvas.getByRole("button", { name: "Show background photo 6" })).toHaveCount(0);
+  await page.getByPlaceholder("Describe slideshow photo 5").fill("Research workshop participants");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("status", { name: "Draft status" })).toHaveText("Draft saved");
+  await page.reload();
+  await page.getByRole("button", { name: /^Continue editing Home page/ }).click();
+  await page.getByRole("button", { name: "Show slideshow photo 5" }).click();
+  await expect(page.getByPlaceholder("Describe slideshow photo 5")).toHaveValue("Research workshop participants");
+});
+
 test("the editor waits for the saved draft and offers retry", async ({ page, isMobile }) => {
   test.skip(isMobile, "Editing requires a desktop-width viewport");
   const studio = await mockStudio(page);

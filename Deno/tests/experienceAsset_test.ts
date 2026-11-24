@@ -40,6 +40,8 @@ Deno.test("site asset metadata is sanitized and bounded to database limits", () 
   assertEquals(normalizeSiteAssetAltText("   "), null);
   assertEquals(siteAssetStorageDirectory("hero-slot-1"), "hero/slot-1");
   assertEquals(siteAssetStorageDirectory("hero-slot-4"), "hero/slot-4");
+  assertEquals(siteAssetStorageDirectory("hero-slot-5"), "hero/slot-5");
+  assertEquals(siteAssetStorageDirectory("hero-slot-12"), "hero/slot-12");
   assertEquals(siteAssetStorageDirectory("org-chart"), "org-chart");
 });
 

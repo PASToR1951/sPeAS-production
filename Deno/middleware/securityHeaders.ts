@@ -26,10 +26,10 @@ export function readCspMode(value = Deno.env.get("PEAS_CSP_MODE")): CspMode {
   throw new Error("PEAS_CSP_MODE must be report-only or enforce");
 }
 
-export function contentSecurityPolicy(isProduction: boolean): string {
+export function contentSecurityPolicy(upgradeInsecureRequests: boolean): string {
   return [
     ...BASE_CSP_DIRECTIVES,
-    ...(isProduction ? ["upgrade-insecure-requests"] : []),
+    ...(upgradeInsecureRequests ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
 }
 
@@ -52,7 +52,7 @@ export function applySecurityHeaders(
     cspMode === "enforce"
       ? "Content-Security-Policy"
       : "Content-Security-Policy-Report-Only",
-    contentSecurityPolicy(isProduction),
+    contentSecurityPolicy(isProduction && cspMode === "enforce"),
   );
 }
 

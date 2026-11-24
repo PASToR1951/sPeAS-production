@@ -232,7 +232,7 @@ export const experiencePuckConfig: Config = {
         return (
           <section id={id} className={`xp-hero xp-hero-${variant || "background-slideshow"}`}>
             <div className="xp-hero-media" aria-label="Featured images">
-              {safeImages.slice(0, 4).map((image, index) => (
+              {safeImages.map((image, index) => (
                 <img key={`${image.url}-${index}`} src={image.url} alt={image.alt || ""} />
               ))}
             </div>
