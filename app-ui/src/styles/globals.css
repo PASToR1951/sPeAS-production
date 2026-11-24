@@ -9237,7 +9237,11 @@ body:has(#react-public-root) {
 .peas-public-hero-search { grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto; }
 .peas-public-hero-search .peas-public-search-combobox { height: 44px; }
 .peas-public-hero-search .peas-public-search-combobox input { color: var(--foreground); font-size: .92rem; }
-.peas-public-hero-search .peas-public-search-combobox__popup { color: var(--foreground); }
+.peas-public-hero-search .peas-public-search-combobox__popup {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+  color: var(--foreground);
+}
 .peas-public-hero .peas-public-search-combobox__message { color: var(--muted-foreground); margin: 8px; }
 .peas-public-hero:has(.peas-public-search-combobox__popup:not([hidden])),
 .peas-public-hero__content:has(.peas-public-search-combobox__popup:not([hidden])) { z-index: 3; }
