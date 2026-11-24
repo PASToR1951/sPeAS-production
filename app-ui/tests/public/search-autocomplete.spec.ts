@@ -110,6 +110,38 @@ test("autocomplete stays closed for a URL-loaded query until the search field is
   await expect(page.getByRole("listbox", { name: "Search suggestions" })).toBeVisible();
 });
 
+test("home search suggestions are reachable below the hero", async ({ page }) => {
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 600 });
+  await page.route("**/api/**", (route) => route.fulfill({ status: 503, json: {} }));
+  await page.route("**/api/search/suggestions?*", (route) => route.fulfill({ json: {
+    query: "research",
+    total: 6,
+    suggestions: {
+      work: Array.from({ length: 6 }, (_, index) => ({
+        key: `work:document:${index + 1}`,
+        type: "work",
+        label: `Community Research Study ${index + 1}`,
+        description: "THESIS · Author One",
+        href: `/pages/guest-single.html?id=${index + 1}`,
+      })),
+    },
+  } }));
+
+  await page.goto("/index.html");
+  const hero = page.locator(".peas-public-hero");
+  await hero.getByRole("searchbox", { name: "Search documents" }).fill("research");
+  const suggestions = hero.getByRole("listbox", { name: "Search suggestions" });
+  await expect(suggestions.getByRole("option")).toHaveCount(6);
+
+  // Bring the section boundary into view without scrolling the popup or hero.
+  await hero.evaluate((section) => window.scrollBy(0, section.getBoundingClientRect().bottom - window.innerHeight / 2));
+  await expect.poll(() => suggestions.evaluate((popup) => {
+    const heroBottom = popup.closest(".peas-public-hero")!.getBoundingClientRect().bottom;
+    const { x, width } = popup.getBoundingClientRect();
+    return popup.contains(document.elementFromPoint(x + width / 2, heroBottom + 12));
+  })).toBe(true);
+});
+
 test("autocomplete replaces stale results and shows a readable empty state", async ({ page }) => {
   await page.route("**/api/categories*", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/research-agendas*", (route) => route.fulfill({ json: [] }));

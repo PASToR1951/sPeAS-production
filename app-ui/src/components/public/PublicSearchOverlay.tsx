@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, FileText, Flame, Folder, Layers, LoaderCircle, Newspaper, Search, Sparkles, Tag, Users, X } from "lucide-react";
+import { ArrowRight, FileText, Flame, LoaderCircle, Newspaper, Search, Sparkles, Tag, Users, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { fetchPublicTopics, fetchTrendingKeywords, searchResultsUrl, type PublicTopic } from "../../lib/api/public";
 import { CATEGORY_ORDER, getCategoryMeta, type DocumentCategory } from "../../lib/constants/categories";
@@ -11,9 +11,9 @@ interface Props {
   onClose: () => void;
 }
 
-type SearchScope = "trending" | "category" | "all" | "work" | "news" | "author" | "classification";
+type SearchScope = "trending" | "all" | "work" | "news" | "author" | "classification";
 
-const GROUPS: Array<{ type: SearchSuggestionType; label: string; scope: Exclude<SearchScope, "trending" | "category" | "all"> }> = [
+const GROUPS: Array<{ type: SearchSuggestionType; label: string; scope: Exclude<SearchScope, "trending" | "all"> }> = [
   { type: "work", label: "Research works", scope: "work" },
   { type: "news", label: "News articles", scope: "news" },
   { type: "author", label: "Authors", scope: "author" },
@@ -23,7 +23,6 @@ const GROUPS: Array<{ type: SearchSuggestionType; label: string; scope: Exclude<
 
 const SIDEBAR_TABS: Array<{ value: SearchScope; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { value: "trending", label: "Trending", Icon: Flame },
-  { value: "category", label: "By Category", Icon: Folder },
   { value: "all", label: "Everything", Icon: Sparkles },
   { value: "work", label: "Research works", Icon: FileText },
   { value: "news", label: "News articles", Icon: Newspaper },
@@ -130,7 +129,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
       return;
     }
 
-    if (scope === "trending" || scope === "category") {
+    if (scope === "trending") {
       setScope("all");
     }
 
@@ -154,10 +153,9 @@ export function PublicSearchOverlay({ onClose }: Props) {
 
   useEffect(() => { setActiveIndex(-1); }, [scope]);
 
-  function submit(overrideCategory?: DocumentCategory) {
-    const selectedCategory = overrideCategory ?? category;
+  function submit() {
     markPendingSearch(query, "results");
-    const href = searchResultsUrl(query, selectedCategory, { topic, year, sort });
+    const href = searchResultsUrl(query, category, { topic, year, sort });
     onClose();
     window.location.href = href;
   }
@@ -219,7 +217,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
               aria-expanded={normalizedQuery.length >= 2}
               aria-activedescendant={activeId}
               autoComplete="off"
-              placeholder="Search by title, author, keyword, topic, or collection"
+              placeholder="Search by title, author, keyword, topic, or category"
               value={query}
               onChange={(event) => setQuery(event.currentTarget.value)}
               onKeyDown={handleQueryKeyDown}
@@ -229,7 +227,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
           </div>
 
           <div className="peas-public-search-overlay__filters" aria-label="Repository filters">
-            <label><span>Collection</span><select value={category} aria-label="Filter by collection" onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)}>{CATEGORY_ORDER.map((item) => <option value={item} key={item}>{getCategoryMeta(item).label}</option>)}</select></label>
+            <label><span>Category</span><select value={category} aria-label="Filter by category" onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)}>{CATEGORY_ORDER.map((item) => <option value={item} key={item}>{getCategoryMeta(item).label}</option>)}</select></label>
             <label className="peas-public-search-overlay__topic"><span>Topic</span><input value={topicQuery} aria-label="Filter by topic" placeholder="Type a topic" onChange={(event) => { setTopicQuery(event.currentTarget.value); setTopic(""); }} />{topics.length ? <div className="peas-public-search-overlay__topic-options" role="listbox">{topics.slice(0, 6).map((item) => <button type="button" role="option" key={item.id} onClick={() => { setTopic(String(item.id)); setTopicQuery(item.name); setTopics([]); }}>{item.name}</button>)}</div> : null}</label>
             <label><span>Publication year</span><select value={year} aria-label="Filter by publication year" onChange={(event) => setYear(event.currentTarget.value)}><option value="">Any year</option>{years.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
             <label><span>Sort</span><select value={sort} aria-label="Sort search results" onChange={(event) => setSort(event.currentTarget.value as "latest" | "earliest")}><option value="latest">Newest first</option><option value="earliest">Oldest first</option></select></label>
@@ -237,9 +235,7 @@ export function PublicSearchOverlay({ onClose }: Props) {
         </form>
 
         <div className="peas-public-search-overlay__workspace">
-          {/* Left Vertical Sidebar Filter Tabs (Awwwards design) */}
           <aside className="peas-public-search-overlay__sidebar" aria-label="Search filter categories">
-            <span className="peas-public-search-overlay__sidebar-title">Categories</span>
             {SIDEBAR_TABS.map((item) => {
               const { value, label, Icon } = item;
               const isSelected = scope === value;
@@ -260,7 +256,6 @@ export function PublicSearchOverlay({ onClose }: Props) {
             })}
           </aside>
 
-          {/* Right Main Content Panel */}
           <div className="peas-public-search-overlay__results" id={resultsId} aria-live="polite">
             {normalizedQuery.length < 2 && scope === "trending" ? (
               <div className="peas-public-search-overlay__explore">
@@ -279,41 +274,6 @@ export function PublicSearchOverlay({ onClose }: Props) {
                       {term}
                     </button>
                   ))}
-                </div>
-              </div>
-            ) : normalizedQuery.length < 2 && scope === "category" ? (
-              <div className="peas-public-search-overlay__explore">
-                <div className="peas-public-search-overlay__results-heading">
-                  <div>
-                    <Folder aria-hidden="true" />
-                    <div>
-                      <h3>Browse by Collection</h3>
-                      <p>Select an academic collection to filter the archive.</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="peas-public-search-overlay__collection-grid" aria-label="Browse by collection">
-                  {CATEGORY_ORDER.filter((item) => item !== "All").map((item) => {
-                    const meta = getCategoryMeta(item);
-                    return (
-                      <button
-                        type="button"
-                        key={item}
-                        className="peas-public-search-overlay__collection-card"
-                        onClick={() => {
-                          setCategory(item);
-                          submit(item);
-                        }}
-                      >
-                        <Layers aria-hidden="true" />
-                        <div>
-                          <strong>{meta.label}</strong>
-                          <small>View all {meta.label.toLowerCase()} entries</small>
-                        </div>
-                        <ArrowRight aria-hidden="true" />
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
             ) : normalizedQuery.length < 2 ? (
