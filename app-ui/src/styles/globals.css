@@ -10837,20 +10837,20 @@ body:has(#react-public-root) {
 }
 
 .peas-org-node {
-  align-items: center;
+  align-content: start;
   background: var(--card, #fff);
   border: 1px solid var(--org-outline);
   border-radius: 18px;
   box-shadow: var(--shadow-sm);
   display: grid;
-  gap: 14px;
-  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
   max-width: 100%;
-  min-height: 92px;
-  padding: 14px 18px;
+  padding: 16px 18px;
   position: relative;
   cursor: default;
-  text-align: left;
+  text-align: center;
   width: min(100%, 480px);
 }
 
@@ -10866,27 +10866,26 @@ body:has(#react-public-root) {
 }
 
 .peas-org-node__meta {
-  align-items: flex-start;
   display: grid;
   gap: 4px;
+  justify-items: center;
   min-width: 0;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .peas-org-node__title {
-  color: var(--brand-green-dark, #00523d);
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  color: var(--foreground, #17211c);
+  font-size: 0.875rem;
+  line-height: 1.4;
 }
 
-.peas-org-node__name {
-  color: var(--foreground, #17211c);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
+.peas-org-node__name,
+strong.peas-org-node__title {
+  color: var(--brand-green-dark, #00523d);
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .peas-org-caption {
@@ -10905,7 +10904,7 @@ body:has(#react-public-root) {
 }
 
 .peas-org-figure {
-  --avatar: 58px;
+  --avatar: 88px;
   clip-path: none;
   display: grid;
   height: var(--avatar);
@@ -10952,6 +10951,7 @@ img.peas-org-person {
 }
 
 .peas-org-units {
+  --org-unit-branch-top: 60px;
   --org-unit-gap: clamp(12px, 1.8vw, 20px);
   display: grid;
   gap: var(--org-unit-gap);
@@ -10988,21 +10988,22 @@ img.peas-org-person {
   width: var(--org-line-width);
 }
 
+.peas-org-unit::after {
+  background: var(--org-line);
+  bottom: calc(-1 * var(--org-unit-gap));
+  position: absolute;
+  top: 0;
+  width: var(--org-line-width);
+}
+
+.peas-org-unit:last-child::after {
+  bottom: auto;
+  height: calc(var(--org-unit-branch-top) + var(--org-line-width));
+}
+
 .peas-org-unit .peas-org-node {
   height: 100%;
   width: 100%;
-}
-
-@container peas-org (width > 1000px) {
-  .peas-org-unit .peas-org-node {
-    align-content: start;
-    gap: 10px;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .peas-org-unit .peas-org-figure {
-    --avatar: 44px;
-  }
 }
 
 @media (min-width: 720px) {
@@ -11013,18 +11014,19 @@ img.peas-org-person {
     }
 
     .peas-org-units::before {
-      bottom: 46px;
-      height: auto;
-      left: 50%;
-      right: auto;
+      display: none;
+    }
+
+    .peas-org-unit:nth-child(odd)::after {
+      content: "";
+      left: calc(100% + var(--org-unit-gap) / 2);
       transform: translateX(-50%);
-      width: var(--org-line-width);
     }
 
     .peas-org-unit::before {
       height: var(--org-line-width);
       left: 100%;
-      top: 46px;
+      top: var(--org-unit-branch-top);
       transform: none;
       width: calc(var(--org-unit-gap) / 2);
     }
@@ -11043,22 +11045,21 @@ img.peas-org-person {
 
   .peas-org-node {
     border-radius: 15px;
-    gap: 12px;
-    grid-template-columns: 50px minmax(0, 1fr);
-    min-height: 78px;
-    padding: 12px 14px;
+    padding: 14px;
   }
 
   .peas-org-figure {
-    --avatar: 50px;
+    --avatar: 72px;
   }
 
-  .peas-org-node__title {
-    font-size: 0.92rem;
+  .peas-org-node__name,
+  strong.peas-org-node__title {
+    font-size: 1rem;
   }
 
   .peas-org-units {
-    gap: 10px;
+    --org-unit-branch-top: 50px;
+    --org-unit-gap: 10px;
     grid-template-columns: 1fr;
     margin-left: 14px;
     padding: 18px 0 0 20px;
@@ -11066,8 +11067,7 @@ img.peas-org-person {
   }
 
   .peas-org-units::before {
-    bottom: 18px;
-    height: auto;
+    height: 18px;
     left: 0;
     right: auto;
     top: 0;
@@ -11087,9 +11087,14 @@ img.peas-org-person {
   .peas-org-unit::before {
     height: var(--org-line-width);
     left: -20px;
-    top: 39px;
+    top: var(--org-unit-branch-top);
     transform: none;
     width: 20px;
+  }
+
+  .peas-org-unit::after {
+    content: "";
+    left: -20px;
   }
 }
 

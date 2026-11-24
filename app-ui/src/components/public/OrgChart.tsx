@@ -75,6 +75,7 @@ export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgCh
 }
 
 function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
+  const name = role.name === role.title ? "" : role.name;
   const title = role.title.toLowerCase().replaceAll(" & ", " and ");
   const caption = role.caption.toLowerCase().replaceAll(" & ", " and ");
 
@@ -82,8 +83,8 @@ function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
     <article className={`peas-org-node${role.group ? " is-group" : ""}`}>
       <OrgFigure role={role} />
       <div className="peas-org-node__meta">
-        <strong className="peas-org-node__title">{role.title}</strong>
-        {role.name && role.name !== role.title ? <span className="peas-org-node__name">{role.name}</span> : null}
+        <strong className={name ? "peas-org-node__name" : "peas-org-node__title"}>{name || role.title}</strong>
+        {name ? <span className="peas-org-node__title">{role.title}</span> : null}
         {title !== caption && !title.endsWith(` ${caption}`) ? <span className="peas-org-caption">{role.caption}</span> : null}
         {canvasMode && (
           <button

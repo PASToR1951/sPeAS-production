@@ -1547,6 +1547,9 @@ test("home renders published organization-chart content", async ({ page }) => {
                     caption: "Research Leadership",
                     name: "Dr. Ada Paul",
                     summary: "Coordinates the university research program.",
+                  }, {
+                    id: "technical-board",
+                    name: "",
                   }],
                 },
               }],
@@ -1564,6 +1567,8 @@ test("home renders published organization-chart content", async ({ page }) => {
   await expect(director).toBeVisible();
   await expect(director).toContainText("Research Office Director");
   await expect(director).toContainText("Research Leadership");
+  const board = page.locator(".peas-org-node").filter({ hasText: "Technical Board" });
+  await expect(board.locator("strong.peas-org-node__title")).toHaveText("Technical Board");
   await expect(page.locator(".peas-org-chart button")).toHaveCount(0);
   await expect(page.getByText("Coordinates the university research program.")).toHaveCount(0);
 });
@@ -1584,7 +1589,7 @@ test("organization chart stays within the responsive layout", async ({ page }, t
   }
 
   const chart = page.locator(".peas-org-chart");
-  await expect(chart.locator(".peas-org-node__name")).toHaveText([
+  await expect(chart.locator("strong.peas-org-node__name:first-child")).toHaveText([
     "Sr. Mila Grace A. Silab, SPC",
     "Dr. Maricar Flores",
     "Dr. Roel O. Jumawan",
@@ -1594,7 +1599,7 @@ test("organization chart stays within the responsive layout", async ({ page }, t
     "Mr. Sami Gregg T. Managbanag",
     "Dr. Mary Francis V. Laquinon",
   ]);
-  await expect(chart.locator(".peas-org-node__title:first-child")).toHaveText([
+  await expect(chart.locator(".peas-org-node__name + .peas-org-node__title")).toHaveText([
     "University President",
     "Vice President, Student Affairs",
     "Director, Office of Research and Publications",
@@ -1618,6 +1623,21 @@ test("organization chart stays within the responsive layout", async ({ page }, t
     await portrait.scrollIntoViewIfNeeded();
     await expect.poll(() => portrait.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   }
+  const figures = await chart.locator(".peas-org-node > .peas-org-figure:first-child").evaluateAll((elements) =>
+    elements.map((element) => {
+      const figure = element.getBoundingClientRect();
+      const card = element.parentElement!.getBoundingClientRect();
+      return {
+        width: figure.width,
+        centerOffset: Math.abs((figure.left + figure.width / 2) - (card.left + card.width / 2)),
+      };
+    })
+  );
+  expect(figures).toHaveLength(8);
+  figures.forEach(({ width, centerOffset }) => {
+    expect(width).toBeGreaterThanOrEqual(mobile ? 72 : 88);
+    expect(centerOffset).toBeLessThan(1);
+  });
 
   const tree = page.locator(".peas-org-tree");
   const units = page.locator(".peas-org-units");
