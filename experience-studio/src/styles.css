@@ -861,6 +861,11 @@
   object-fit: cover;
 }
 
+.xp-org-photo-position { display: grid; gap: 0.35rem; }
+.xp-org-photo-position legend { padding: 0; margin-bottom: 0.35rem; font-size: 0.9rem; font-weight: 800; }
+.xp-org-photo-position input[type="range"] { min-height: 28px; margin: 0; padding: 0; accent-color: var(--brand-green); }
+.xp-org-photo-position .xp-text-button { justify-self: start; }
+
 .xp-org-role-card .xp-copy-row button {
   min-width: 72px;
   padding-inline: 0.65rem;

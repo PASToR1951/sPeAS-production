@@ -142,6 +142,13 @@ export const ExperienceOrganizationRoleIdSchema = z.enum(
   EXPERIENCE_ORGANIZATION_ROLE_IDS,
 );
 
+export const EXPERIENCE_DEFAULT_ORGANIZATION_PHOTO_POSITION = { x: 50, y: 25 } as const;
+
+export const ExperienceOrganizationPhotoPositionSchema = z.object({
+  x: z.number().int().min(0).max(100),
+  y: z.number().int().min(0).max(100),
+}).strict();
+
 export const ExperienceOrganizationRoleSchema = z.object({
   id: ExperienceOrganizationRoleIdSchema,
   title: z.string().trim().min(1).max(160),
@@ -152,6 +159,7 @@ export const ExperienceOrganizationRoleSchema = z.object({
     message: "Organization role photos must use an approved local raster image path",
   }),
   photoAlt: z.string().trim().max(255),
+  photoPosition: ExperienceOrganizationPhotoPositionSchema.optional(),
   group: z.boolean(),
 }).strict();
 
@@ -260,8 +268,8 @@ export const EXPERIENCE_DEFAULT_ORGANIZATION_ROLES:
     },
     {
       id: "editorial-in-chief",
-      title: "Editorial-in-Chief",
-      label: "Editorial-in-Chief",
+      title: "Editor-in-Chief",
+      label: "Editor-in-Chief",
       caption: "Publications",
       name: "Dr. Roel O. Jumawan",
       photo: "",
@@ -1051,14 +1059,22 @@ function migrateBlockProps(type: string, defaults: Record<string, unknown>, sour
     result.roles = ExperienceOrganizationRolesSchema.parse(defaults.roles.map((defaultItem) => {
       const locked = asRecord(defaultItem);
       const incoming = sourceRoles.find((role) => role.id === locked.id) ?? {};
+      const title = boundedRequiredString(incoming.title, String(locked.title ?? ""), 160);
+      const label = boundedRequiredString(incoming.label, String(locked.label ?? ""), 120);
+      const isEditor = locked.id === "editorial-in-chief";
+      const photo = approvedOptionalImageUrl(incoming.photo, String(locked.photo ?? ""));
+      const photoPosition = photo && typeof incoming.photo === "string" && photo === incoming.photo.trim()
+        ? ExperienceOrganizationPhotoPositionSchema.safeParse(incoming.photoPosition).data
+        : undefined;
       return {
         id: locked.id,
-        title: boundedRequiredString(incoming.title, String(locked.title ?? ""), 160),
-        label: boundedRequiredString(incoming.label, String(locked.label ?? ""), 120),
+        title: isEditor && title === "Editorial-in-Chief" ? locked.title : title,
+        label: isEditor && label === "Editorial-in-Chief" ? locked.label : label,
         caption: boundedRequiredString(incoming.caption, String(locked.caption ?? ""), 120),
         name: boundedOptionalString(incoming.name, String(locked.name ?? ""), 160),
-        photo: approvedOptionalImageUrl(incoming.photo, String(locked.photo ?? "")),
+        photo,
         photoAlt: boundedOptionalString(incoming.photoAlt, String(locked.photoAlt ?? ""), 255),
+        ...(photoPosition ? { photoPosition } : {}),
         group: locked.group,
       };
     }));

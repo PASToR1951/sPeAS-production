@@ -1,6 +1,11 @@
 import { sendCanvasMessage } from "./ExperienceCanvasText";
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { EXPERIENCE_DEFAULT_ORGANIZATION_ROLES, type ExperienceOrganizationRole } from "../../../../Deno/shared/experienceConfig";
+import {
+  EXPERIENCE_DEFAULT_ORGANIZATION_PHOTO_POSITION,
+  EXPERIENCE_DEFAULT_ORGANIZATION_ROLES,
+  ExperienceOrganizationPhotoPositionSchema,
+  type ExperienceOrganizationRole,
+} from "../../../../Deno/shared/experienceConfig";
 
 export type OrgChartRoleContent = {
   id: string;
@@ -10,6 +15,7 @@ export type OrgChartRoleContent = {
   name?: string;
   photo?: string;
   photoAlt?: string;
+  photoPosition?: ExperienceOrganizationRole["photoPosition"];
 };
 
 type OrgRole = ExperienceOrganizationRole & {
@@ -54,7 +60,7 @@ export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgCh
 
           <li className="peas-org-link" aria-hidden="true" />
           <li>
-            <ol className="peas-org-units" aria-label="Office units and boards">
+            <ol className="peas-org-units" aria-label="Office roles, boards, and committees">
               {units.map((role) => (
                 <li className="peas-org-unit" key={role.id}>
                   <OrgNode role={role} canvasMode={canvasMode} />
@@ -69,20 +75,21 @@ export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgCh
 }
 
 function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
-  const heading = role.name || role.label;
+  const title = role.title.toLowerCase().replaceAll(" & ", " and ");
+  const caption = role.caption.toLowerCase().replaceAll(" & ", " and ");
 
   return (
     <article className={`peas-org-node${role.group ? " is-group" : ""}`}>
       <OrgFigure role={role} />
       <div className="peas-org-node__meta">
-        <strong className="peas-org-node__name">{heading}</strong>
-        {role.title !== heading ? <span className="peas-org-node__title">{role.title}</span> : null}
-        <span className="peas-org-caption">{role.caption}</span>
+        <strong className="peas-org-node__title">{role.title}</strong>
+        {role.name && role.name !== role.title ? <span className="peas-org-node__name">{role.name}</span> : null}
+        {title !== caption && !title.endsWith(` ${caption}`) ? <span className="peas-org-caption">{role.caption}</span> : null}
         {canvasMode && (
           <button
             className="peas-canvas-photo-button"
             type="button"
-            aria-label={`Edit role and photo for ${heading}`}
+            aria-label={`Edit role and photo for ${role.title}`}
             onClick={() => sendCanvasMessage({ type: "experience-canvas-role", roleId: role.id })}
           >
             Edit role and photo
@@ -95,6 +102,7 @@ function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
 
 function OrgFigure({ role }: { role: OrgRole }) {
   const [broken, setBroken] = useState(false);
+  const { x, y } = role.photoPosition ?? EXPERIENCE_DEFAULT_ORGANIZATION_PHOTO_POSITION;
 
   useEffect(() => setBroken(false), [role.photo]);
 
@@ -109,6 +117,7 @@ function OrgFigure({ role }: { role: OrgRole }) {
           className="peas-org-person"
           src={role.photo}
           alt={role.photoAlt || (role.name ? `Portrait of ${role.name}` : "")}
+          style={{ objectPosition: `${x}% ${y}%` }}
           loading="lazy"
           onError={() => setBroken(true)}
         />
@@ -127,12 +136,13 @@ function mergeRoleContent(roles?: readonly OrgChartRoleContent[]) {
 
     return {
       ...role,
-      title: editableText(content.title, role.title),
+      title: editableText(content.title, editableText(content.label, role.title)),
       label: editableText(content.label, role.label),
       caption: editableText(content.caption, role.caption),
       name: optionalText(content.name, role.name),
       photo: optionalText(content.photo, role.photo),
       photoAlt: optionalText(content.photoAlt, role.photoAlt),
+      photoPosition: ExperienceOrganizationPhotoPositionSchema.safeParse(content.photoPosition).data,
     };
   });
 

@@ -8755,6 +8755,7 @@ body:has(#react-public-root) {
 }
 
 #org-chart {
+  max-width: 1440px;
   scroll-margin-top: 86px;
 }
 
@@ -10791,7 +10792,7 @@ body:has(#react-public-root) {
   border: 1px solid var(--border-soft, #dbe6df);
   border-radius: var(--radius, 18px);
   box-shadow: var(--shadow-sm);
-  padding: clamp(24px, 4vw, 48px);
+  padding: clamp(24px, 4vw, 48px) clamp(24px, 3vw, 32px);
 }
 
 .peas-org-content {
@@ -10850,7 +10851,7 @@ body:has(#react-public-root) {
   position: relative;
   cursor: default;
   text-align: left;
-  width: min(100%, 390px);
+  width: min(100%, 480px);
 }
 
 .peas-org-node::before,
@@ -10871,7 +10872,7 @@ body:has(#react-public-root) {
   min-width: 0;
 }
 
-.peas-org-node__name {
+.peas-org-node__title {
   color: var(--brand-green-dark, #00523d);
   font-size: 1rem;
   font-weight: 800;
@@ -10879,11 +10880,13 @@ body:has(#react-public-root) {
   overflow-wrap: anywhere;
 }
 
-.peas-org-node__title {
+.peas-org-node__name {
   color: var(--foreground, #17211c);
-  font-size: 0.83rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .peas-org-caption {
@@ -10945,7 +10948,6 @@ body:has(#react-public-root) {
 img.peas-org-person {
   border-radius: 50%;
   object-fit: cover;
-  object-position: center 25%;
   width: calc(var(--avatar) - 6px);
 }
 
@@ -11051,12 +11053,8 @@ img.peas-org-person {
     --avatar: 50px;
   }
 
-  .peas-org-node__name {
-    font-size: 0.92rem;
-  }
-
   .peas-org-node__title {
-    font-size: 0.78rem;
+    font-size: 0.92rem;
   }
 
   .peas-org-units {

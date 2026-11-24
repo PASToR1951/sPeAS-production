@@ -80,6 +80,9 @@ async function mockStudio(page: Page) {
     status = "published-copy";
     return route.fulfill({ json: { config: published, version: ++version } });
   });
+  await page.route("**/api/experience/public", (route) => route.fulfill({
+    json: { config: published, source: "published" },
+  }));
   return {
     publishRequests: () => publishRequests,
     saveRequests: () => saveRequests,
@@ -292,6 +295,43 @@ test("bulk slideshow uploads keep successful photos beyond the first four", asyn
   await page.getByRole("button", { name: /^Continue editing Home page/ }).click();
   await page.getByRole("button", { name: "Show slideshow photo 5" }).click();
   await expect(page.getByPlaceholder("Describe slideshow photo 5")).toHaveValue("Research workshop participants");
+});
+
+test("portrait position previews immediately and survives draft save and publishing", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
+  await mockStudio(page);
+  await page.goto(studioUrl);
+  await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
+  await page.getByRole("combobox", { name: "Section", exact: true }).selectOption("ImageFeatureBlock");
+
+  const president = page.locator(".xp-org-role-card").filter({ hasText: "Sr. Mila Grace A. Silab" });
+  const localPreview = president.locator(".xp-image-preview");
+  const portraitName = "Portrait of Sr. Mila Grace A. Silab, SPC";
+  const canvasPortrait = page.frameLocator("iframe").getByRole("img", { name: portraitName });
+  await expect(canvasPortrait).toHaveCSS("object-position", "50% 25%");
+  await expect(localPreview).toHaveCSS("object-position", "50% 25%");
+
+  await president.getByRole("slider", { name: "Horizontal position" }).press("ArrowLeft");
+  const vertical = president.getByRole("slider", { name: "Vertical position" });
+  await vertical.press("ArrowRight");
+  await expect(localPreview).toHaveCSS("object-position", "49% 26%");
+  await expect(canvasPortrait).toHaveCSS("object-position", "49% 26%");
+  await president.getByRole("button", { name: "Reset position" }).click();
+  await expect(canvasPortrait).toHaveCSS("object-position", "50% 25%");
+
+  await vertical.press("ArrowLeft");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("status", { name: "Draft status" })).toHaveText("Draft saved");
+  await page.reload();
+  await page.getByRole("button", { name: /^Continue editing Home page/ }).click();
+  await expect(vertical).toHaveValue("24");
+  await expect(canvasPortrait).toHaveCSS("object-position", "50% 24%");
+
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Publish changes" }).click();
+  await expect(page.getByRole("status", { name: "Draft status" })).toContainText("Changes published");
+  await page.goto("/index.html#org-chart");
+  await expect(page.getByRole("img", { name: portraitName })).toHaveCSS("object-position", "50% 24%");
 });
 
 test("the editor waits for the saved draft and offers retry", async ({ page, isMobile }) => {

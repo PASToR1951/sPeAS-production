@@ -279,6 +279,10 @@ Deno.test("organization roles keep fixed identity, order, and group classificati
     summary: "   ",
   });
   roles.find((role) => role.id === "technical-board").group = false;
+  Object.assign(roles.find((role) => role.id === "editorial-in-chief"), {
+    title: "  Editorial-in-Chief  ",
+    label: "Journal editor",
+  });
   chart.props.roles = roles.reverse();
   chart.props.roles.push({
     id: "injected-role",
@@ -317,6 +321,9 @@ Deno.test("organization roles keep fixed identity, order, and group classificati
   });
   assertEquals("summary" in migratedDirector, false);
   assertEquals(migratedPresident, { ...EXPERIENCE_DEFAULT_ORGANIZATION_ROLES[0], name: "" });
+  const editor = migratedRoles.find((role) => role.id === "editorial-in-chief");
+  assertEquals(editor.title, "Editor-in-Chief");
+  assertEquals(editor.label, "Journal editor");
   ExperienceOrganizationRolesSchema.parse(migratedRoles);
 });
 
@@ -338,6 +345,22 @@ Deno.test("saved seven-role charts receive the updated roster and keep section c
   const migratedChart = migrated.pages.landing.data.content.find((block) => block.props.id === "org-chart")!;
   assertEquals(migratedChart.props.title, "Our research leadership");
   assertEquals(migratedChart.props.roles, EXPERIENCE_DEFAULT_ORGANIZATION_ROLES);
+});
+
+Deno.test("organization photo positioning survives publication for valid portraits", () => {
+  const input = structuredClone(defaultExperienceConfig);
+  const chart = input.pages.landing.data.content.find((block) => block.props.id === "org-chart")!;
+  const roles = chart.props.roles as Array<Record<string, unknown>>;
+  roles[0].photoPosition = { x: 0, y: 100 };
+  roles[1].photoPosition = { x: 101, y: 25 };
+  roles[2].photoPosition = { x: 40, y: 30 };
+
+  const normalized = migrateExperienceConfigToV6(input);
+  const savedChart = normalized.pages.landing.data.content.find((block) => block.props.id === "org-chart")!;
+  const savedRoles = savedChart.props.roles as Array<Record<string, unknown>>;
+  assertEquals(savedRoles[0].photoPosition, { x: 0, y: 100 });
+  assertEquals(savedRoles[1].photoPosition, undefined);
+  assertEquals(savedRoles[2].photoPosition, undefined);
 });
 
 Deno.test("organization role migration supplies defaults and rejects unapproved photo URLs", () => {

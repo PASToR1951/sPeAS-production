@@ -1594,15 +1594,23 @@ test("organization chart stays within the responsive layout", async ({ page }, t
     "Mr. Sami Gregg T. Managbanag",
     "Dr. Mary Francis V. Laquinon",
   ]);
-  await expect(chart.locator(".peas-org-node__title")).toHaveText([
+  await expect(chart.locator(".peas-org-node__title:first-child")).toHaveText([
     "University President",
     "Vice President, Student Affairs",
     "Director, Office of Research and Publications",
     "Research Assistant",
     "Administrative Assistant",
-    "Editorial-in-Chief",
+    "Editor-in-Chief",
     "Technical Board",
     "Research Ethics Committee",
+  ]);
+  await expect(chart.locator(".peas-org-caption")).toHaveText([
+    "Administration",
+    "Office Support",
+    "Office Support",
+    "Publications",
+    "Research Review",
+    "Ethics Review",
   ]);
   const portraits = chart.getByRole("img");
   await expect(portraits).toHaveCount(3);
@@ -1637,6 +1645,10 @@ test("organization chart stays within the responsive layout", async ({ page }, t
   expect(unitBoxes).toHaveLength(5);
   const distinctX = new Set(unitBoxes.map((box) => Math.round(box.x))).size;
   expect(distinctX).toBe(mobile ? 1 : desktop ? 5 : 2);
+  if (desktop) {
+    expect(chartBox?.width ?? 0).toBeGreaterThan(1300);
+    expect(Math.min(...unitBoxes.map((box) => box.width))).toBeGreaterThan(220);
+  }
   unitBoxes.forEach((box) => {
     expect(box.x).toBeGreaterThanOrEqual((chartBox?.x ?? 0) - 1);
     expect(box.right).toBeLessThanOrEqual((chartBox?.x ?? 0) + (chartBox?.width ?? 0) + 1);

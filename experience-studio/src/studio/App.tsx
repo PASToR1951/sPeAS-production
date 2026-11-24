@@ -8,12 +8,14 @@ import {
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   defaultExperienceConfig,
+  EXPERIENCE_DEFAULT_ORGANIZATION_PHOTO_POSITION,
   FAQ_CATEGORY_LIMITS,
   EXPERIENCE_EDITABLE_PAGES,
   EXPERIENCE_FIXED_THEME,
   EXPERIENCE_HERO_IMAGE_LIMIT,
   ExperienceConfig,
   ExperienceConfigSchema,
+  type ExperienceOrganizationRole,
   type ExperiencePageKey,
   getExperiencePublishIssues,
   migrateExperienceConfigToV6,
@@ -70,6 +72,7 @@ type OrganizationRole = {
   name?: string;
   photo?: string;
   photoAlt?: string;
+  photoPosition?: ExperienceOrganizationRole["photoPosition"];
   group?: boolean;
 };
 
@@ -245,6 +248,7 @@ function ImageUrlField(props: {
   onChange: (value: string) => void;
   uploadKind?: string;
   altText?: string;
+  objectPosition?: string;
   allowManualPath?: boolean;
   onReplace?: (value: string) => void;
   clearLabel?: string;
@@ -283,6 +287,7 @@ function ImageUrlField(props: {
           className="xp-image-preview"
           src={props.value}
           alt=""
+          style={props.objectPosition ? { objectPosition: props.objectPosition } : undefined}
           onError={(event) => { event.currentTarget.style.display = "none"; }}
         />
       ) : null}
@@ -357,9 +362,9 @@ function OrganizationRolesField(props: {
   onChange: (value: OrganizationRole[]) => void;
 }) {
   const roles = Array.isArray(props.value) ? props.value as OrganizationRole[] : [];
-  const updateRole = (index: number, key: keyof OrganizationRole, value: string) => {
+  const updateRole = (index: number, changes: Partial<OrganizationRole>) => {
     props.onChange(roles.map((role, roleIndex) =>
-      roleIndex === index ? { ...role, [key]: value } : role
+      roleIndex === index ? { ...role, ...changes } : role
     ));
   };
 
@@ -376,6 +381,7 @@ function OrganizationRolesField(props: {
         {roles.map((role, index) => {
           const summary = role.name?.trim() || role.title?.trim() || role.label?.trim() || `Role ${index + 1}`;
           const group = role.group ? "Board / committee" : "Individual role";
+          const position = role.photoPosition ?? EXPERIENCE_DEFAULT_ORGANIZATION_PHOTO_POSITION;
           return (
             <OrganizationRoleDetails key={role.id || index} initiallyOpen={index === 0}>
               <summary>
@@ -391,15 +397,45 @@ function OrganizationRolesField(props: {
                   value={role.photo || ""}
                   uploadKind="org-chart"
                   altText={role.photoAlt}
+                  objectPosition={`${position.x}% ${position.y}%`}
                   clearLabel="Remove photo"
-                  onClear={() => props.onChange(roles.map((item, roleIndex) =>
-                    roleIndex === index ? { ...item, photo: "", photoAlt: "" } : item
-                  ))}
-                  onChange={(value) => updateRole(index, "photo", value)}
-                  onReplace={(value) => props.onChange(roles.map((item, roleIndex) =>
-                    roleIndex === index ? { ...item, photo: value, photoAlt: "" } : item
-                  ))}
+                  onClear={() => updateRole(index, { photo: "", photoAlt: "", photoPosition: undefined })}
+                  onChange={(photo) => updateRole(index, { photo, photoPosition: undefined })}
+                  onReplace={(photo) => updateRole(index, { photo, photoAlt: "", photoPosition: undefined })}
                 />
+                {role.photo ? (
+                  <fieldset className="xp-org-photo-position">
+                    <legend>Photo position</legend>
+                    <label>
+                      <span>Horizontal position</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={position.x}
+                        onChange={(event) => updateRole(index, { photoPosition: { ...position, x: event.currentTarget.valueAsNumber } })}
+                      />
+                    </label>
+                    <label>
+                      <span>Vertical position</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={position.y}
+                        onChange={(event) => updateRole(index, { photoPosition: { ...position, y: event.currentTarget.valueAsNumber } })}
+                      />
+                    </label>
+                    <button
+                      className="xp-text-button"
+                      type="button"
+                      disabled={!role.photoPosition}
+                      onClick={() => updateRole(index, { photoPosition: undefined })}
+                    >
+                      Reset position
+                    </button>
+                  </fieldset>
+                ) : null}
                 <label>
                   <span>Photo description</span>
                   <input
@@ -408,7 +444,7 @@ function OrganizationRolesField(props: {
                     value={role.photoAlt || ""}
                     placeholder={fieldPlaceholders.photoAlt}
                     maxLength={255}
-                    onChange={(event) => updateRole(index, "photoAlt", event.target.value)}
+                    onChange={(event) => updateRole(index, { photoAlt: event.target.value })}
                   />
                   <small className="xp-field-help" id={`roles-${index}-photoAlt-help`}>Required when a photo is used. Describe what the photo shows.</small>
                 </label>
@@ -418,7 +454,7 @@ function OrganizationRolesField(props: {
                     value={role.name || ""}
                     placeholder="e.g. Dr. Juan Dela Cruz"
                     maxLength={160}
-                    onChange={(event) => updateRole(index, "name", event.target.value)}
+                    onChange={(event) => updateRole(index, { name: event.target.value })}
                   />
                   <small className="xp-field-help">Leave blank for a committee or board without one named person.</small>
                 </label>
@@ -429,7 +465,7 @@ function OrganizationRolesField(props: {
                     placeholder="e.g. Director of Research and Publications"
                     maxLength={160}
                     required
-                    onChange={(event) => updateRole(index, "title", event.target.value)}
+                    onChange={(event) => updateRole(index, { title: event.target.value })}
                   />
                 </label>
                 <label>
@@ -439,7 +475,7 @@ function OrganizationRolesField(props: {
                     placeholder="e.g. Director"
                     maxLength={120}
                     required
-                    onChange={(event) => updateRole(index, "label", event.target.value)}
+                    onChange={(event) => updateRole(index, { label: event.target.value })}
                   />
                   <small className="xp-field-help">A compact label used where the full position would not fit.</small>
                 </label>
@@ -450,7 +486,7 @@ function OrganizationRolesField(props: {
                     placeholder="e.g. Research & Publications"
                     maxLength={120}
                     required
-                    onChange={(event) => updateRole(index, "caption", event.target.value)}
+                    onChange={(event) => updateRole(index, { caption: event.target.value })}
                   />
                 </label>
               </div>
