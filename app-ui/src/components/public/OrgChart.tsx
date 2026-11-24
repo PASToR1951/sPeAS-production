@@ -1,5 +1,6 @@
 import { sendCanvasMessage } from "./ExperienceCanvasText";
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { EXPERIENCE_DEFAULT_ORGANIZATION_ROLES, type ExperienceOrganizationRole } from "../../../../Deno/shared/experienceConfig";
 
 export type OrgChartRoleContent = {
   id: string;
@@ -11,91 +12,26 @@ export type OrgChartRoleContent = {
   photoAlt?: string;
 };
 
-type OrgRole = {
-  id: string;
-  /** Full role title, shown when it adds information beyond the short label. */
-  title: string;
-  /** Compact role label used as the primary heading when no person is set. */
-  label: string;
-  /** Office or unit shown as a small metadata badge. */
-  caption: string;
-  /** Person currently holding the role. */
-  name?: string;
-  /** Portrait shown inside the circular avatar frame. */
-  photo?: string;
-  /** Alternative text supplied by an administrator for an uploaded portrait. */
-  photoAlt?: string;
-  /** Boards and committees render a group silhouette. */
-  group?: boolean;
-  /** Card fill and avatar ring colors. */
+type OrgRole = ExperienceOrganizationRole & {
   fill: string;
   ring: string;
 };
 
-const DEFAULT_CHAIN: OrgRole[] = [
-  {
-    id: "president",
-    title: "University President",
-    label: "University President",
-    caption: "Administration",
-    fill: "#f5c95d",
-    ring: "#d5e8dc",
-  },
-  {
-    id: "vp-student-affairs",
-    title: "Vice President, Student Affairs",
-    label: "Vice President",
-    caption: "Student Affairs",
-    fill: "#8cc7b3",
-    ring: "#d7e9e0",
-  },
-  {
-    id: "director-orp",
-    title: "Director, Office of Research and Publications",
-    label: "Director",
-    caption: "Research & Publications",
-    fill: "#8fc6d6",
-    ring: "#d7e8ec",
-  },
-];
+const ROLE_COLORS: Record<OrgRole["id"], Pick<OrgRole, "fill" | "ring">> = {
+  president: { fill: "#f5c95d", ring: "#d5e8dc" },
+  "vp-student-affairs": { fill: "#8cc7b3", ring: "#d7e9e0" },
+  "director-orp": { fill: "#8fc6d6", ring: "#d7e8ec" },
+  "research-assistant": { fill: "#d9b8d3", ring: "#eadcea" },
+  "administrative-assistant": { fill: "#d9b8d3", ring: "#eadcea" },
+  "editorial-in-chief": { fill: "#f0c36e", ring: "#f2e2c3" },
+  "technical-board": { fill: "#f5c95d", ring: "#f2e2c3" },
+  "research-ethics-committee": { fill: "#84c7b0", ring: "#d7e9e0" },
+};
 
-const DEFAULT_UNITS: OrgRole[] = [
-  {
-    id: "associate-assistant",
-    title: "Associate Assistant",
-    label: "Associate Assistant",
-    caption: "Office Support",
-    fill: "#d9b8d3",
-    ring: "#eadcea",
-  },
-  {
-    id: "editorial-board",
-    title: "Editorial Board",
-    label: "Editorial Board",
-    caption: "Publications",
-    fill: "#f0c36e",
-    ring: "#f2e2c3",
-    group: true,
-  },
-  {
-    id: "technical-board",
-    title: "Technical Board",
-    label: "Technical Board",
-    caption: "Research Review",
-    fill: "#f5c95d",
-    ring: "#f2e2c3",
-    group: true,
-  },
-  {
-    id: "research-ethics-board",
-    title: "Research Ethics Board",
-    label: "Research Ethics Board",
-    caption: "Ethics Review",
-    fill: "#84c7b0",
-    ring: "#d7e9e0",
-    group: true,
-  },
-];
+const DEFAULT_ROLES = EXPERIENCE_DEFAULT_ORGANIZATION_ROLES.map((role) => ({
+  ...role,
+  ...ROLE_COLORS[role.id],
+}));
 
 export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgChartRoleContent[]; canvasMode?: boolean }) {
   const { chain, units } = useMemo(() => mergeRoleContent(roles), [roles]);
@@ -133,22 +69,20 @@ export function OrgChart({ roles, canvasMode = false }: { roles?: readonly OrgCh
 }
 
 function OrgNode({ role, canvasMode }: { role: OrgRole; canvasMode: boolean }) {
-  const secondaryTitle = role.title.trim() && role.title.trim() !== role.label.trim()
-    ? role.title
-    : "";
+  const heading = role.name || role.label;
 
   return (
     <article className={`peas-org-node${role.group ? " is-group" : ""}`}>
       <OrgFigure role={role} />
       <div className="peas-org-node__meta">
-        <strong className="peas-org-node__name">{role.name || role.label}</strong>
-        {secondaryTitle ? <span className="peas-org-node__title">{secondaryTitle}</span> : null}
+        <strong className="peas-org-node__name">{heading}</strong>
+        {role.title !== heading ? <span className="peas-org-node__title">{role.title}</span> : null}
         <span className="peas-org-caption">{role.caption}</span>
         {canvasMode && (
           <button
             className="peas-canvas-photo-button"
             type="button"
-            aria-label={`Edit role and photo for ${role.name || role.label}`}
+            aria-label={`Edit role and photo for ${heading}`}
             onClick={() => sendCanvasMessage({ type: "experience-canvas-role", roleId: role.id })}
           >
             Edit role and photo
@@ -175,10 +109,11 @@ function OrgFigure({ role }: { role: OrgRole }) {
           className="peas-org-person"
           src={role.photo}
           alt={role.photoAlt || (role.name ? `Portrait of ${role.name}` : "")}
+          loading="lazy"
           onError={() => setBroken(true)}
         />
       ) : (
-        <Silhouette group={role.group} />
+        <Silhouette group={role.group && !role.name} />
       )}
     </span>
   );
@@ -186,7 +121,7 @@ function OrgFigure({ role }: { role: OrgRole }) {
 
 function mergeRoleContent(roles?: readonly OrgChartRoleContent[]) {
   const incoming = new Map((roles ?? []).map((role) => [role.id, role]));
-  const merge = (role: OrgRole): OrgRole => {
+  const roster = DEFAULT_ROLES.map((role): OrgRole => {
     const content = incoming.get(role.id);
     if (!content) return role;
 
@@ -195,23 +130,21 @@ function mergeRoleContent(roles?: readonly OrgChartRoleContent[]) {
       title: editableText(content.title, role.title),
       label: editableText(content.label, role.label),
       caption: editableText(content.caption, role.caption),
-      name: optionalText(content.name),
-      photo: optionalText(content.photo),
-      photoAlt: optionalText(content.photoAlt),
+      name: optionalText(content.name, role.name),
+      photo: optionalText(content.photo, role.photo),
+      photoAlt: optionalText(content.photoAlt, role.photoAlt),
     };
-  };
+  });
 
-  const chain = DEFAULT_CHAIN.map(merge);
-  const units = DEFAULT_UNITS.map(merge);
-  return { chain, units };
+  return { chain: roster.slice(0, 3), units: roster.slice(3) };
 }
 
 function editableText(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function optionalText(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function optionalText(value: unknown, fallback: string) {
+  return typeof value === "string" ? value.trim() : fallback;
 }
 
 function Silhouette({ group }: { group?: boolean }) {

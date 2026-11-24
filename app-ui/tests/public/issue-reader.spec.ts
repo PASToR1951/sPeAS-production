@@ -3,6 +3,9 @@ import { source as axeSource } from "axe-core";
 
 const issue = "5f31be70-1edf-4079-adfa-f85754bc0f20";
 const paper = "a713db79-7464-4c87-897c-5223db16b3c3";
+const issueTitle = "SYNERGY Vol. 7 (2022-2023)";
+const issueLabel = "SYNERGY · 2022-2023 · Vol. 7 · College of Arts and Science Education";
+const paperTitle = "Implementing Group-based Flipped Classroom Approach to Enhance Conceptual Understanding and Satisfaction in Learning Science";
 
 async function expectSingleActionRow(read: Locator, download: Locator) {
   await expect(read).toBeVisible();
@@ -33,6 +36,7 @@ test.beforeEach(async ({ page }) => {
         json: {
           id: 8,
           public_id: issue,
+          title: issueTitle,
           category: "SYNERGY",
           volume: 7,
           start_year: 2022,
@@ -50,9 +54,7 @@ test.beforeEach(async ({ page }) => {
         json: Array.from({ length: 6 }, (_, i) => ({
           id: i + 1,
           public_id: i === 0 ? paper : undefined,
-          title: i === 0
-            ? "Implementing Group-based Flipped Classroom Approach to Enhance Conceptual Understanding and Satisfaction in Learning Science"
-            : `Paper ${i + 1}`,
+          title: i === 0 ? paperTitle : `Paper ${i + 1}`,
           authors: [{
             id: "author",
             full_name: i === 0 ? "Renzil Jean A. Abrasado" : "Other researcher",
@@ -112,7 +114,16 @@ test("issue actions keep paper downloads distinct, filter contents and remain us
     fullPage: true,
   });
 });
-test("paper details link back to the issue and expose only the paper asset", async ({ page }) => {
+test("search and paper details distinguish a paper from its parent issue", async ({ page }, testInfo) => {
+  const parentIssue = { id: issue, label: issueLabel };
+  await page.route("**/api/documents?*", (route) => route.fulfill({
+    json: {
+      documents: [
+        { id: 1, public_id: paper, title: paperTitle, document_type: "SYNERGY", parent_issue: parentIssue },
+        { id: 8, public_id: issue, title: issueTitle, document_type: "SYNERGY", is_compiled: true, child_count: 6 },
+      ],
+    },
+  }));
   await page.route(
     `**/api/guest/documents/${paper}`,
     (route) =>
@@ -121,29 +132,45 @@ test("paper details link back to the issue and expose only the paper asset", asy
           document: {
             id: 1,
             public_id: paper,
-            title: "Abrasado paper",
+            title: paperTitle,
+            authors: [{ full_name: "Renzil Jean A. Abrasado" }],
             pages: 17,
             printed_page_range: { first: "1", last: "17" },
             download_available: true,
-            parent_issue: {
-              id: issue,
-              label: "Synergy · 2022-2023 · Vol. 7 · CASE",
-            },
+            parent_issue: parentIssue,
           },
         },
       }),
   );
-  await page.goto(`/pages/guest-single.html?id=${paper}`);
+  await page.goto(`/pages/searchResultsPage.html?q=${encodeURIComponent(paperTitle)}`);
+  const paperResult = page.getByRole("link", { name: `View paper: ${paperTitle}` });
+  const issueResult = page.getByRole("link", { name: `Browse issue: ${issueTitle}` });
+  await expect(paperResult).toHaveAttribute("href", `/pages/guest-single.html?id=${paper}`);
+  await expect(paperResult).toHaveAccessibleDescription(`Published in ${issueLabel}`);
+  await expect(issueResult).toHaveAttribute("href", `/pages/guest-compiled.html?id=${issue}`);
+  await paperResult.focus();
+  await page.keyboard.press("Enter");
+
   await expect(page.getByText("Printed pages 1–17 · 17 PDF pages", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: /View complete issue/ }))
-    .toHaveAttribute("href", `/pages/guest-compiled.html?id=${issue}`);
+  const browseIssue = page.getByRole("link", { name: `Browse issue: ${issueLabel}` });
+  await expect(browseIssue).toHaveAttribute("href", `/pages/guest-compiled.html?id=${issue}`);
+  await expect(browseIssue.getByText("Published in", { exact: true })).toBeVisible();
+  expect((await browseIssue.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
   const read = page.getByRole("button", { name: "Read paper", exact: true });
   const download = page.getByRole("link", { name: "Download PDF", exact: true });
   await expect(download).toHaveAttribute("href", `/api/public/documents/${paper}/download`);
   await expectSingleActionRow(read, download);
+  await page.screenshot({ path: testInfo.outputPath("paper-details.png") });
   await page.getByRole("region", { name: "Full paper" }).screenshot({
-    path: test.info().outputPath("full-paper.png"),
+    path: testInfo.outputPath("full-paper.png"),
   });
+  await browseIssue.focus();
+  await expect(browseIssue).toHaveCSS("outline-style", "solid");
+  const navbar = (await page.getByRole("banner").boundingBox())!;
+  expect((await browseIssue.boundingBox())!.y).toBeGreaterThanOrEqual(navbar.y + navbar.height);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: issueTitle })).toBeVisible();
 });
 test("unavailable complete output preserves the table of contents", async ({ page }) => {
   await page.route(

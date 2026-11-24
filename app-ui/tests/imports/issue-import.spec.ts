@@ -324,12 +324,13 @@ test("native complete issue import preserves front matter and serves independent
   await expect(
     publicPage.getByText("Printed pages 1–3 · 3 PDF pages", { exact: true }),
   ).toBeVisible();
-  await expect(publicPage.getByRole("link", { name: /View complete issue/ }))
+  const browseIssue = publicPage.getByRole("link", { name: /^Browse issue:/ });
+  await expect(browseIssue)
     .toHaveAttribute(
       "href",
       `/pages/guest-compiled.html?id=${metadata.document.parent_issue.id}`,
     );
-  await publicPage.getByRole("link", { name: /View complete issue/ }).click();
+  await browseIssue.click();
   await publicPage.getByRole("button", { name: "Read issue", exact: true }).click();
   const reader = publicPage.getByRole("region", { name: "Complete issue reader", exact: true });
   await expect(reader.getByRole("group", { name: "Text on page 1", exact: true })).toContainText("Synthetic covers.pdf page 1");

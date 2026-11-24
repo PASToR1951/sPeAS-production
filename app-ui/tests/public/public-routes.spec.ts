@@ -1569,17 +1569,48 @@ test("home renders published organization-chart content", async ({ page }) => {
 });
 
 test("organization chart stays within the responsive layout", async ({ page }, testInfo) => {
-  const tablet = testInfo.project.name !== "pixel-7";
-  const viewport = tablet ? { width: 820, height: 1180 } : { width: 390, height: 844 };
+  const desktop = testInfo.project.name === "desktop";
+  const mobile = testInfo.project.name === "pixel-7";
+  const viewport = mobile ? { width: 390, height: 844 } : { width: desktop ? 1440 : 820, height: 1180 };
   await page.setViewportSize(viewport);
+  await page.route("**/api/experience/public", (route) => route.fulfill({ status: 404 }));
   await page.goto("/index.html#org-chart");
 
-  const menu = page.getByRole("button", { name: "Open navigation" });
-  const menuBox = await menu.boundingBox();
-  expect(menuBox).not.toBeNull();
-  expect(viewport.width - (menuBox?.x ?? 0) - (menuBox?.width ?? 0)).toBeLessThanOrEqual(20);
+  if (!desktop) {
+    const menu = page.getByRole("button", { name: "Open navigation" });
+    const menuBox = await menu.boundingBox();
+    expect(menuBox).not.toBeNull();
+    expect(viewport.width - (menuBox?.x ?? 0) - (menuBox?.width ?? 0)).toBeLessThanOrEqual(20);
+  }
 
   const chart = page.locator(".peas-org-chart");
+  await expect(chart.locator(".peas-org-node__name")).toHaveText([
+    "Sr. Mila Grace A. Silab, SPC",
+    "Dr. Maricar Flores",
+    "Dr. Roel O. Jumawan",
+    "Ms. Chesa R. Filosofo",
+    "Ms. Dell Louise A. Cadalso",
+    "Dr. Roel O. Jumawan",
+    "Mr. Sami Gregg T. Managbanag",
+    "Dr. Mary Francis V. Laquinon",
+  ]);
+  await expect(chart.locator(".peas-org-node__title")).toHaveText([
+    "University President",
+    "Vice President, Student Affairs",
+    "Director, Office of Research and Publications",
+    "Research Assistant",
+    "Administrative Assistant",
+    "Editorial-in-Chief",
+    "Technical Board",
+    "Research Ethics Committee",
+  ]);
+  const portraits = chart.getByRole("img");
+  await expect(portraits).toHaveCount(3);
+  for (const portrait of await portraits.all()) {
+    await portrait.scrollIntoViewIfNeeded();
+    await expect.poll(() => portrait.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  }
+
   const tree = page.locator(".peas-org-tree");
   const units = page.locator(".peas-org-units");
   const unitNodes = units.locator(".peas-org-node");
@@ -1603,14 +1634,14 @@ test("organization chart stays within the responsive layout", async ({ page }, t
   expect(pageWidth).toBeLessThanOrEqual(viewport.width);
   expect(chartBox).not.toBeNull();
   expect(treeBox).not.toBeNull();
-  expect(unitBoxes).toHaveLength(4);
+  expect(unitBoxes).toHaveLength(5);
   const distinctX = new Set(unitBoxes.map((box) => Math.round(box.x))).size;
-  expect(distinctX).toBe(tablet ? 2 : 1);
+  expect(distinctX).toBe(mobile ? 1 : desktop ? 5 : 2);
   unitBoxes.forEach((box) => {
     expect(box.x).toBeGreaterThanOrEqual((chartBox?.x ?? 0) - 1);
     expect(box.right).toBeLessThanOrEqual((chartBox?.x ?? 0) + (chartBox?.width ?? 0) + 1);
   });
-  if (!tablet) {
+  if (mobile) {
     connectorBoxes.forEach((connector) => {
       expect(connector.width).toBeLessThanOrEqual(20);
       expect(connector.height).toBeLessThanOrEqual(2);

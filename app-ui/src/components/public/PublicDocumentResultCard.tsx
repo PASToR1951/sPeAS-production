@@ -1,5 +1,6 @@
 import { formatPublicationDate } from "../../lib/formatters/date";
 import { ArrowUpRight, BookOpen, CalendarDays, Files, UserRound } from "lucide-react";
+import { useId } from "react";
 import { CategoryIcon } from "../documents/CategoryIcon";
 import type { SessionResponse } from "../../lib/api/auth";
 import type { DocumentRecord } from "../../lib/api/types";
@@ -20,6 +21,7 @@ export function PublicDocumentResultCard({
   variant = "default",
   isNewest = false,
 }: PublicDocumentResultCardProps) {
+  const publicationId = useId();
   const category = getCategoryMeta(document.category);
   const basePath = document.isCompiled
     ? "/pages/guest-compiled.html"
@@ -27,11 +29,13 @@ export function PublicDocumentResultCard({
   const href = `${basePath}?id=${encodeURIComponent(document.publicId || String(document.id))}`;
 
   if (variant === "search") {
+    const action = document.isCompiled ? "Browse issue" : document.parentIssue ? "View paper" : "View document";
     return (
       <a
         className={`peas-public-search-result-card peas-category-tone-${category.tone}`}
         href={href}
-        aria-label={`View document: ${document.title}`}
+        aria-label={`${action}: ${document.title}`}
+        aria-describedby={document.parentIssue ? publicationId : undefined}
       >
         <span className="peas-public-search-result-card__icon">
           <CategoryIcon category={category.value} />
@@ -45,7 +49,7 @@ export function PublicDocumentResultCard({
             ) : null}
           </div>
           <h3>{document.title}</h3>
-          {document.parentIssue ? <p>From {document.parentIssue.label}</p> : null}
+          {document.parentIssue ? <p id={publicationId} className="peas-public-search-result-card__publication">Published in {document.parentIssue.label}</p> : null}
           {showDescription && document.description ? <em>{document.description}</em> : null}
           <div className="peas-public-search-result-card__meta">
             <span><UserRound aria-hidden="true" /> {document.authorsText}</span>
@@ -54,7 +58,7 @@ export function PublicDocumentResultCard({
         </div>
 
         <span className="peas-public-search-result-card__action">
-          <span>View document</span>
+          <span>{action}</span>
           <ArrowUpRight aria-hidden="true" />
         </span>
       </a>

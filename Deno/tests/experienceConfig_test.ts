@@ -261,7 +261,7 @@ Deno.test("organization roles keep fixed identity, order, and group classificati
     name: "   ",
     summary: "   ",
   });
-  roles.find((role) => role.id === "editorial-board").group = false;
+  roles.find((role) => role.id === "technical-board").group = false;
   chart.props.roles = roles.reverse();
   chart.props.roles.push({
     id: "injected-role",
@@ -299,8 +299,28 @@ Deno.test("organization roles keep fixed identity, order, and group classificati
     group: false,
   });
   assertEquals("summary" in migratedDirector, false);
-  assertEquals(migratedPresident, EXPERIENCE_DEFAULT_ORGANIZATION_ROLES[0]);
+  assertEquals(migratedPresident, { ...EXPERIENCE_DEFAULT_ORGANIZATION_ROLES[0], name: "" });
   ExperienceOrganizationRolesSchema.parse(migratedRoles);
+});
+
+Deno.test("saved seven-role charts receive the updated roster and keep section copy", () => {
+  const input = structuredClone(defaultExperienceConfig);
+  const chart = input.pages.landing.data.content.find((block) => block.props.id === "org-chart")!;
+  chart.props.title = "Our research leadership";
+  chart.props.roles = [
+    { id: "president", name: "", photo: "", photoAlt: "" },
+    { id: "vp-student-affairs", name: "" },
+    { id: "director-orp", name: "" },
+    { id: "associate-assistant", title: "Associate Assistant" },
+    { id: "editorial-board", title: "Editorial Board" },
+    { id: "technical-board", name: "" },
+    { id: "research-ethics-board", title: "Research Ethics Board" },
+  ];
+
+  const migrated = migrateExperienceConfigToV6(input);
+  const migratedChart = migrated.pages.landing.data.content.find((block) => block.props.id === "org-chart")!;
+  assertEquals(migratedChart.props.title, "Our research leadership");
+  assertEquals(migratedChart.props.roles, EXPERIENCE_DEFAULT_ORGANIZATION_ROLES);
 });
 
 Deno.test("organization role migration supplies defaults and rejects unapproved photo URLs", () => {
@@ -332,7 +352,7 @@ Deno.test("organization role migration supplies defaults and rejects unapproved 
   const president = (migratedChart.props.roles as any[]).find((role) =>
     role.id === "president"
   );
-  assertEquals(president.photo, "");
+  assertEquals(president.photo, EXPERIENCE_DEFAULT_ORGANIZATION_ROLES[0].photo);
 });
 
 Deno.test("publishing requires alt text for organization role photos", () => {

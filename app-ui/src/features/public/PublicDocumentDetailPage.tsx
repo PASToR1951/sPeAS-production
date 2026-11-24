@@ -1,12 +1,12 @@
 import { formatPublicationDate } from "../../lib/formatters/date";
 import type { PublicationDatePrecision } from "../../../../shared/imports";
 import { useEffect, useState } from "react";
-import { BookOpen, CalendarDays } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, LibraryBig } from "lucide-react";
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import { PublicErrorPage, PublicPageShell } from "../../components/public/PublicPageShell";
 import type { LooseRecord } from "../../lib/api/account";
 import { fetchPublicDocumentDetail, getPublicDocumentErrorStatus } from "../../lib/api/publicDocument";
-import type { PublicAuthorReference } from "../../lib/api/types";
+import type { DocumentRecord, PublicAuthorReference } from "../../lib/api/types";
 import { CompiledPublicationTemplate } from "./CompiledPublicationTemplate";
 import { PublicationActions } from "./PublicationActions";
 
@@ -59,7 +59,52 @@ function DocumentContent({ id, detail }: { id: string; detail: { record: LooseRe
   if (detail.compiled) return <CompiledPublicationTemplate id={id} record={detail.record} children={detail.children} />;
 
   const classification = classificationOf(item);
-  return <>{item.parent_issue && typeof item.parent_issue === "object" ? <a className="peas-issue-back" href={`/pages/guest-compiled.html?id=${encodeURIComponent(String((item.parent_issue as LooseRecord).id))}`}>View complete issue · {String((item.parent_issue as LooseRecord).label)}</a> : null}<header className="peas-document-hero"><h1>{titleOf(item)}</h1><div className="peas-document-hero__meta"><div className="peas-document-authors" aria-label="Authors">{authorReferences.map((author, index) => <AuthorPreviewLink key={String(author.id ?? author.full_name ?? index)} author={author} />)}</div>{item.publication_date || item.year || item.start_year ? <span className="peas-document-hero__date"><CalendarDays aria-hidden="true" /> {item.publication_date ? formatPublicationDate(String(item.publication_date), item.publication_date_precision as PublicationDatePrecision) : String(item.year || item.start_year)}</span> : null}</div>{printedRangeOf(item) ? <p>Printed pages {printedRangeOf(item)}{item.pages ? ` · ${String(item.pages)} PDF pages` : ""}</p> : null}</header><section className="peas-document-abstract"><h2>Abstract</h2><p>{abstractOf(item) || "No abstract or overview is available for this record."}</p></section><div className="peas-document-classification"><TermSection title="Topics" values={classification.topics} parameter="topic" /><TermSection title="Keywords" values={classification.keywords} parameter="keyword" /></div><div className="peas-document-layout"><article><DocumentDownloadPanel id={id} available={item.download_available === true} /></article></div></>;
+  const parentIssue = item.parent_issue as DocumentRecord["parentIssue"];
+  const printedRange = printedRangeOf(item);
+  return (
+    <>
+      {parentIssue?.id && parentIssue.label ? (
+        <a
+          className="peas-paper-issue-link"
+          href={`/pages/guest-compiled.html?id=${encodeURIComponent(parentIssue.id)}`}
+          aria-label={`Browse issue: ${parentIssue.label}`}
+        >
+          <LibraryBig aria-hidden="true" />
+          <span className="peas-paper-issue-link__publication">
+            <small>Published in</small>
+            <strong>{parentIssue.label}</strong>
+          </span>
+          <span className="peas-paper-issue-link__action">Browse issue <ArrowRight aria-hidden="true" /></span>
+        </a>
+      ) : null}
+      <header className="peas-document-hero">
+        <h1>{title}</h1>
+        <div className="peas-document-hero__meta">
+          <div className="peas-document-authors" aria-label="Authors">
+            {authorReferences.map((author, index) => <AuthorPreviewLink key={String(author.id ?? author.full_name ?? index)} author={author} />)}
+          </div>
+          {item.publication_date || item.year || item.start_year ? (
+            <span className="peas-document-hero__date">
+              <CalendarDays aria-hidden="true" />
+              {item.publication_date ? formatPublicationDate(String(item.publication_date), item.publication_date_precision as PublicationDatePrecision) : String(item.year || item.start_year)}
+            </span>
+          ) : null}
+        </div>
+        {printedRange ? <p>Printed pages {printedRange}{item.pages ? ` · ${String(item.pages)} PDF pages` : ""}</p> : null}
+      </header>
+      <section className="peas-document-abstract">
+        <h2>Abstract</h2>
+        <p>{abstractOf(item) || "No abstract or overview is available for this record."}</p>
+      </section>
+      <div className="peas-document-classification">
+        <TermSection title="Topics" values={classification.topics} parameter="topic" />
+        <TermSection title="Keywords" values={classification.keywords} parameter="keyword" />
+      </div>
+      <div className="peas-document-layout">
+        <article><DocumentDownloadPanel id={id} available={item.download_available === true} /></article>
+      </div>
+    </>
+  );
 }
 
 function TermSection({ title, values, parameter }: { title: string; values: Array<{ id?: number; name: string }>; parameter: "topic" | "keyword" }) {

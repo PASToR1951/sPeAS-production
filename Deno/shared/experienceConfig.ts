@@ -130,10 +130,11 @@ export const EXPERIENCE_ORGANIZATION_ROLE_IDS = [
   "president",
   "vp-student-affairs",
   "director-orp",
-  "associate-assistant",
-  "editorial-board",
+  "research-assistant",
+  "administrative-assistant",
+  "editorial-in-chief",
   "technical-board",
-  "research-ethics-board",
+  "research-ethics-committee",
 ] as const;
 
 export const ExperienceOrganizationRoleIdSchema = z.enum(
@@ -162,10 +163,11 @@ const EXPERIENCE_ORGANIZATION_ROLE_GROUPS: Readonly<
   president: false,
   "vp-student-affairs": false,
   "director-orp": false,
-  "associate-assistant": false,
-  "editorial-board": true,
+  "research-assistant": false,
+  "administrative-assistant": false,
+  "editorial-in-chief": false,
   "technical-board": true,
-  "research-ethics-board": true,
+  "research-ethics-committee": true,
 };
 
 /**
@@ -210,9 +212,9 @@ export const EXPERIENCE_DEFAULT_ORGANIZATION_ROLES:
       title: "University President",
       label: "University President",
       caption: "Administration",
-      name: "",
-      photo: "",
-      photoAlt: "",
+      name: "Sr. Mila Grace A. Silab, SPC",
+      photo: "/Components/images/org-chart/mila-grace-silab.webp",
+      photoAlt: "Portrait of Sr. Mila Grace A. Silab, SPC",
       group: false,
     },
     {
@@ -220,9 +222,9 @@ export const EXPERIENCE_DEFAULT_ORGANIZATION_ROLES:
       title: "Vice President, Student Affairs",
       label: "Vice President",
       caption: "Student Affairs",
-      name: "",
-      photo: "",
-      photoAlt: "",
+      name: "Dr. Maricar Flores",
+      photo: "/Components/images/org-chart/maricar-flores.webp",
+      photoAlt: "Portrait of Dr. Maricar Flores",
       group: false,
     },
     {
@@ -230,49 +232,59 @@ export const EXPERIENCE_DEFAULT_ORGANIZATION_ROLES:
       title: "Director, Office of Research and Publications",
       label: "Director",
       caption: "Research & Publications",
-      name: "",
+      name: "Dr. Roel O. Jumawan",
       photo: "",
       photoAlt: "",
       group: false,
     },
     {
-      id: "associate-assistant",
-      title: "Associate Assistant",
-      label: "Associate Assistant",
+      id: "research-assistant",
+      title: "Research Assistant",
+      label: "Research Assistant",
       caption: "Office Support",
-      name: "",
+      name: "Ms. Chesa R. Filosofo",
       photo: "",
       photoAlt: "",
       group: false,
     },
     {
-      id: "editorial-board",
-      title: "Editorial Board",
-      label: "Editorial Board",
-      caption: "Publications",
-      name: "",
+      id: "administrative-assistant",
+      title: "Administrative Assistant",
+      label: "Administrative Assistant",
+      caption: "Office Support",
+      name: "Ms. Dell Louise A. Cadalso",
       photo: "",
       photoAlt: "",
-      group: true,
+      group: false,
+    },
+    {
+      id: "editorial-in-chief",
+      title: "Editorial-in-Chief",
+      label: "Editorial-in-Chief",
+      caption: "Publications",
+      name: "Dr. Roel O. Jumawan",
+      photo: "",
+      photoAlt: "",
+      group: false,
     },
     {
       id: "technical-board",
       title: "Technical Board",
       label: "Technical Board",
       caption: "Research Review",
-      name: "",
+      name: "Mr. Sami Gregg T. Managbanag",
       photo: "",
       photoAlt: "",
       group: true,
     },
     {
-      id: "research-ethics-board",
-      title: "Research Ethics Board",
-      label: "Research Ethics Board",
+      id: "research-ethics-committee",
+      title: "Research Ethics Committee",
+      label: "Research Ethics Committee",
       caption: "Ethics Review",
-      name: "",
-      photo: "",
-      photoAlt: "",
+      name: "Dr. Mary Francis V. Laquinon",
+      photo: "/Components/images/org-chart/mary-francis-laquinon.webp",
+      photoAlt: "Portrait of Dr. Mary Francis V. Laquinon",
       group: true,
     },
   ]);
@@ -1027,7 +1039,9 @@ function migrateBlockProps(type: string, defaults: Record<string, unknown>, sour
   }
 
   if (type === "ImageFeatureBlock" && defaults.id === "org-chart" && Array.isArray(defaults.roles)) {
-    const sourceRoles = Array.isArray(source.roles) ? source.roles.map(asRecord) : [];
+    const storedRoles = Array.isArray(source.roles) ? source.roles.map(asRecord) : [];
+    // Refresh the roster in saved charts that still use the former seven-role structure.
+    const sourceRoles = storedRoles.some((role) => role.id === "associate-assistant") ? [] : storedRoles;
     result.roles = ExperienceOrganizationRolesSchema.parse(defaults.roles.map((defaultItem) => {
       const locked = asRecord(defaultItem);
       const incoming = sourceRoles.find((role) => role.id === locked.id) ?? {};
