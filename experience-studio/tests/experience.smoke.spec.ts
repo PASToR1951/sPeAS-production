@@ -217,7 +217,13 @@ test("the live canvas edits, saves, and reviews changes across pages", async ({ 
   await expect(page.getByRole("button", { name: "Questions and answers", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeEnabled();
   await page.getByRole("button", { name: "Publish changes" }).click();
-  await expect(page.getByRole("status", { name: "Draft status" })).toContainText("Changes published");
+  const published = page.getByRole("region", { name: "Changes published" });
+  await expect(published.getByRole("heading", { name: "Changes published" })).toBeFocused();
+  await expect(published.getByRole("link", { name: "View home page" })).toHaveAttribute("href", "/index.html");
+  await published.getByRole("link", { name: "View FAQ" }).click();
+  await expect(page).toHaveURL(/\/faq\.html$/);
+  await page.getByRole("button", { name: "What is PeAS and what can I find here?", exact: true }).click();
+  await expect(page.getByText("Updated repository guidance.")).toBeVisible();
   expect(studio.publishRequests()).toBe(1);
 });
 
@@ -243,16 +249,21 @@ test("publish blockers link to the exact field and stale drafts cannot publish",
   await expect(description).toHaveValue("");
   await expect(canvas.locator(".peas-public-hero__image.is-active")).toHaveAttribute("src", "/Components/images/1.jpg");
   await page.getByRole("button", { name: "Review changes" }).click();
+  const blockers = page.getByRole("region", { name: "Publishing blocked" });
+  await expect(blockers.getByRole("heading", { name: "Publishing blocked" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeDisabled();
-  await page.getByRole("button", { name: /Slideshow photo 2 needs a description/ }).click();
+  await expect(page.getByRole("button", { name: "Publish changes" })).toHaveAccessibleDescription(/Fix 1 issue/);
+  await blockers.getByRole("list", { name: /Welcome message and photos/ }).getByRole("button", { name: /Slideshow photo 2 needs a description/ }).click();
   await expect(description).toBeFocused();
   await description.fill("Students collaborating in the library");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("status", { name: "Draft status" })).toHaveText("Draft saved");
   studio.changeDraftInAnotherTab();
   await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(blockers).toHaveCount(0);
   await page.getByRole("button", { name: "Publish changes" }).click();
   await expect(page.getByRole("alert")).toContainText("Another administrator or tab updated the draft.");
+  await expect(page.getByRole("heading", { name: "Changes published" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeDisabled();
 });
 
@@ -329,8 +340,11 @@ test("portrait position previews immediately and survives draft save and publish
 
   await page.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Publish changes" }).click();
-  await expect(page.getByRole("status", { name: "Draft status" })).toContainText("Changes published");
-  await page.goto("/index.html#org-chart");
+  const published = page.getByRole("region", { name: "Changes published" });
+  await expect(published.getByRole("heading", { name: "Changes published" })).toBeFocused();
+  await expect(published.getByRole("link", { name: "View FAQ" })).toHaveCount(0);
+  await published.getByRole("link", { name: "View home page" }).click();
+  await expect(page).toHaveURL(/\/index\.html$/);
   await expect(page.getByRole("img", { name: portraitName })).toHaveCSS("object-position", "50% 24%");
 });
 

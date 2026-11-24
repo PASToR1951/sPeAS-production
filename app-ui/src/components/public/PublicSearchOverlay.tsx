@@ -7,8 +7,16 @@ import { CATEGORY_ORDER, getCategoryMeta, type DocumentCategory } from "../../li
 import { fetchSearchSuggestions, markPendingSearch, recordSearchEvent, type SearchSuggestion, type SearchSuggestionType } from "../../lib/api/search";
 import { fetchAvailablePublicationYears } from "../../lib/api/documents";
 
+export interface SearchDraft {
+  query: string;
+  category: DocumentCategory;
+  setQuery: (query: string) => void;
+  setCategory: (category: DocumentCategory) => void;
+}
+
 interface Props {
   onClose: () => void;
+  draft?: SearchDraft;
 }
 
 type SearchScope = "trending" | "all" | "work" | "news" | "author" | "classification";
@@ -38,7 +46,7 @@ function normalizeSuggestions(value: Partial<Record<SearchSuggestionType, Search
   return { ...emptySuggestions(), ...value };
 }
 
-export function PublicSearchOverlay({ onClose }: Props) {
+export function PublicSearchOverlay({ onClose, draft }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
@@ -47,8 +55,11 @@ export function PublicSearchOverlay({ onClose }: Props) {
   const isClosingRef = useRef(false);
   const resultsId = useId();
   const [isClosing, setIsClosing] = useState(false);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<DocumentCategory>("All");
+  const [localQuery, setLocalQuery] = useState("");
+  const [localCategory, setLocalCategory] = useState<DocumentCategory>("All");
+  const { query, setQuery, category, setCategory } = draft ?? {
+    query: localQuery, setQuery: setLocalQuery, category: localCategory, setCategory: setLocalCategory,
+  };
   const [year, setYear] = useState("");
   const [sort, setSort] = useState<"latest" | "earliest">("latest");
   const [topicQuery, setTopicQuery] = useState("");

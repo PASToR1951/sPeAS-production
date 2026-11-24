@@ -29,9 +29,10 @@ interface Props {
   placeholder: string;
   ariaLabel: string;
   onFocus?: () => void;
+  active?: boolean;
 }
 
-export function PublicSearchCombobox({ value, category, source, onChange, onSubmit, placeholder, ariaLabel, onFocus }: Props) {
+export function PublicSearchCombobox({ value, category, source, onChange, onSubmit, placeholder, ariaLabel, onFocus, active = true }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -50,7 +51,7 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
   useEffect(() => {
     const query = value.trim().replace(/[\s]+/gu, " ");
     abortRef.current?.abort();
-    if (query.length < 2) {
+    if (!active || query.length < 2) {
       setSuggestions(emptySuggestions());
       setOpen(false);
       setLoading(false);
@@ -81,7 +82,7 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [category, value]);
+  }, [active, category, value]);
 
   useEffect(() => {
     function closeOnOutsidePointer(event: PointerEvent) {

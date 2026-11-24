@@ -1473,6 +1473,34 @@ body:has(.xp-studio-shell) { margin: 0; }
 .xp-slideshow .xp-studio-button { justify-self: start; background: var(--brand-green-mist); color: var(--brand-green-dark); font-size: .82rem; }
 .xp-slideshow .xp-studio-button:hover { background: var(--brand-green-soft); }
 .xp-slideshow .xp-image-field > small { grid-column: 1 / -1; }
+.xp-publish-blockers { margin-block-end: 1rem; padding: 1.15rem; border-radius: 14px; }
+.xp-publish-blockers-header { display: flex; align-items: flex-start; gap: .65rem; }
+.xp-publish-blockers-header > svg { flex-shrink: 0; margin-block-start: .1rem; }
+.xp-publish-blockers-header h2 { margin: 0; font-size: 1.25rem; line-height: 1.25; }
+.xp-publish-blockers-header p { margin: .35rem 0 0; }
+.xp-publish-blocker-group { margin-block-start: 1rem; }
+.xp-publish-blocker-group h3 { margin: 0 0 .35rem; font-size: .85rem; }
+.xp-publish-blocker-group ul { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.xp-publish-blocker-group button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  width: 100%;
+  background: var(--surface);
+  color: inherit;
+  text-align: start;
+  font-size: .9rem;
+}
+.xp-publish-blocker-group button:hover:not(:disabled) { background: #fee2e2; }
+.xp-publish-blocker-group button svg { flex-shrink: 0; }
+.xp-publish-success { margin: 0; background: var(--brand-green-soft); color: var(--brand-green-dark); }
+.xp-publish-success > p { color: inherit; }
+.xp-publish-success h1,
+.xp-publish-success a { display: flex; align-items: center; gap: .55rem; }
+.xp-publish-success a { text-decoration: none; }
+.xp-publish-success svg { flex-shrink: 0; }
+.xp-publish-success .xp-workspace-actions { margin-block: 1.25rem 0; }
 .xp-review-list { padding-inline-start: 1.25rem; }
 .xp-review-list ul { padding-inline-start: 1rem; }
 .xp-version-list li { display: flex; flex-wrap: wrap; gap: 0.55rem; justify-content: space-between; align-items: center; padding: 0.65rem; background: var(--surface-muted); border-radius: var(--radius); }

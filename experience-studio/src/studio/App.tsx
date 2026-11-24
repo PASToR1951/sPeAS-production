@@ -2,7 +2,7 @@ import Uppy from "@uppy/core";
 import Dashboard from "@uppy/dashboard";
 import XHRUpload from "@uppy/xhr-upload";
 import {
-  ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, CircleHelp, House,
+  ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, CircleAlert, CircleCheck, CircleHelp, House,
   Image, LayoutTemplate, Monitor, PanelRight, Pencil, Redo2, Smartphone, Tablet, Type, Undo2,
 } from "lucide-react";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +17,7 @@ import {
   ExperienceConfigSchema,
   type ExperienceOrganizationRole,
   type ExperiencePageKey,
+  type ExperiencePublishIssue,
   getExperiencePublishIssues,
   migrateExperienceConfigToV6,
 } from "../../../Deno/shared/experienceConfig";
@@ -31,7 +32,7 @@ const previewDevices = [
   { value: "mobile", label: "Mobile", Icon: Smartphone },
 ] as const;
 const previewWidths: Record<DeviceKey, number> = { desktop: 1440, tablet: 820, mobile: 390 };
-type Screen = "pages" | "edit" | "review" | "tools";
+type Screen = "pages" | "edit" | "review" | "published" | "tools";
 type EditorLocation = { page: PageKey; section: string };
 const UploadActivity = createContext<(change: number) => void>(() => {});
 const SlideshowSelection = createContext({ index: 0, select: (_index: number) => {} });
@@ -985,11 +986,55 @@ function readEditorLocation(): EditorLocation | null {
   }
 }
 
-function issueLabel(issue: ReturnType<typeof getExperiencePublishIssues>[number]) {
+function issueLabel(issue: ExperiencePublishIssue) {
   const [, index] = issue.field.split("-");
   if (issue.field.startsWith("images-")) return `Slideshow photo ${Number(index) + 1} needs a description.`;
   if (issue.field === "imageAlt") return "The archived image needs a description.";
   return issue.message.replace("requires alternative text", "needs a description");
+}
+
+function PublishBlockers({ issues, disabled, onFix }: {
+  issues: ExperiencePublishIssue[];
+  disabled: boolean;
+  onFix: (issue: ExperiencePublishIssue) => void;
+}) {
+  const groups = new Map<string, ExperiencePublishIssue[]>();
+  for (const issue of issues) {
+    const key = `${issue.page}-${issue.block}`;
+    const group = groups.get(key);
+    if (group) group.push(issue);
+    else groups.set(key, [issue]);
+  }
+
+  return (
+    <section className="xp-workspace-error xp-publish-blockers" aria-labelledby="publish-blockers-heading">
+      <div className="xp-publish-blockers-header">
+        <CircleAlert size={22} aria-hidden="true" />
+        <div>
+          <h2 id="publish-blockers-heading" tabIndex={-1} aria-describedby="publish-blockers-help">Publishing blocked</h2>
+          <p id="publish-blockers-help">Fix {issues.length} {issues.length === 1 ? "issue" : "issues"} to enable Publish changes. Select an issue to open its field.</p>
+        </div>
+      </div>
+      {Array.from(groups, ([key, group]) => {
+        const { page, block } = group[0];
+        const headingId = `publish-blockers-${key}`;
+        return (
+          <div className="xp-publish-blocker-group" key={key}>
+            <h3 id={headingId}>{pages[page].name} · {sectionName(block)}</h3>
+            <ul role="list" aria-labelledby={headingId}>
+              {group.map((issue, index) => (
+                <li key={`${issue.field}-${index}`}>
+                  <button className="xp-studio-button" type="button" disabled={disabled} onClick={() => onFix(issue)}>
+                    {issueLabel(issue)}<ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
 }
 
 export default function App() {
@@ -1002,6 +1047,7 @@ export default function App() {
   const [hasDraft, setHasDraft] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [screen, setScreen] = useState<Screen>("pages");
+  const [publishedPages, setPublishedPages] = useState<PageKey[]>([]);
   const [activePage, setActivePage] = useState<PageKey>("landing");
   const [section, setSection] = useState("HeroBlock");
   const [resume, setResume] = useState(readEditorLocation);
@@ -1129,7 +1175,7 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, working]);
 
-  function navigate(next: Screen, id = "studio-title") {
+  function navigate(next: Screen, id = next === "review" ? "publish-blockers-heading" : "studio-title") {
     if (next !== "edit") setCanvasReady(false);
     setScreen(next);
     setFocusRequest({ id });
@@ -1286,8 +1332,9 @@ export default function App() {
       setPublished(live);
       setVersion(result.version);
       setHasDraft(false);
-      setStatus("Changes published. Visitors can see the updated website.");
-      navigate("pages");
+      setStatus("");
+      setPublishedPages(pageKeys.filter((page) => changes.some((change) => change.page === page)));
+      navigate("published");
     });
   }
 
@@ -1461,7 +1508,7 @@ export default function App() {
           </div>
         )}
       </header>
-      {compactViewport ? (
+      {compactViewport && screen !== "published" ? (
         <main className="xp-workspace-main">
           <section className="xp-workspace-surface xp-desktop-notice" aria-labelledby="studio-desktop-required">
             <Monitor size={27} aria-hidden="true" />
@@ -1484,7 +1531,7 @@ export default function App() {
           </div>
         )}
         {loadState === "ready" && <>
-          {screen !== "pages" && !editing && (
+          {screen !== "pages" && screen !== "published" && !editing && (
             <nav aria-label="Website editor navigation" className="xp-workspace-nav">
               <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("pages")}>Website pages</button>
             </nav>
@@ -1497,7 +1544,7 @@ export default function App() {
               else reload();
             }}>Load latest draft</button>
           )}
-          {!editing && <div className="xp-workspace-title">
+          {!editing && screen !== "published" && <div className="xp-workspace-title">
             <h1 id="studio-title" tabIndex={-1}>{title}</h1>
           </div>}
 
@@ -1598,37 +1645,45 @@ export default function App() {
             </div>
           )}
 
-          {screen === "review" && <section className="xp-workspace-surface">
-            <p>Publishing applies the shared draft to the public website.</p>
-            {changes.length ? <ul className="xp-review-list">
-              {pageKeys.filter((page) => changes.some((change) => change.page === page)).map((page) => (
-                <li key={page}>
-                  <strong>{pages[page].name}</strong>
-                  <ul>{changes.filter((change) => change.page === page).map((change) => (
-                    <li key={change.section}>
-                      <button className="xp-text-button" type="button" disabled={working} onClick={() => openSection(change)}>{sectionName(change.section)}</button>
-                    </li>
-                  ))}</ul>
-                </li>
-              ))}
-            </ul> : <p>The draft matches the published pages.</p>}
-            {issues.length > 0 && <>
-              <h2>Fix before publishing</h2>
-              <ul className="xp-review-list">
-                {issues.map((issue, index) => (
-                  <li key={`${issue.page}-${issue.block}-${issue.field}-${index}`}>
-                    <button className="xp-text-button" type="button" onClick={() => openSection({ page: issue.page, section: issue.block }, issue.field)}>
-                      {pages[issue.page].name} · {sectionName(issue.block)} · {issueLabel(issue)}
-                    </button>
+          {screen === "review" && <>
+            {issues.length > 0 && <PublishBlockers issues={issues} disabled={working} onFix={(issue) => openSection({ page: issue.page, section: issue.block }, issue.field)} />}
+            <section className="xp-workspace-surface">
+              <p>Publishing applies the shared draft to the public website.</p>
+              {changes.length ? <ul className="xp-review-list">
+                {pageKeys.filter((page) => changes.some((change) => change.page === page)).map((page) => (
+                  <li key={page}>
+                    <strong>{pages[page].name}</strong>
+                    <ul>{changes.filter((change) => change.page === page).map((change) => (
+                      <li key={change.section}>
+                        <button className="xp-text-button" type="button" disabled={working} onClick={() => openSection(change)}>{sectionName(change.section)}</button>
+                      </li>
+                    ))}</ul>
                   </li>
                 ))}
-              </ul>
-            </>}
-            <div className="xp-workspace-actions">
-              <button className="xp-studio-button" type="button" disabled={working} onClick={() => resumeLocation ? openSection(resumeLocation) : navigate("pages")}>{resumeLocation ? "Back to editing" : "Back to pages"}</button>
-              <button className="xp-studio-button primary" type="button" disabled={working || conflict || !changes.length || issues.length > 0} onClick={publishChanges}>Publish changes</button>
-            </div>
-          </section>}
+              </ul> : <p>The draft matches the published pages.</p>}
+              <div className="xp-workspace-actions">
+                <button className="xp-studio-button" type="button" disabled={working} onClick={() => resumeLocation ? openSection(resumeLocation) : navigate("pages")}>{resumeLocation ? "Back to editing" : "Back to pages"}</button>
+                <button className="xp-studio-button primary" type="button" disabled={working || conflict || !changes.length || issues.length > 0} aria-describedby={issues.length ? "publish-blockers-help" : undefined} onClick={publishChanges}>Publish changes</button>
+              </div>
+            </section>
+          </>}
+
+          {screen === "published" && (
+            <section className="xp-workspace-surface xp-workspace-title xp-publish-success" aria-labelledby="studio-title">
+              <h1 id="studio-title" tabIndex={-1} aria-describedby="publish-success-description">
+                <CircleCheck size={28} aria-hidden="true" />Changes published
+              </h1>
+              <p id="publish-success-description">Your changes are live on the public website.</p>
+              <div className="xp-workspace-actions">
+                {publishedPages.map((page) => (
+                  <a className="xp-studio-button primary" href={pages[page].url} key={page}>
+                    {page === "landing" ? "View home page" : "View FAQ"}<ArrowRight size={16} aria-hidden="true" />
+                  </a>
+                ))}
+                <button className="xp-studio-button" type="button" onClick={() => navigate("pages")}>Back to website pages</button>
+              </div>
+            </section>
+          )}
 
           {screen === "tools" && <div className="xp-workspace-surface">
             <h2>Version history</h2>

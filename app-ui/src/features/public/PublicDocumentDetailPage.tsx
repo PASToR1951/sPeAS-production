@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, BookOpen, CalendarDays, LibraryBig } from "lucide-react";
 import { AuthorPreviewLink } from "../../components/public/AuthorPreviewLink";
 import { PublicErrorPage, PublicPageShell } from "../../components/public/PublicPageShell";
+import { Button } from "../../components/ui/button";
 import type { LooseRecord } from "../../lib/api/account";
 import { fetchPublicDocumentDetail, getPublicDocumentErrorStatus } from "../../lib/api/publicDocument";
 import type { DocumentRecord, PublicAuthorReference } from "../../lib/api/types";
@@ -64,18 +65,22 @@ function DocumentContent({ id, detail }: { id: string; detail: { record: LooseRe
   return (
     <>
       {parentIssue?.id && parentIssue.label ? (
-        <a
-          className="peas-paper-issue-link"
-          href={`/pages/guest-compiled.html?id=${encodeURIComponent(parentIssue.id)}`}
-          aria-label={`Browse issue: ${parentIssue.label}`}
-        >
+        <div className="peas-paper-issue">
           <LibraryBig aria-hidden="true" />
-          <span className="peas-paper-issue-link__publication">
+          <span className="peas-paper-issue__publication">
             <small>Published in</small>
             <strong>{parentIssue.label}</strong>
           </span>
-          <span className="peas-paper-issue-link__action">Browse issue <ArrowRight aria-hidden="true" /></span>
-        </a>
+          <Button
+            className="peas-paper-issue__action"
+            variant={null}
+            size="lg"
+            aria-label={`Browse issue: ${parentIssue.label}`}
+            onClick={() => window.location.assign(`/pages/guest-compiled.html?id=${encodeURIComponent(parentIssue.id)}`)}
+          >
+            Browse issue <ArrowRight aria-hidden="true" />
+          </Button>
+        </div>
       ) : null}
       <header className="peas-document-hero">
         <h1>{title}</h1>

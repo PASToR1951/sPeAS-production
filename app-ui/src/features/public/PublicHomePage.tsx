@@ -7,8 +7,7 @@ import { NewsPreviewCard } from "../../components/public/NewsPreviewCard";
 import { OrgChart, type OrgChartRoleContent } from "../../components/public/OrgChart";
 import { PeasOverview } from "../../components/public/PeasOverview";
 import { PublicPageShell } from "../../components/public/PublicPageShell";
-import { PublicSearchCombobox } from "../../components/public/PublicSearchCombobox";
-import { markPendingSearch } from "../../lib/api/search";
+import { HomeRepositorySearch } from "./HomeRepositorySearch";
 import { usePublicSession } from "../../components/public/PublicSessionProvider";
 import { PrismDiagram } from "../../components/public/PrismDiagram";
 import BorderGlow from "../../components/BorderGlow/BorderGlow";
@@ -26,8 +25,7 @@ export function PublicHomePage() {
   const [data, setData] = useState<PublicHomeData | null>(null);
   const { session } = usePublicSession();
   const { config, canvasMode } = usePublicExperience("landing");
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<DocumentCategory>("All");
+  const [searchSlot, setSearchSlot] = useState<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [latestNews, setLatestNews] = useState<NewsPost[]>([]);
   const [newsLoading, setNewsLoading] = useState(true);
@@ -132,12 +130,9 @@ export function PublicHomePage() {
     return () => window.clearInterval(interval);
   }, [canvasMode, displayedHeroImages.length, heroImageSignature, heroSlideshowPaused]);
 
-  const submitSearch = useCallback(() => {
-    if (!canvasMode) window.location.href = searchResultsUrl(query, category);
-  }, [canvasMode, category, query]);
-
   return (
-    <PublicPageShell canvasMode={canvasMode} pageClassName="peas-public-home-page">
+    <PublicPageShell canvasMode={canvasMode} pageClassName="peas-public-home-page"
+      navbarSearch={<div className="peas-home-search-slot" ref={setSearchSlot} />}>
       <section className="peas-public-hero" data-experience-section={canvasMode ? "HeroBlock" : undefined} aria-labelledby="public-home-title">
         <div className="peas-public-hero__images" aria-label="Featured research photos" aria-live="off">
           {displayedHeroImages.map((image, index) => (
@@ -169,40 +164,7 @@ export function PublicHomePage() {
           <p>
             <ExperienceCanvasText enabled={canvasMode} block="HeroBlock" field="body" label="Welcome text" value={String(hero.body || "Explore PeAS, the university repository for research activities, initiatives, theses, dissertations, journals, and scholarly work.")} multiline />
           </p>
-          <form
-            className="peas-public-hero-search"
-            inert={canvasMode}
-            onSubmit={(event) => {
-              event.preventDefault();
-              markPendingSearch(query, "home");
-              submitSearch();
-            }}
-          >
-            <PublicSearchCombobox
-              value={query}
-              category={category}
-              source="home"
-              onChange={setQuery}
-              onSubmit={submitSearch}
-              ariaLabel="Search documents"
-              placeholder="Search the repository"
-            />
-            <select
-              aria-label="Filter search category"
-              value={category}
-              onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)}
-            >
-              {CATEGORY_ORDER.map((item) => (
-                <option value={item} key={item}>
-                  {getCategoryMeta(item).label}
-                </option>
-              ))}
-            </select>
-            <Button type="submit">
-              Search
-              <ArrowRight aria-hidden="true" />
-            </Button>
-          </form>
+          <HomeRepositorySearch slot={searchSlot} canvasMode={canvasMode} />
           <nav className="peas-public-hero-categories" aria-label="Browse repository by category">
             <span>Browse by category</span>
             {CATEGORY_ORDER.filter((item) => item !== "All").map((item) => {

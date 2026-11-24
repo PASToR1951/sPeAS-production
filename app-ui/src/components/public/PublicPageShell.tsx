@@ -90,6 +90,7 @@ export function PublicPageShell({
   showFooter = true,
   showNavbar = true,
   canvasMode = false,
+  navbarSearch,
 }: {
   children: ReactNode;
   mainClassName?: string;
@@ -97,11 +98,12 @@ export function PublicPageShell({
   showFooter?: boolean;
   showNavbar?: boolean;
   canvasMode?: boolean;
+  navbarSearch?: ReactNode;
 }) {
   return (
     <div className={`peas-public-page ${pageClassName}`.trim()}>
       <a className="peas-skip-link" href="#main-content">Skip to main content</a>
-      {showNavbar ? <PublicNavbar canvasMode={canvasMode} /> : null}
+      {showNavbar ? <PublicNavbar canvasMode={canvasMode} search={navbarSearch} /> : null}
       <main id="main-content" className={mainClassName}>{children}</main>
       {showFooter ? <PublicFooter /> : null}
     </div>

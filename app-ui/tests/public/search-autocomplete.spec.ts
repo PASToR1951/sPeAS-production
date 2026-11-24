@@ -23,7 +23,7 @@ test("desktop global search provides a persistent grouped workspace and closes c
     },
   } }));
 
-  await page.goto("/index.html");
+  await page.goto("/faq.html");
   await page.getByRole("searchbox", { name: "Search the repository from navigation" }).click();
   const dialog = page.getByRole("dialog", { name: "Search & Filter Archive" });
   await expect(dialog).toBeVisible();
@@ -49,6 +49,62 @@ test("desktop global search provides a persistent grouped workspace and closes c
   await expect(dialog).toHaveCount(0);
   await page.waitForTimeout(50);
   await expect(page.getByRole("dialog", { name: "Search & Filter Archive" })).toHaveCount(0);
+});
+
+test("home search docks and returns with the same draft and keyboard focus", async ({ page, isMobile }) => {
+  await page.setViewportSize({ width: isMobile ? 393 : 1440, height: 850 });
+  await page.route("**/api/**", (route) => route.fulfill({ status: 503, json: {} }));
+  await page.goto("/index.html");
+  const hero = page.locator(".peas-public-hero");
+  const input = hero.getByRole("searchbox", { name: "Search documents" });
+  const trigger = page.getByRole("button", { name: "Search the repository from navigation" });
+  const category = hero.getByLabel("Filter search category");
+  await expect(input).toBeVisible();
+  await expect(trigger).toBeHidden();
+  await category.selectOption("THESIS");
+  await input.fill("water");
+  await hero.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom));
+  await expect(trigger).toBeInViewport();
+  await expect(trigger).toBeFocused();
+  await expect(input).toBeHidden();
+  await trigger.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Search & Filter Archive" });
+  const archive = dialog.getByRole("combobox", { name: "Search the archive" });
+  await expect(archive).toHaveValue("water");
+  await expect(dialog.getByLabel("Filter by category")).toHaveValue("THESIS");
+  await archive.fill("water quality");
+  await archive.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("water quality");
+  await expect(category).toHaveValue("THESIS");
+  await expect(trigger).toBeHidden();
+});
+
+test("home search follows the scroll position and honors reduced motion", async ({ page, isMobile }) => {
+  await page.setViewportSize({ width: isMobile ? 393 : 1512, height: 850 });
+  await page.route("**/api/**", (route) => route.fulfill({ status: 503, json: {} }));
+  await page.goto("/index.html");
+  const hero = page.locator(".peas-public-hero");
+  const trigger = page.getByRole("button", { name: "Search the repository from navigation" });
+  const slot = page.locator(".peas-home-search-slot");
+  await expect(hero.getByRole("searchbox")).toBeVisible();
+  await hero.evaluate((el) => {
+    const field = el.querySelector(".peas-public-search-combobox")!.getBoundingClientRect();
+    const header = document.querySelector("header")!.getBoundingClientRect();
+    window.scrollBy(0, (field.top + el.getBoundingClientRect().bottom) / 2 - header.bottom);
+  });
+  await expect(trigger).toBeVisible();
+  const moving = (await trigger.boundingBox())!;
+  const target = (await slot.boundingBox())!;
+  expect(moving.y).toBeGreaterThan(target.y + 5);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(trigger).toBeHidden();
+  await hero.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom));
+  await expect(trigger).toBeInViewport();
+  await expect(trigger).toHaveCSS("transform", "none");
+  expect(await trigger.boundingBox()).toEqual(await slot.boundingBox());
 });
 
 test("public search autocomplete groups mixed destinations and supports keyboard selection", async ({ page }) => {

@@ -152,9 +152,9 @@ test("search and paper details distinguish a paper from its parent issue", async
   await page.keyboard.press("Enter");
 
   await expect(page.getByText("Printed pages 1–17 · 17 PDF pages", { exact: true })).toBeVisible();
-  const browseIssue = page.getByRole("link", { name: `Browse issue: ${issueLabel}` });
-  await expect(browseIssue).toHaveAttribute("href", `/pages/guest-compiled.html?id=${issue}`);
-  await expect(browseIssue.getByText("Published in", { exact: true })).toBeVisible();
+  const browseIssue = page.getByRole("button", { name: `Browse issue: ${issueLabel}` });
+  await expect(page.getByText("Published in", { exact: true })).toBeVisible();
+  await expect(page.getByText(issueLabel, { exact: true })).toBeVisible();
   expect((await browseIssue.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
   const read = page.getByRole("button", { name: "Read paper", exact: true });
@@ -165,11 +165,17 @@ test("search and paper details distinguish a paper from its parent issue", async
   await page.getByRole("region", { name: "Full paper" }).screenshot({
     path: testInfo.outputPath("full-paper.png"),
   });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await browseIssue.focus();
   await expect(browseIssue).toHaveCSS("outline-style", "solid");
+  const arrow = browseIssue.locator("svg");
+  await expect(arrow).not.toHaveCSS("transform", "none");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(arrow).toHaveCSS("transform", "none");
   const navbar = (await page.getByRole("banner").boundingBox())!;
   expect((await browseIssue.boundingBox())!.y).toBeGreaterThanOrEqual(navbar.y + navbar.height);
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  await expect(page).toHaveURL(`/pages/guest-compiled.html?id=${issue}`);
   await expect(page.getByRole("heading", { name: issueTitle })).toBeVisible();
 });
 test("unavailable complete output preserves the table of contents", async ({ page }) => {

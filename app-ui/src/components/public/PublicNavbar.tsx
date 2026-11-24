@@ -1,6 +1,6 @@
 import { isStaffRole, ROLE_LABELS, STAFF_WORKSPACE } from "../../../../shared/staffRoles";
 import { getNewsArticleSlug } from "../../../../shared/newsArticlePaths";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, LayoutDashboard, LogOut, Menu, X } from "lucide-react";
 import { Button } from "../ui/button";
 import {
@@ -25,7 +25,7 @@ const links = [
 
 const repositoryLink = { label: "Browse Repository", href: "/pages/searchResultsPage.html" };
 
-export function PublicNavbar({ canvasMode = false }: { canvasMode?: boolean } = {}) {
+export function PublicNavbar({ canvasMode = false, search }: { canvasMode?: boolean; search?: ReactNode } = {}) {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const suppressSearchFocusRef = useRef(false);
@@ -100,7 +100,7 @@ export function PublicNavbar({ canvasMode = false }: { canvasMode?: boolean } = 
         </span>
       </a>
 
-      <NavbarSearch className="peas-public-navbar-search" onFocus={() => { if (!suppressSearchFocusRef.current) setSearchOpen(true); }} />
+      {search ?? <NavbarSearch className="peas-public-navbar-search" onFocus={() => { if (!suppressSearchFocusRef.current) setSearchOpen(true); }} />}
 
       <nav className="peas-public-navlinks" aria-label="Public navigation">
         {links.map((link) => <a href={link.href} key={link.href} aria-current={isActivePath(link.href) ? "page" : undefined}>{link.label}</a>)}
