@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { KeyRound, ShieldCheck, Trash2, UserPlus, UserRoundX } from "lucide-react";
+import { Check, Clock3, KeyRound, Trash2, UserPlus, UserRoundX } from "lucide-react";
 import { ROLE_LABELS, STAFF_ROLES, type StaffRole } from "../../../../shared/staffRoles";
 import { PeasEmptyState, PeasErrorState, PeasLoadingState } from "../../components/feedback/PeasStates";
 import { Badge } from "../../components/ui/badge";
@@ -90,8 +90,16 @@ export function RoleManagementPage() {
           <tbody>{users.map(user => <tr key={user.id}>
             <td><strong>{user.name || user.id}</strong><small>{user.email}</small></td>
             <td>{user.display_username || user.username || user.id}</td>
-            <td><Badge tone="green"><ShieldCheck aria-hidden="true" /> {ROLE_LABELS[user.role]}</Badge>
-              <small>{user.password_setup_required ? "Password setup pending" : "Active"}</small></td>
+            <td>
+              <div className="peas-role-and-status">
+                <strong>{ROLE_LABELS[user.role]}</strong>
+                <Badge tone={user.password_setup_required ? "gold" : "green"}>
+                  {user.password_setup_required
+                    ? <><Clock3 aria-hidden="true" /> Password setup pending</>
+                    : <><Check aria-hidden="true" /> Active</>}
+                </Badge>
+              </div>
+            </td>
             <td><div className="peas-row-actions">
               <Button size="sm" variant="outline" disabled={busyUserId !== null} onClick={() => void act(user, "revoke")}><UserRoundX aria-hidden="true" /> Revoke sessions</Button>
               <Button size="sm" variant="outline" disabled={busyUserId !== null} onClick={() => void act(user, user.role === "admin" ? "reset" : "reissue")}>
@@ -107,7 +115,7 @@ export function RoleManagementPage() {
         <DialogHeader><DialogTitle>Create staff account</DialogTitle><DialogDescription>Choose the role that matches the person’s work.</DialogDescription></DialogHeader>
         <form className="peas-staff-form" onSubmit={create}>
           <label>Full name<Input name="name" autoComplete="off" required maxLength={100} /></label>
-          <label>Username<Input name="username" autoComplete="off" required minLength={2} maxLength={30} pattern="[a-zA-Z0-9._\\-]+" /></label>
+          <label>Username<Input name="username" autoComplete="off" required minLength={2} maxLength={30} pattern={"[a-zA-Z0-9._\\-]+"} /></label>
           <label>Email<Input name="email" type="email" autoComplete="off" required maxLength={255} /></label>
           <label>Role<select value={role} onChange={event => setRole(event.currentTarget.value as StaffRole)}>
             {STAFF_ROLES.map(value => <option key={value} value={value}>{ROLE_LABELS[value]}</option>)}

@@ -291,6 +291,27 @@ test("settings remains available from the administrator profile menu", async ({ 
   await expect(page.getByRole("button", { name: "Open profile menu for Admin M User" })).toBeVisible();
 });
 
+test("staff account fields stay readable with a dark system theme", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.route("**/api/admin/users", (route) => route.fulfill({ json: { users: [] } }));
+  await page.goto("/admin/Components/role-management.html");
+  await page.getByRole("button", { name: "Create Account", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Create staff account" });
+  const foreground = await dialog.getByRole("heading").evaluate((heading) => getComputedStyle(heading).color);
+  const dialogBackground = await dialog.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  for (const label of ["Full name", "Username", "Email", "Role"]) {
+    const control = dialog.getByLabel(label);
+    await expect(control.locator("..")).toHaveCSS("color", foreground);
+    await expect(control).toHaveCSS("color", foreground);
+    await expect(control).not.toHaveCSS("background-color", dialogBackground);
+  }
+
+  await expect(dialog.getByRole("combobox", { name: "Role" })).toHaveCSS("color-scheme", "light only");
+  await expect(dialog.getByText("Prepares and submits", { exact: false })).toHaveCSS("color", foreground);
+});
+
 test("Settings hides Experience Studio on compact viewports", async ({ page }) => {
   await page.setViewportSize({ width: 980, height: 800 });
   await page.goto("/admin/Components/admin_settings.html");
