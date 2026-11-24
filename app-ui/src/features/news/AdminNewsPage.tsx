@@ -872,6 +872,7 @@ function NewsEditor(
             </Button>
             {canPublish ? <PublishSplitButton
               label={form.status === "published" ? "Publish now" : "Publish"}
+              size="default"
               disabled={saving}
               onPublish={onPublish}
               onSchedule={onSchedule}
@@ -1243,8 +1244,9 @@ function NewsEditor(
 }
 
 function PublishSplitButton(
-  { label, disabled, onPublish, onSchedule, scheduleLabel = "Schedule publish", extraItems = [] }: {
+  { label, size = "sm", disabled, onPublish, onSchedule, scheduleLabel = "Schedule publish", extraItems = [] }: {
     label: string;
+    size?: "default" | "sm";
     disabled?: boolean;
     onPublish: () => void;
     onSchedule: () => void;
@@ -1257,7 +1259,7 @@ function PublishSplitButton(
       buttonProps={{
         disabled,
         onClick: onPublish,
-        size: "sm",
+        size,
       }}
       menuButtonLabel={`${label} options`}
       menuContentClassName="peas-news-publish-menu"
