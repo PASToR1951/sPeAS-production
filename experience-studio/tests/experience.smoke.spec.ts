@@ -88,7 +88,7 @@ async function mockStudio(page: Page) {
 async function openMission(page: Page) {
   await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
   await expect(page.frameLocator("iframe").locator(".peas-public-hero__image.is-active")).toBeVisible();
-  const section = page.getByLabel("Section", { exact: true });
+  const section = page.getByRole("combobox", { name: "Section", exact: true });
   await expect(section.getByRole("option", { name: "Footer" })).toHaveCount(0);
   await section.selectOption("RichTextBlock");
 }
@@ -123,18 +123,24 @@ test("the live canvas edits, saves, and reviews changes across pages", async ({ 
   await expect(page.locator("iframe")).toHaveCount(0);
   await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
   const canvas = page.frameLocator("iframe");
+  const welcomeContent = page.getByRole("group", { name: "Welcome content" });
+  await expect(welcomeContent.getByRole("button", { name: "Photos" })).toHaveAttribute("aria-pressed", "true");
+  await canvas.getByRole("textbox", { name: "Welcome title", exact: true }).focus();
+  await expect(welcomeContent.getByRole("button", { name: "Text" })).toHaveAttribute("aria-pressed", "true");
   const mission = canvas.getByRole("textbox", { name: "Mission title" });
   const title = page.getByRole("textbox", { name: "Title", exact: true });
   await mission.fill("A clearer");
   await mission.press("End");
   await mission.pressSequentially(" mission");
   await expect(mission).toHaveText("A clearer mission");
-  await expect(page.getByLabel("Section", { exact: true })).toHaveValue("RichTextBlock");
+  await expect(page.getByRole("combobox", { name: "Section", exact: true })).toHaveValue("RichTextBlock");
   await expect(title).toHaveValue("A clearer mission");
   await title.fill("Our research mission");
   await expect(mission).toHaveText("Our research mission");
   for (const [device, width] of [["desktop", 1440], ["tablet", 820], ["mobile", 390]] as const) {
-    await page.getByLabel("Preview width").selectOption(device);
+    const preset = page.getByRole("group", { name: "Preview width" }).getByRole("button", { name: new RegExp(`^${device}$`, "i") });
+    await preset.click();
+    await expect(preset).toHaveAttribute("aria-pressed", "true");
     await expect.poll(() => mission.evaluate(() => window.innerWidth)).toBe(width);
     const nav = canvas.locator(".peas-public-navlinks");
     if (device === "desktop") await expect(nav).toBeVisible();
@@ -147,6 +153,11 @@ test("the live canvas edits, saves, and reviews changes across pages", async ({ 
   await page.getByRole("button", { name: "Website pages", exact: true }).click();
   await expect(page.getByRole("button", { name: /Continue editing Home page/ })).toBeVisible();
   await page.getByRole("button", { name: /^Frequently asked questions/ }).click();
+  const pages = page.getByRole("navigation", { name: "Website editor navigation" });
+  await expect(pages.getByRole("button", { name: "FAQ", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await pages.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(canvas.getByRole("textbox", { name: "Mission title" })).toHaveText("Our research mission");
+  await pages.getByRole("button", { name: "FAQ", exact: true }).click();
   await canvas.getByRole("button", { name: /Preview answer to What is PeAS/ }).click();
   const canvasAnswer = canvas.getByRole("textbox", { name: "FAQ answer", exact: true });
   const answer = page.getByRole("textbox", { name: "Answer", exact: true });

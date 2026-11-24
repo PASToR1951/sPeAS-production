@@ -1,6 +1,10 @@
 import Uppy from "@uppy/core";
 import Dashboard from "@uppy/dashboard";
 import XHRUpload from "@uppy/xhr-upload";
+import {
+  ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, CircleHelp, House,
+  Image, LayoutTemplate, Monitor, PanelRight, Pencil, Redo2, Smartphone, Tablet, Type, Undo2,
+} from "lucide-react";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   defaultExperienceConfig,
@@ -17,6 +21,11 @@ import { experiencePuckConfig } from "../shared/puckConfig";
 
 type PageKey = ExperiencePageKey;
 type DeviceKey = "desktop" | "tablet" | "mobile";
+const previewDevices = [
+  { value: "desktop", label: "Desktop", Icon: Monitor },
+  { value: "tablet", label: "Tablet", Icon: Tablet },
+  { value: "mobile", label: "Mobile", Icon: Smartphone },
+] as const;
 const previewWidths: Record<DeviceKey, number> = { desktop: 1440, tablet: 820, mobile: 390 };
 type Screen = "pages" | "edit" | "review" | "tools";
 type EditorLocation = { page: PageKey; section: string };
@@ -217,7 +226,6 @@ function ImageUrlField(props: {
   uploadKind?: string;
   altText?: string;
   allowManualPath?: boolean;
-  showThumbnail?: boolean;
   onReplace?: (value: string) => void;
   clearLabel?: string;
   onClear?: () => void;
@@ -260,7 +268,7 @@ function ImageUrlField(props: {
   return (
     <div className="xp-image-field">
       <span>{props.label}</span>
-      {props.value && props.showThumbnail !== false ? (
+      {props.value ? (
         <img
           key={props.value}
           className="xp-image-preview"
@@ -474,12 +482,13 @@ function HeroImagesField(props: {
   const selected = images[index];
   return (
     <section className="xp-slideshow xp-array-field" aria-labelledby="slideshow-heading">
-      <h3 id="slideshow-heading" tabIndex={-1}>Welcome slideshow</h3>
+      <h3 id="slideshow-heading" tabIndex={-1}>Welcome slideshow <small>{index + 1} of {images.length}</small></h3>
       <div className="xp-photo-picker" role="group" aria-label="Choose a slideshow photo">
         {images.map((image, slot) => (
           <button key={slot} type="button" aria-label={`Show slideshow photo ${slot + 1}`} aria-pressed={slot === index} onClick={() => select(slot)}>
             <img src={image.url} alt="" />
-            <span>Photo {slot + 1}</span>
+            {slot === index && <span className="xp-photo-selected" aria-hidden="true"><Check size={14} /></span>}
+            <span className="xp-photo-number" aria-hidden="true">{slot + 1}</span>
           </button>
         ))}
       </div>
@@ -490,7 +499,6 @@ function HeroImagesField(props: {
         uploadKind={`hero-slot-${index + 1}`}
         altText={selected.alt}
         allowManualPath={false}
-        showThumbnail={false}
         onChange={(value) => updateImage(index, { url: value, alt: "" })}
       />
       <label>
@@ -775,10 +783,14 @@ function FieldEditor(props: {
 function BlockInspector(props: {
   block: BlockData;
   onChange: (props: Record<string, any>) => void;
+  heroPanel: "photos" | "text";
 }) {
-  const { block, onChange } = props;
+  const { block, onChange, heroPanel } = props;
   const fields = componentMap[block.type]?.fields ?? {};
   const allowed = editableFields[block.type] ?? [];
+  const visibleFields = block.type === "HeroBlock"
+    ? allowed.filter((name) => (name === "images") === (heroPanel === "photos"))
+    : allowed;
   const update = (name: string, value: unknown) => onChange({ ...block.props, [name]: value });
 
   return (
@@ -786,7 +798,7 @@ function BlockInspector(props: {
       {block.type === "ResearchAgendaBlock" && (
         <p className="xp-help-text">Update the introduction here. To change the official list, open Research Agenda in Admin Settings.</p>
       )}
-      {allowed.map((name) => fields[name] && (
+      {visibleFields.map((name) => fields[name] && (
         <FieldEditor key={name} id={name} name={name} field={fields[name]} value={block.props[name]} onChange={(value) => update(name, value)} />
       ))}
       {block.props.imageUrl && "imageAlt" in block.props && (
@@ -889,6 +901,7 @@ export default function App() {
   const [resume, setResume] = useState(readEditorLocation);
   const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
   const [heroPhoto, setHeroPhoto] = useState(0);
+  const [heroPanel, setHeroPanel] = useState<"photos" | "text">("photos");
   const [canvasScroll, setCanvasScroll] = useState({});
   const [canvasReady, setCanvasReady] = useState(false);
   const [device, setDevice] = useState<DeviceKey>(() =>
@@ -1007,7 +1020,11 @@ export default function App() {
 
   function openSection(location: EditorLocation, field?: string) {
     if (location.page !== activePage || screen !== "edit") setCanvasReady(false);
-    if (field?.startsWith("images-")) setHeroPhoto(Number(field.split("-")[1]));
+    if (location.section === "HeroBlock" && field) {
+      const photoField = field.startsWith("images-");
+      setHeroPanel(photoField ? "photos" : "text");
+      if (photoField) setHeroPhoto(Number(field.split("-")[1]));
+    }
     history.current.lastEdit = 0;
     selectSection(location);
     setCanvasScroll({});
@@ -1201,6 +1218,7 @@ export default function App() {
     if (type === "experience-canvas-photo" && activePage === "landing" && Number.isInteger(index) && index >= 0 && index < 4) {
       selectSection({ page: activePage, section: "HeroBlock" });
       setHeroPhoto(index);
+      setHeroPanel("photos");
       if (open) setFocusRequest({ id: "slideshow-heading" });
       return;
     }
@@ -1217,9 +1235,12 @@ export default function App() {
     if (typeof block !== "string" || !Object.prototype.hasOwnProperty.call(editableFields, block)) return;
     const target = config.pages[activePage].data.content.find((item) => item.type === block);
     if (!target) return;
-    if (type === "experience-canvas-select" && block !== section) {
-      history.current.lastEdit = 0;
-      selectSection({ page: activePage, section: block });
+    if (type === "experience-canvas-select") {
+      if (block !== section) {
+        history.current.lastEdit = 0;
+        selectSection({ page: activePage, section: block });
+      }
+      if (block === "HeroBlock" && typeof field === "string") setHeroPanel("text");
     }
     if (type !== "experience-canvas-edit" || typeof field !== "string" || typeof value !== "string") return;
     const path = field.split(".");
@@ -1277,18 +1298,47 @@ export default function App() {
     : screen === "tools" ? "Version history and images"
     : pageName;
 
+  const editing = screen === "edit" && loadState === "ready";
+  const landingHero = config.pages.landing.data.content.find((block) => block.type === "HeroBlock");
+  const coverImage = (landingHero?.props.images as HeroImage[] | undefined)?.[0]?.url;
+  const faqContent = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
+  const firstQuestion = (faqContent?.props.categories as FaqCategory[] | undefined)?.[0]?.items[0]?.question;
+
   return (
     <div className="xp-studio-shell">
-      <header className="xp-workspace-header">
-        <button className="xp-studio-button" type="button" onClick={exit} disabled={working}>Exit to Admin</button>
-        <strong>Edit website pages</strong>
+      <header className={`xp-workspace-header${editing ? " is-editing" : ""}`}>
+        <div className="xp-studio-identity">
+          <button className="xp-studio-button xp-exit-button" type="button" aria-label="Exit to Admin" title="Exit to Admin" onClick={exit} disabled={working}>
+            <ArrowLeft size={18} aria-hidden="true" />
+            <span>Admin</span>
+          </button>
+          {editing ? (
+            <h1 id="studio-title" tabIndex={-1}><LayoutTemplate size={18} aria-hidden="true" /> PeAS Studio</h1>
+          ) : <strong><LayoutTemplate size={18} aria-hidden="true" /> PeAS Studio</strong>}
+        </div>
+        {editing && (
+          <nav className="xp-page-switch" aria-label="Website editor navigation">
+            <button type="button" aria-label="Website pages" title="Website pages" disabled={working} onClick={() => navigate("pages")}><LayoutTemplate size={16} aria-hidden="true" /></button>
+            <button type="button" aria-pressed={activePage === "landing"} disabled={working} onClick={() => { if (activePage !== "landing") openPage("landing"); }}><House size={16} aria-hidden="true" />Home</button>
+            <button type="button" aria-pressed={activePage === "faq"} disabled={working} onClick={() => { if (activePage !== "faq") openPage("faq"); }}><CircleHelp size={16} aria-hidden="true" />FAQ</button>
+          </nav>
+        )}
         {loadState === "ready" && (
-          <p role="status" aria-label="Draft status">
+          <p className={`xp-draft-status${dirty ? " is-dirty" : ""}`} role="status" aria-label="Draft status">
+            <span aria-hidden="true" />
             {statusText}
           </p>
         )}
+        {editing && (
+          <div className="xp-edit-actions" role="group" aria-label="Draft actions">
+            <button className="xp-studio-button xp-icon-action" type="button" aria-label="Undo" title="Undo" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}><Undo2 size={18} aria-hidden="true" /></button>
+            <button className="xp-studio-button xp-icon-action" type="button" aria-label="Redo" title="Redo" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}><Redo2 size={18} aria-hidden="true" /></button>
+            <button className="xp-studio-button" type="button" onClick={saveDraft} disabled={working || conflict || !dirty}><ArrowDownToLine size={16} aria-hidden="true" />Save draft</button>
+            <button className="xp-studio-button primary xp-review-action" type="button" aria-label="Review changes" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}><span>Review<span className="xp-review-long-label"> changes</span></span><ArrowRight size={16} aria-hidden="true" /></button>
+          </div>
+        )}
       </header>
-      <main className={`xp-workspace-main${screen === "edit" ? " xp-visual-workspace" : ""}`}>
+      <main className={`xp-workspace-main${editing ? " xp-visual-workspace" : screen === "pages" && loadState === "ready" ? " xp-page-picker" : ""}`}>
         {loadState === "loading" && <p role="status">Loading website pages…</p>}
         {loadState === "error" && (
           <div className="xp-workspace-notice">
@@ -1301,7 +1351,7 @@ export default function App() {
           </div>
         )}
         {loadState === "ready" && <>
-          {screen !== "pages" && (
+          {screen !== "pages" && !editing && (
             <nav aria-label="Website editor navigation" className="xp-workspace-nav">
               <button className="xp-text-button" type="button" disabled={working} onClick={() => navigate("pages")}>Website pages</button>
             </nav>
@@ -1314,17 +1364,31 @@ export default function App() {
               else reload();
             }}>Load latest draft</button>
           )}
-          <div className="xp-workspace-title">
+          {!editing && <div className="xp-workspace-title">
             <h1 id="studio-title" tabIndex={-1}>{title}</h1>
-          </div>
+          </div>}
 
           {screen === "pages" && <>
             <ul className="xp-choice-list">
               {pageKeys.map((page) => (
                 <li key={page}>
                   <button className="xp-choice" type="button" onClick={() => openPage(page)}>
-                    <strong>{pages[page].name}</strong>
-                    <span>{pages[page].description}</span>
+                    <div className={`xp-choice-preview is-${page}`} aria-hidden="true">
+                      {page === "landing" ? (
+                        coverImage && <img src={coverImage} alt="" />
+                      ) : (
+                        <div className="xp-faq-choice-preview">
+                          <CircleHelp size={29} />
+                          <span>{firstQuestion}</span>
+                          <ChevronDown size={18} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="xp-choice-summary">
+                      <strong>{pages[page].name}</strong>
+                      <span>{pages[page].description}</span>
+                      <ArrowUpRight size={23} aria-hidden="true" />
+                    </div>
                   </button>
                 </li>
               ))}
@@ -1340,61 +1404,66 @@ export default function App() {
             </div>
           </>}
 
-          {screen === "edit" && selected && <>
-            <div className="xp-workspace-actions xp-editor-toolbar">
-              {activePage === "landing" && <label>Section
-                <select aria-label="Section" value={section} disabled={working} onChange={(event) => {
-                  history.current.lastEdit = 0;
-                  selectSection({ page: activePage, section: event.target.value });
-                  setCanvasScroll({});
-                }}>
-                  {config.pages[activePage].data.content.filter((block) => editableFields[block.type]).map((block) => (
-                    <option key={block.type} value={block.type}>{sectionName(block.type)}</option>
-                  ))}
-                </select>
-              </label>}
-              <div className="xp-edit-actions">
-                <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}>Undo</button>
-                <button className="xp-studio-button" type="button" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}>Redo</button>
-                <button className="xp-studio-button" type="button" disabled={working || conflict || !dirty} onClick={saveDraft}>Save draft</button>
-                <button className="xp-studio-button primary" type="button" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}>Review changes</button>
-              </div>
-            </div>
+          {editing && selected && (
             <div className="xp-editor-layout">
               <section className="xp-workspace-preview" aria-labelledby="preview-heading">
                 <div className="xp-preview-controls">
-                  <h2 tabIndex={-1} id="preview-heading">Live page canvas</h2>
-                  <label>Preview width
-                    <select value={device} onChange={(event) => setDevice(event.target.value as DeviceKey)}>
-                      <option value="desktop">Desktop</option>
-                      <option value="tablet">Tablet</option>
-                      <option value="mobile">Mobile</option>
-                    </select>
-                  </label>
-                  <button className="xp-text-button" type="button" onClick={() => setFocusRequest({ id: "section-settings" })}>Section settings</button>
+                  <div className="xp-canvas-heading">
+                    <h2 tabIndex={-1} id="preview-heading"><Pencil size={15} aria-hidden="true" />Live canvas</h2>
+                    <span>Select text to edit</span>
+                  </div>
+                  <div className="xp-device-switch" role="group" aria-label="Preview width">
+                    {previewDevices.map(({ value, label, Icon }) => (
+                      <button key={value} type="button" aria-pressed={device === value} aria-label={label} title={`${label} preview`} onClick={() => setDevice(value)}>
+                        <Icon size={17} aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="xp-inspector-jump" type="button" aria-label="Section settings" title="Section settings" onClick={() => setFocusRequest({ id: "section-settings" })}><PanelRight size={19} aria-hidden="true" /></button>
                 </div>
-                <p className="xp-help-text xp-canvas-help">Click text to edit it on the page. Changes stay in your draft until you publish.</p>
-                {!canvasReady && <p role="status" className="xp-help-text">Loading the page canvas…</p>}
+                {!canvasReady && <p role="status" className="xp-canvas-help">Loading the page canvas…</p>}
                 <div className={`xp-preview-frame ${device}`} inert={working}>
                   <iframe key={activePage} ref={canvasRef} title={`Live editor for ${pageName}`} src={`${pages[activePage].url}?experienceCanvas=1`} />
                 </div>
               </section>
               <section className="xp-editor-fields" aria-labelledby="section-settings">
                 <div className="xp-section-settings-heading">
-                  <h2 id="section-settings" tabIndex={-1}>{sectionName(section)}</h2>
-                  <button className="xp-text-button" type="button" onClick={() => setFocusRequest({ id: "preview-heading" })}>Back to canvas</button>
+                  <h2 id="section-settings" tabIndex={-1}>Section settings</h2>
+                  <button className="xp-inspector-jump" type="button" aria-label="Back to canvas" title="Back to canvas" onClick={() => setFocusRequest({ id: "preview-heading" })}><PanelRight size={18} aria-hidden="true" /></button>
                 </div>
+                {activePage === "landing" ? (
+                  <label className="xp-section-select">
+                    <span className="xp-sr-only">Section</span>
+                    <select value={section} disabled={working} onChange={(event) => {
+                      history.current.lastEdit = 0;
+                      selectSection({ page: activePage, section: event.target.value });
+                      setCanvasScroll({});
+                    }}>
+                      {config.pages[activePage].data.content.filter((block) => editableFields[block.type]).map((block) => (
+                        <option key={block.type} value={block.type}>{sectionName(block.type)}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={17} aria-hidden="true" />
+                  </label>
+                ) : <p className="xp-section-name">{sectionName(section)}</p>}
+                {section === "HeroBlock" && (
+                  <div className="xp-inspector-switch" role="group" aria-label="Welcome content">
+                    <button type="button" aria-pressed={heroPanel === "photos"} disabled={working} onClick={() => setHeroPanel("photos")}><Image size={16} aria-hidden="true" />Photos</button>
+                    <button type="button" aria-pressed={heroPanel === "text"} disabled={working} onClick={() => setHeroPanel("text")}><Type size={16} aria-hidden="true" />Text</button>
+                  </div>
+                )}
                 <fieldset disabled={working}>
                   <legend className="xp-sr-only">{sectionName(section)} fields</legend>
                   <UploadActivity.Provider value={(change) => setUploads((count) => count + change)}>
                     <SlideshowSelection.Provider value={{ index: heroPhoto, select: setHeroPhoto }}>
-                      <BlockInspector key={section} block={selected} onChange={updateBlock} />
+                      <BlockInspector key={section} block={selected} heroPanel={heroPanel} onChange={updateBlock} />
                     </SlideshowSelection.Provider>
                   </UploadActivity.Provider>
                 </fieldset>
               </section>
             </div>
-          </>}
+          )}
 
           {screen === "review" && <section className="xp-workspace-surface">
             <p>Publishing applies the shared draft to the public website.</p>

@@ -27,7 +27,7 @@ export function ExperienceCanvasText({ enabled, block, field, label, value, mult
       onFocus={() => {
         // Keep the original React child while the browser owns the caret.
         setEditingValue(value);
-        sendCanvasMessage({ type: "experience-canvas-select", block });
+        sendCanvasMessage({ type: "experience-canvas-select", block, field });
       }}
       onBlur={() => setEditingValue(null)}
       onInput={(event) => {
