@@ -9,6 +9,7 @@ import {
   parseUserExperiencePreferences,
   UserExperiencePreferences,
 } from "../shared/experienceConfig.ts";
+import { readUploadMultipart } from "./uploadMultipartService.ts";
 
 type ExperienceRow = {
   id: number;
@@ -65,6 +66,19 @@ export class SiteAssetValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SiteAssetValidationError";
+  }
+}
+
+export async function readSiteAssetUpload(
+  stream: ReadableStream<Uint8Array>,
+  contentType: string,
+) {
+  try {
+    return await readUploadMultipart(stream, contentType, MAX_ASSET_SIZE);
+  } catch {
+    throw new SiteAssetValidationError(
+      "Upload valid multipart form data with one image no larger than 8MB",
+    );
   }
 }
 

@@ -7,6 +7,7 @@ import {
   getPublicExperienceConfig,
   getUserExperiencePreferences,
   publishDraftExperienceConfig,
+  readSiteAssetUpload,
   rollbackExperienceVersion,
   saveDraftExperienceConfig,
   saveSiteAsset,
@@ -141,21 +142,11 @@ router.post("/api/admin/experience/assets", isAuthenticated, isAdmin, async (ctx
       return;
     }
 
-    let data;
-    try {
-      const form = await ctx.request.body({ type: "form-data" }).value;
-      data = await form.read({
-        maxFileSize: 8 * 1024 * 1024,
-        maxSize: 10 * 1024 * 1024,
-      });
-    } catch (_error) {
-      json(ctx, 400, {
-        error: "Failed to upload asset",
-        details: "Upload valid multipart form data with one image no larger than 8MB",
-      });
-      return;
-    }
-    const file = data.files?.[0];
+    const data = await readSiteAssetUpload(
+      ctx.request.body({ type: "stream" }).value,
+      contentType,
+    );
+    const file = data.files[0];
 
     if (!file) {
       json(ctx, 400, { error: "No file was uploaded" });
@@ -163,13 +154,7 @@ router.post("/api/admin/experience/assets", isAuthenticated, isAdmin, async (ctx
     }
 
     const asset = await saveSiteAsset({
-      file: file as unknown as {
-        filename?: string;
-        name?: string;
-        type?: string;
-        content?: Uint8Array;
-        path?: string;
-      },
+      file,
       kind: String(data.fields.kind || "asset"),
       altText: data.fields.altText ? String(data.fields.altText) : undefined,
       userId: ctx.state.user.id,

@@ -1,8 +1,10 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { join } from "https://deno.land/std@0.190.0/path/mod.ts";
+import { Application } from "../deps.ts";
 import {
   normalizeSiteAssetAltText,
   normalizeSiteAssetKind,
+  readSiteAssetUpload,
   saveSiteAsset,
   siteAssetStorageDirectory,
   SITE_ASSET_ALT_TEXT_MAX_LENGTH,
@@ -140,26 +142,42 @@ Deno.test("saveSiteAsset removes a newly written file when its database insert f
   assertEquals(removedPath, writtenPath);
 });
 
-Deno.test("hero uploads retain their slot identity in metadata and storage", async () => {
-  let insertedKind = "";
-  let writtenPath = "";
+Deno.test("multipart hero photo uploads retain their slot identity and image type", async () => {
+  const photo = await Deno.readFile(
+    new URL("../Public/Components/images/1.jpg", import.meta.url),
+  );
+  const body = new FormData();
+  body.set("file", new File([photo], "cover.jpeg", { type: "image/jpeg" }));
+  body.set("kind", "hero-slot-3");
+  body.set("altText", "Researchers collaborating in the library");
 
-  const asset = await saveSiteAsset({
-    file: { type: "image/png", content: PNG_SIGNATURE },
-    kind: "hero-slot-3",
-    altText: "Researchers collaborating in the library",
-    userId: "admin-1",
-  }, {
-    ensureDirectory: async () => {},
-    writeFile: (path) => {
-      writtenPath = path;
-      return Promise.resolve();
-    },
-    removeFile: async () => {},
-    createFileName: (extension) => `hero-image${extension}`,
-    insertAsset: (record) => {
-      insertedKind = record.kind;
-      return Promise.resolve({
+  let writtenPath = "";
+  const app = new Application();
+  app.use(async (ctx) => {
+    const contentType = ctx.request.headers.get("content-type");
+    assert(contentType);
+    const data = await readSiteAssetUpload(
+      ctx.request.body({ type: "stream" }).value,
+      contentType,
+    );
+    const file = data.files[0];
+    assert(file);
+
+    ctx.response.body = await saveSiteAsset({
+      file,
+      kind: data.fields.kind,
+      altText: data.fields.altText,
+      userId: "admin-1",
+    }, {
+      ensureDirectory: async () => {},
+      writeFile: (path, bytes) => {
+        writtenPath = path;
+        assertEquals(bytes.byteLength, photo.byteLength);
+        assert(bytes.every((byte, index) => byte === photo[index]));
+        return Promise.resolve();
+      },
+      createFileName: (extension) => `hero-image${extension}`,
+      insertAsset: (record) => Promise.resolve({
         id: 8,
         file_path: record.filePath,
         kind: record.kind,
@@ -167,18 +185,26 @@ Deno.test("hero uploads retain their slot identity in metadata and storage", asy
         mime_type: record.mimeType,
         size_bytes: record.sizeBytes,
         created_by: record.userId,
-      });
-    },
+      }),
+    });
   });
 
-  assertEquals(insertedKind, "hero-slot-3");
+  const response = await app.handle(new Request("http://localhost/", {
+    method: "POST",
+    body,
+  }), undefined);
+  assert(response);
+  assertEquals(response.status, 200);
+  const asset = await response.json();
   assert(
     writtenPath.endsWith(
-      join("storage", "site-branding", "hero", "slot-3", "hero-image.png"),
+      join("storage", "site-branding", "hero", "slot-3", "hero-image.jpg"),
     ),
   );
-  assertEquals(asset.file_path, "/storage/site-branding/hero/slot-3/hero-image.png");
+  assertEquals(asset.file_path, "/storage/site-branding/hero/slot-3/hero-image.jpg");
   assertEquals(asset.kind, "hero-slot-3");
+  assertEquals(asset.mime_type, "image/jpeg");
+  assertEquals(asset.alt_text, "Researchers collaborating in the library");
 });
 
 Deno.test("saveSiteAsset reports image validation failures as safe client errors", async () => {

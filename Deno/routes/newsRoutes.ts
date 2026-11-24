@@ -7,6 +7,7 @@ import {
 import { UserNewsSaveModel } from "../models/userNewsSaveModel.ts";
 import { SystemLogsModel } from "../models/systemLogsModel.ts";
 import {
+  readSiteAssetUpload,
   saveSiteAsset,
   SiteAssetValidationError,
 } from "../services/experienceService.ts";
@@ -611,11 +612,8 @@ router.post(
   isAuthenticated,
   requireNewsManagement,
   async (ctx) => {
-    if (
-      !(ctx.request.headers.get("content-type") || "").includes(
-        "multipart/form-data",
-      )
-    ) {
+    const contentType = ctx.request.headers.get("content-type") || "";
+    if (!contentType.includes("multipart/form-data")) {
       ctx.response.status = 400;
       ctx.response.body = {
         error: "Upload a JPG, PNG, or WEBP image using multipart form data",
@@ -624,25 +622,18 @@ router.post(
     }
 
     try {
-      const form = await ctx.request.body({ type: "form-data" }).value;
-      const data = await form.read({
-        maxFileSize: 8 * 1024 * 1024,
-        maxSize: 10 * 1024 * 1024,
-      });
-      const file = data.files?.[0];
+      const data = await readSiteAssetUpload(
+        ctx.request.body({ type: "stream" }).value,
+        contentType,
+      );
+      const file = data.files[0];
       if (!file) {
         ctx.response.status = 400;
         ctx.response.body = { error: "Choose an image to upload" };
         return;
       }
       const asset = await saveSiteAsset({
-        file: file as unknown as {
-          filename?: string;
-          name?: string;
-          type?: string;
-          content?: Uint8Array;
-          path?: string;
-        },
+        file,
         kind: "news-cover",
         altText: data.fields.altText ? String(data.fields.altText) : undefined,
         userId: String(ctx.state.user.id),
