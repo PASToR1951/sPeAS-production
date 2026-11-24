@@ -901,7 +901,7 @@ function BlockInspector(props: {
   return (
     <div className="xp-field-stack">
       {block.type === "ResearchAgendaBlock" && (
-        <p className="xp-help-text">Update the introduction here. To change the official list, open Research Agenda in Admin Settings.</p>
+        <p className="xp-help-text">Update the introduction here. To change the official list, open Research Agenda from Edit Pages.</p>
       )}
       {visibleFields.map((name) => fields[name] && (
         <FieldEditor key={name} id={name} name={name} field={fields[name]} value={block.props[name]} onChange={(value) => update(name, value)} />
@@ -1208,7 +1208,7 @@ export default function App() {
   function exit() {
     const leave = () => {
       leaveConfirmed.current = true;
-      window.location.assign("/admin/Components/admin_settings.html");
+      window.location.assign("/admin/Components/edit-pages.html");
     };
     if (dirty) setConfirm({ title: "Leave without saving?", body: "Changes since the last successful save will be lost.", label: "Leave studio", action: leave });
     else leave();
@@ -1478,9 +1478,9 @@ export default function App() {
     <div className="xp-studio-shell">
       <header className="xp-workspace-header">
         <div className="xp-studio-identity">
-          {!compactViewport && <button className="xp-studio-button xp-exit-button" type="button" aria-label="Exit to Admin" title="Exit to Admin" onClick={exit} disabled={working}>
+          {!compactViewport && <button className="xp-studio-button xp-exit-button" type="button" onClick={exit} disabled={working}>
             <ArrowLeft size={18} aria-hidden="true" />
-            <span>Admin</span>
+            <span>Edit Pages</span>
           </button>}
           {editing ? (
             <h1 id="studio-title" tabIndex={-1}><LayoutTemplate size={18} aria-hidden="true" /> PeAS Studio</h1>
@@ -1515,7 +1515,7 @@ export default function App() {
             <h1 id="studio-desktop-required" tabIndex={-1}>Use a larger screen to edit website pages</h1>
             <p>Open Experience Studio on a computer or widen your browser window.</p>
             {dirty && <p>Your unsaved edits are still in this tab. Widen the window to continue editing.</p>}
-            <button className="xp-studio-button primary" type="button" onClick={exit} disabled={working}>Back to Admin</button>
+            <button className="xp-studio-button primary" type="button" onClick={exit} disabled={working}>Back to Edit Pages</button>
           </section>
         </main>
       ) : <main className={`xp-workspace-main${editing ? " xp-visual-workspace" : screen === "pages" && loadState === "ready" ? " xp-page-picker" : ""}`}>

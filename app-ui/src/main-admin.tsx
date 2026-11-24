@@ -30,9 +30,13 @@ const routes: Record<string, AdminRoute> = {
     title: "Classification Management | PeAS Admin",
     Component: lazyNamed(() => import("./features/classification/ClassificationManagementPage"), "ClassificationManagementPage"),
   },
+  "/admin/Components/edit-pages.html": {
+    title: "Edit Pages | PeAS Admin",
+    Component: lazyNamed(() => import("./features/editPages/EditPagesPage"), "EditPagesPage"),
+  },
   "/admin/Components/research-agenda.html": {
     title: "Research Agenda | PeAS Admin",
-    Component: lazyNamed(() => import("./features/settings/ResearchAgendaManagementPage"), "ResearchAgendaManagementPage"),
+    Component: lazyNamed(() => import("./features/editPages/ResearchAgendaManagementPage"), "ResearchAgendaManagementPage"),
   },
   "/admin/Components/upload_document.html": {
     title: "Upload Document | PeAS",

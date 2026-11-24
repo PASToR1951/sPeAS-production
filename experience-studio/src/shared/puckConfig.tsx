@@ -472,7 +472,7 @@ export const experiencePuckConfig: Config = {
         <section id={id} className="xp-section xp-agenda">
           <SectionHeader eyebrow={eyebrow} title={title} body={body} />
           {imageUrl ? <img className="xp-agenda-image" src={imageUrl} alt={imageAlt || ""} /> : null}
-          <p className="xp-managed-list-note">Manage official research agenda items in <a href="/admin/Components/research-agenda.html">Settings → Research Agenda</a>.</p>
+          <p className="xp-managed-list-note">Manage official research agenda items in <a href="/admin/Components/research-agenda.html">Research Agenda</a> under Edit Pages.</p>
         </section>
       ),
     },

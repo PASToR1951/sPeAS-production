@@ -110,8 +110,8 @@ test("experience studio requires a desktop-width viewport before loading the dra
   await expect(page.getByRole("button", { name: "Review changes" })).toHaveCount(0);
   expect(studio.loadRequests()).toBe(0);
 
-  await page.getByRole("button", { name: "Back to Admin" }).click();
-  await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
+  await page.getByRole("button", { name: "Back to Edit Pages" }).click();
+  await expect(page).toHaveURL(/\/admin\/Components\/edit-pages\.html$/);
   expect(studio.loadRequests()).toBe(0);
 });
 
@@ -137,13 +137,13 @@ test("narrowing the Studio pauses autosave and keeps unsaved edits", async ({ pa
   expect(studio.loadRequests()).toBe(1);
 });
 
-test("experience studio exits to Settings for clean and unsaved sessions", async ({ page, isMobile }) => {
+test("experience studio exits to Edit Pages for clean and unsaved sessions", async ({ page, isMobile }) => {
   test.skip(isMobile, "Editing requires a desktop-width viewport");
   await mockStudio(page);
   await page.goto(studioUrl);
-  const exit = page.getByRole("button", { name: "Exit to Admin" });
+  const exit = page.getByRole("button", { name: "Edit Pages", exact: true });
   await exit.click();
-  await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
+  await expect(page).toHaveURL(/\/admin\/Components\/edit-pages\.html$/);
 
   await page.goto(studioUrl);
   await openMission(page);
@@ -157,7 +157,7 @@ test("experience studio exits to Settings for clean and unsaved sessions", async
   await expect(exit).toBeFocused();
   await exit.click();
   await dialog.getByRole("button", { name: "Leave studio" }).click();
-  await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
+  await expect(page).toHaveURL(/\/admin\/Components\/edit-pages\.html$/);
 });
 
 test("the live canvas edits, saves, and reviews changes across pages", async ({ page, isMobile }) => {

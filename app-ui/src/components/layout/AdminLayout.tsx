@@ -1,6 +1,6 @@
 import { ADMIN_COMPACT_VIEWPORT } from "../../../../shared/adminViewport";
 import { isStaffRole, ROLE_LABELS, STAFF_ROLES, STAFF_WORKSPACE, type WorkspaceRole } from "../../../../shared/staffRoles";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import {
   Archive,
   Bell,
@@ -21,28 +21,18 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
-  ArrowLeft,
   ClipboardList,
-  FileArchive,
-  ListOrdered,
+  FilePenLine,
   ScrollText,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fetchSession, fetchUserProfile, logout, type SessionResponse, type UserProfile } from "../../lib/api/auth";
-import { Button } from "../ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { fetchAdminContactSummary } from "../../lib/api/adminContact";
 import { clearAdminNotifications, fetchAdminNotifications, markAdminNotificationRead, type AdminNotification, type AdminNotificationSummary } from "../../lib/api/notifications";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -57,7 +47,6 @@ type AdminNavigationItem = {
   icon: LucideIcon;
   roles: WorkspaceRole[];
   activePaths?: string[];
-  desktopOnly?: boolean;
 };
 const ADMIN_ONLY_ROLES: WorkspaceRole[] = ["admin"];
 const WORKSPACE_BOOTSTRAP_KEY = "peas-admin-workspace-bootstrap-v1";
@@ -90,6 +79,7 @@ const navItems: AdminNavigationItem[] = [
   { label: "Authors", href: "/admin/Components/author-list.html", icon: UsersRound, roles: ["admin"] as WorkspaceRole[] },
   { label: "Department News", href: "/admin/Components/news.html", icon: Newspaper, roles: ["admin", "news_editor"] },
   { label: "Contact Inquiries", href: "/admin/Components/contact-inquiries.html", icon: MailQuestion, roles: ["admin"] as WorkspaceRole[] },
+  { label: "Edit Pages", href: "/admin/Components/edit-pages.html", icon: FilePenLine, roles: ADMIN_ONLY_ROLES, activePaths: ["/admin/Components/research-agenda.html"] },
 ];
 
 const utilityItems: AdminNavigationItem[] = [
@@ -100,12 +90,8 @@ const settingsNavItems: AdminNavigationItem[] = [
   { label: "Profile", href: "/admin/Components/admin_settings.html", icon: UserRound, roles: ADMIN_ONLY_ROLES },
   { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ADMIN_ONLY_ROLES, activePaths: ["/admin/Components/search-analytics.html"] },
   { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ADMIN_ONLY_ROLES },
-  { label: "Edit website pages", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES, desktopOnly: true },
   { label: "Role Management", href: "/admin/Components/role-management.html", icon: ShieldCheck, roles: ADMIN_ONLY_ROLES },
-  { label: "Research Agenda", href: "/admin/Components/research-agenda.html", icon: ListOrdered, roles: ADMIN_ONLY_ROLES },
 ];
-
-const workspaceReturnItem: AdminNavigationItem = { label: "Back to workspace", href: "/admin/dashboard.html", icon: ArrowLeft, roles: ADMIN_ONLY_ROLES };
 
 export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathname }: AdminLayoutProps) {
   const [initialBootstrap] = useState(readWorkspaceBootstrap);
@@ -114,6 +100,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
   const [profile, setProfile] = useState<UserProfile | null>(initialBootstrap?.profile ?? null);
   const [collapsed, setCollapsed] = useStoredSidebarState();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia(ADMIN_COMPACT_VIEWPORT).matches);
   const [contactNewCount, setContactNewCount] = useState(0);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
@@ -215,6 +202,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
   const initials = nameParts.length > 1
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
     : (nameParts[0]?.[0] || "A").toUpperCase();
+  const profilePicture = profile?.profile_picture ? normalizeProfilePicture(profile.profile_picture) : "";
 
   const handleLogout = useCallback(async () => {
     try {
@@ -241,7 +229,11 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
       <AdminSidebar
         collapsed={collapsed}
         mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        onCloseMobile={() => {
+          setMobileOpen(false);
+          window.requestAnimationFrame(() => sidebarToggle.current?.focus());
+        }}
+        onLogout={handleLogout}
         contactNewCount={contactNewCount}
         role={workspaceRole}
         isMobileViewport={isMobileViewport}
@@ -252,6 +244,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
         <header className="peas-admin-topbar">
           <div className="peas-admin-topbar__left">
             <button
+              ref={sidebarToggle}
               className={`peas-admin-icon-btn peas-admin-sidebar-toggle${mobileOpen ? " is-mobile-open" : ""}`}
               type="button"
               aria-label={sidebarToggleLabel}
@@ -279,14 +272,16 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
             </button>
             {notificationsOpen ? <AdminNotificationPanel notifications={notifications} onClear={async () => { await clearAdminNotifications(); setNotifications([]); setNotificationSummary({ total: 0, unread: 0, urgent: 0 }); }} onClose={() => setNotificationsOpen(false)} onOpen={async (notification) => { if (!notification.isRead) { await markAdminNotificationRead(notification.id).catch(() => undefined); } setNotificationsOpen(false); if (notification.actionPath) window.location.assign(notification.actionPath); }} /> : null}
             </div> : null}
-            <AdminProfileMenu
-              initials={initials}
-              onLogout={handleLogout}
-              profile={profile}
-              role={workspaceRole}
-              roleLabel={role}
-              userName={userName}
-            />
+            <div className="peas-admin-user">
+              <Avatar aria-hidden="true">
+                {profilePicture ? <AvatarImage src={profilePicture} alt="" /> : null}
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <span className="peas-admin-user__details">
+                <strong>{userName}</strong>
+                <small>{role}</small>
+              </span>
+            </div>
           </div>
         </header>
 
@@ -327,6 +322,7 @@ function AdminSidebar({
   collapsed,
   mobileOpen,
   onCloseMobile,
+  onLogout,
   contactNewCount,
   role,
   isMobileViewport,
@@ -335,22 +331,36 @@ function AdminSidebar({
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  onLogout: () => Promise<void>;
   contactNewCount: number;
   role: WorkspaceRole;
   isMobileViewport: boolean;
   pathname: string;
 }) {
-  const inSettings = settingsNavItems.some((item) => isNavigationItemActive(item, pathname));
-  const visibleNavItems = (inSettings ? settingsNavItems : navItems).filter((item) =>
-    item.roles.includes(role) && (!isMobileViewport || !item.desktopOnly)
-  );
+  const visibleNavItems = navItems.filter((item) => item.roles.includes(role));
+  const visibleSettingsItems = settingsNavItems.filter((item) => item.roles.includes(role));
+  const inSettings = visibleSettingsItems.some((item) => isNavigationItemActive(item, pathname));
+  const [settingsOpen, setSettingsOpen] = useState(inSettings);
+  const [loggingOut, setLoggingOut] = useState(false);
   const visibleUtilityItems = utilityItems.filter((item) => item.roles.includes(role));
   const showCollapsedTooltips = collapsed && !isMobileViewport;
 
+  useEffect(() => {
+    if (inSettings) setSettingsOpen(true);
+  }, [pathname, inSettings]);
+
   return (
     <TooltipProvider delayDuration={180}>
-      {mobileOpen ? <button className="peas-admin-sidebar-backdrop" type="button" aria-label="Close navigation" onClick={onCloseMobile} /> : null}
-      <aside id="peas-admin-sidebar" className={`peas-admin-sidebar${mobileOpen ? " is-mobile-open" : ""}`} aria-label="Admin navigation">
+      {mobileOpen ? <button className="peas-admin-sidebar-backdrop" type="button" tabIndex={-1} aria-hidden="true" onClick={onCloseMobile} /> : null}
+      <aside
+        id="peas-admin-sidebar"
+        className={`peas-admin-sidebar${mobileOpen ? " is-mobile-open" : ""}`}
+        aria-label="Admin navigation"
+        inert={isMobileViewport && !mobileOpen}
+        onKeyDown={(event) => {
+          if (mobileOpen && event.key === "Escape") onCloseMobile();
+        }}
+      >
         <div className="peas-admin-sidebar__brand">
           <img className="peas-admin-sidebar__brand-university" src="/admin/Components/img/logo1.png" alt="" />
           <img className="peas-admin-sidebar__brand-office" src="/admin/Components/img/logo_2.png" alt="" />
@@ -358,103 +368,59 @@ function AdminSidebar({
             <strong>Office of Research & Publications</strong>
           </span>
           {mobileOpen ? (
-            <button className="peas-admin-icon-btn peas-admin-sidebar__close" type="button" aria-label="Close navigation" onClick={onCloseMobile}>
+            <button className="peas-admin-icon-btn peas-admin-sidebar__close" type="button" aria-label="Close navigation" autoFocus onClick={onCloseMobile}>
               <X aria-hidden="true" />
             </button>
           ) : null}
         </div>
 
-        {inSettings ? <nav className="peas-admin-nav peas-admin-nav--return" aria-label="Workspace return">
-          <AdminNavLink item={workspaceReturnItem} tooltipEnabled={showCollapsedTooltips} pathname={pathname} />
-        </nav> : <SidebarTooltip enabled={showCollapsedTooltips} label="Upload Document">
+        <SidebarTooltip enabled={showCollapsedTooltips} label="Upload Document">
           <a className="peas-admin-upload-link" href="/admin/Components/upload_document.html" aria-label="Upload Document">
             <UploadCloud className="peas-admin-upload-link__icon" aria-hidden="true" />
             <span>Upload Document</span>
           </a>
-        </SidebarTooltip>}
+        </SidebarTooltip>
 
-        <nav key={inSettings ? "settings" : "workspace"} className="peas-admin-nav peas-admin-nav--sections" data-section={inSettings ? "settings" : "workspace"} aria-label={inSettings ? "Settings" : "Workspace"}>
-          <small>{inSettings ? "Settings" : "Workspace"}</small>
+        <nav className="peas-admin-nav peas-admin-nav--sections" aria-label="Workspace">
+          <small>Workspace</small>
           {visibleNavItems.map((item) => <AdminNavLink item={item} badge={item.label === "Contact Inquiries" ? contactNewCount : 0} tooltipEnabled={showCollapsedTooltips} pathname={pathname} key={item.href} />)}
         </nav>
 
         <nav className="peas-admin-nav peas-admin-nav--utility" aria-label="Utilities">
+          {visibleSettingsItems.length > 0 ? (
+            <>
+              <SidebarTooltip enabled={showCollapsedTooltips} label="Settings">
+                <button
+                  className={inSettings ? "is-active" : undefined}
+                  type="button"
+                  aria-label="Settings"
+                  aria-expanded={settingsOpen}
+                  aria-controls="peas-admin-settings-links"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                >
+                  <Settings aria-hidden="true" />
+                  <span>Settings</span>
+                  <ChevronDown className="peas-admin-nav__caret" aria-hidden="true" />
+                </button>
+              </SidebarTooltip>
+              <div className="peas-admin-nav--settings" id="peas-admin-settings-links" hidden={!settingsOpen}>
+                {visibleSettingsItems.map((item) => <AdminNavLink item={item} tooltipEnabled={showCollapsedTooltips} pathname={pathname} key={item.href} />)}
+              </div>
+            </>
+          ) : null}
           {visibleUtilityItems.map((item) => <AdminNavLink item={item} tooltipEnabled={showCollapsedTooltips} pathname={pathname} key={item.href} />)}
+          <SidebarTooltip enabled={showCollapsedTooltips} label="Logout">
+            <button className="peas-admin-logout" type="button" aria-label="Logout" disabled={loggingOut} onClick={() => {
+              setLoggingOut(true);
+              void onLogout();
+            }}>
+              <LogOut aria-hidden="true" />
+              <span>Logout</span>
+            </button>
+          </SidebarTooltip>
         </nav>
       </aside>
     </TooltipProvider>
-  );
-}
-
-function AdminProfileMenu({
-  initials,
-  onLogout,
-  profile,
-  role,
-  roleLabel,
-  userName,
-}: {
-  initials: string;
-  onLogout: () => Promise<void>;
-  profile: UserProfile | null;
-  role: WorkspaceRole;
-  roleLabel: string;
-  userName: string;
-}) {
-  const profilePicture = profile?.profile_picture ? normalizeProfilePicture(profile.profile_picture) : "";
-
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <button className="peas-admin-user" type="button" aria-label={`Open profile menu for ${userName}`}>
-          <Avatar>
-            {profilePicture ? <AvatarImage src={profilePicture} alt="" /> : null}
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <span className="peas-admin-user__details">
-            <strong>{userName}</strong>
-            <small>{roleLabel}</small>
-          </span>
-          <ChevronDown className="peas-admin-user__chevron" aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="peas-admin-profile-menu"
-        collisionPadding={12}
-        sideOffset={10}
-      >
-        <div className="peas-admin-profile-menu__content">
-          <div className="peas-admin-profile-menu__identity">
-            <Avatar className="peas-admin-profile-menu__avatar">
-              {profilePicture ? <AvatarImage src={profilePicture} alt="" /> : null}
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-            <div>
-              <strong>{userName}</strong>
-              <small>{roleLabel}</small>
-            </div>
-          </div>
-
-          <div className="peas-admin-profile-menu__items">
-            {role === "admin" ? (
-              <DropdownMenuItem asChild>
-                <a href="/admin/Components/admin_settings.html">
-                  <Settings aria-hidden="true" />
-                  <span>Settings</span>
-                </a>
-              </DropdownMenuItem>
-            ) : null}
-          </div>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="peas-admin-profile-menu__logout" onSelect={() => void onLogout()}>
-            <LogOut aria-hidden="true" />
-            <span>Logout</span>
-          </DropdownMenuItem>
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

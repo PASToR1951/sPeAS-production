@@ -23,71 +23,29 @@ test("role management entry uses the React admin workspace", async ({ request, b
   expect(html).toContain('src="/admin/react-ui/main-admin.js"');
 });
 
-test("publisher workspace only exposes news and document upload", async ({ page }) => {
+test("news editor sidebar keeps public actions and hides administrator controls", async ({ page }) => {
   let contactSummaryRequests = 0;
-  await page.route("**/api/auth/get-session", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({
-      session: { id: "session-publisher" },
-      user: {
-        id: "publisher-01",
-        name: "Content Publisher",
-        role: "publisher",
-        username: "publisher-01",
-      },
-    }),
-  }));
-  await page.route("**/api/user/profile", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ id: "publisher-01", first_name: "Content", last_name: "Publisher" }),
-  }));
-  await page.route("**/api/admin/news", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ posts: [] }),
-  }));
+  await page.route("**/api/auth/get-session", (route) => route.fulfill({ json: {
+    session: { id: "session-editor" },
+    user: { id: "editor-01", name: "Content Editor", role: "news_editor", username: "editor-01" },
+  } }));
+  await page.route("**/api/user/profile", (route) => route.fulfill({ json: { id: "editor-01", first_name: "Content", last_name: "Editor" } }));
+  await page.route("**/api/admin/news", (route) => route.fulfill({ json: { posts: [] } }));
   await page.route("**/api/admin/contact-inquiries/summary", (route) => {
     contactSummaryRequests += 1;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ byStatus: { new: 0 } }) });
+    return route.fulfill({ json: { byStatus: { new: 0 } } });
   });
 
   await page.goto("/admin/Components/news.html");
-  await expect(page.getByText("Content Workspace")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Department News" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Upload Document" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "View Site" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Documents", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Operational Reports", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Edit website pages", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Role Management" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "System Logs" })).toHaveCount(0);
+  const sidebar = page.getByRole("complementary", { name: "Admin navigation" });
+  await expect(sidebar.getByRole("link", { name: "Department News" })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "Upload Document" })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "View Site" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Logout" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Settings" })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "Edit Pages" })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "Documents", exact: true })).toHaveCount(0);
   expect(contactSummaryRequests).toBe(0);
-});
-
-test("publisher profile menu omits administrator settings", async ({ page }) => {
-  await page.route("**/api/auth/get-session", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({
-      session: { id: "session-publisher" },
-      user: { id: "publisher-01", name: "Content Publisher", role: "publisher", username: "publisher-01" },
-    }),
-  }));
-  await page.route("**/api/user/profile", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ id: "publisher-01", first_name: "Content", last_name: "Publisher" }),
-  }));
-  await page.route("**/api/admin/news", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ posts: [] }),
-  }));
-
-  await page.goto("/admin/Components/news.html");
-  await page.getByRole("button", { name: "Open profile menu for Content Publisher" }).click();
-
-  const menu = page.getByRole("menu");
-  await expect(menu.getByRole("menuitem", { name: "Profile" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Settings" })).toHaveCount(0);
-  await expect(menu.getByRole("menuitem", { name: "Logout" })).toBeVisible();
 });
 
 test("administrators can assign the content publisher role", async ({ page }) => {

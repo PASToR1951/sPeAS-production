@@ -783,14 +783,9 @@ body:has(.peas-admin-shell) {
 
 @media (prefers-reduced-motion: no-preference) {
   .peas-admin-nav--sections,
-  .peas-admin-nav--return,
-  .peas-admin-upload-link {
-    animation: peas-admin-nav-in 200ms cubic-bezier(.22, 1, .36, 1);
-  }
-
-  .peas-admin-nav--sections[data-section="workspace"],
   .peas-admin-upload-link {
     --peas-admin-nav-offset: -8px;
+    animation: peas-admin-nav-in 200ms cubic-bezier(.22, 1, .36, 1);
   }
 
   .peas-admin-content > main {
@@ -1347,14 +1342,10 @@ body:has(.peas-admin-shell) {
     display: grid;
   }
 
-  .peas-admin-user {
-    max-width: 78px;
-    padding-right: 8px;
-  }
+  .peas-admin-user { gap: 8px; max-width: 58vw; }
 
-  .peas-admin-user__details {
-    display: none;
-  }
+  .peas-admin-notifications { position: static; }
+  .peas-admin-notification-panel { right: 14px; top: calc(100% + 4px); }
 
   .peas-upload-progress button > strong {
     max-width: 100%;

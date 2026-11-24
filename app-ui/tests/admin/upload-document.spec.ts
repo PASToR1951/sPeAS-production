@@ -763,7 +763,7 @@ async function mockWorkspace(page: Page, role: "admin" | "publisher") {
 }
 
 async function waitForWorkspace(page: Page) {
-  await expect(page.getByRole("button", { name: /Open profile menu for/ })).toBeVisible();
+  await expect(page.locator(".peas-admin-user")).toBeVisible();
   await expect(page.getByText("Checking your workspace access…", { exact: true })).toHaveCount(0);
 }
 

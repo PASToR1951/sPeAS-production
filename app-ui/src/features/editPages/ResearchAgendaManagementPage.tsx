@@ -108,7 +108,7 @@ export function ResearchAgendaManagementPage() {
 
   return <main className="peas-admin-island peas-research-agenda-management">
     <PeasToaster />
-    <AdminPageHeader eyebrow="Public site content" title="Research Agenda" description="Manage the institutional priorities displayed on the public landing page." actions={<Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw aria-hidden="true" /> Refresh</Button>} />
+    <AdminPageHeader title="Research Agenda" description="Manage the institutional priorities displayed on the public landing page." actions={<Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw aria-hidden="true" /> Refresh</Button>} />
     <section className="peas-classification-management__section">
       <header>
         <div><h2>Landing-page research agenda</h2><p>Retiring an item hides it from the public list.</p></div>
