@@ -1,5 +1,6 @@
 import { handleWorkspaceAuth } from "./routes/userRoutes.ts";
 import { isStaffRole, STAFF_WORKSPACE } from "../shared/staffRoles.ts";
+import { createHmac } from "node:crypto";
 // server.ts
 
 // Environment variables are loaded (and exported to Deno.env) once by
@@ -76,6 +77,7 @@ import {
   matchLegacyPublicPath,
 } from "./shared/legacyPublicPaths.ts";
 import { authorNameKey } from "../shared/authorName.ts";
+import { getNewsArticleSlug, SHARED_NEWS_PARAM } from "../shared/newsArticlePaths.ts";
 import abstractReviewRoutes from "./routes/abstractReviewRoutes.ts";
 import { isMutationMethod, maintenanceRequested } from "./services/maintenanceState.ts";
 import { readCspMode, securityHeadersMiddleware } from "./middleware/securityHeaders.ts";
@@ -357,6 +359,38 @@ app.use(async (ctx, next) => {
     if (cookie) ctx.response.headers.append("set-cookie", cookie);
   } catch {
     // Analytics must never turn a successful public page into a failed page.
+  }
+});
+
+// Use a signed, non-identifying marker for public site entry.
+const newsBrowsingFlag = createHmac("sha256", Deno.env.get("BETTER_AUTH_SECRET")!)
+  .update("peas-public-browsing-v1").digest("base64url");
+const NEWS_BROWSING_COOKIE = `peas_public_browsing=${newsBrowsingFlag}`;
+
+app.use(async (ctx, next) => {
+  const { method, url, headers } = ctx.request;
+  if (method !== "GET" && method !== "HEAD") return await next();
+
+  if (getNewsArticleSlug(url.pathname, url.searchParams) !== null) {
+    const isShared = url.searchParams.get(SHARED_NEWS_PARAM) === "1";
+    const showNavigation = !isShared &&
+      headers.get("cookie")?.split(";").some((cookie) => cookie.trim() === NEWS_BROWSING_COOKIE);
+    ctx.response.status = 200;
+    ctx.response.type = "text/html";
+    if (method === "GET") {
+      const shell = await Deno.readTextFile(join(STATIC_ROOT, "Public", "news.html"));
+      ctx.response.body = showNavigation ? shell.replace("<body>", "<body data-peas-news-browsing>") : shell;
+    }
+    ctx.response.headers.set("Cache-Control", "private, no-store");
+    return;
+  }
+
+  await next();
+  const status = Number(ctx.response.status);
+  if (method === "GET" && canonicalPublicPageKey(url.pathname) &&
+      (status === 200 || status === 304) && requestAcceptsHtml(ctx) && !isPrefetchRequest(headers)) {
+    const secure = isProduction || url.protocol === "https:" ? "; Secure" : "";
+    ctx.response.headers.append("Set-Cookie", `${NEWS_BROWSING_COOKIE}; Path=/; HttpOnly; SameSite=Lax${secure}`);
   }
 });
 

@@ -50,6 +50,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("news workspace provides a full composer and submits formatted articles", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => sessionStorage.setItem("copied-article", value) },
+    });
+    window.open = (url) => {
+      sessionStorage.setItem("share-composer", String(url));
+      return null;
+    };
+  });
   let submitted: Record<string, unknown> | undefined;
   await page.route("**/api/admin/news", async (route) => {
     if (route.request().method() !== "POST") {
@@ -61,7 +71,7 @@ test("news workspace provides a full composer and submits formatted articles", a
       json: {
         post: {
           id: 42,
-          slug: "new-research-milestone",
+          slug: "new-research-milestone-2",
           publishedAt: "2026-08-01T00:00:00.000Z",
           createdAt: "2026-08-01T00:00:00.000Z",
           updatedAt: "2026-08-01T00:00:00.000Z",
@@ -127,14 +137,34 @@ test("news workspace provides a full composer and submits formatted articles", a
   );
   expect(String(submitted?.body)).not.toContain("author:d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41");
   await expect(editor).toHaveCount(0);
+  const shareDialog = page.getByRole("dialog", { name: "Share published article" });
+  await expect(shareDialog).toBeVisible();
+  const articleUrl = new URL("/news/new-research-milestone-2.html?shared=1", page.url()).href;
+  await shareDialog.getByRole("button", { name: "Copy link" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("copied-article"))).toBe(articleUrl);
+
+  for (const { name, host, parameter } of [
+    { name: "Facebook", host: "www.facebook.com", parameter: "u" },
+    { name: "LinkedIn", host: "www.linkedin.com", parameter: "url" },
+    { name: "X (Twitter)", host: "twitter.com", parameter: "url" },
+    { name: "WhatsApp", host: "wa.me", parameter: "text" },
+  ]) {
+    await shareDialog.getByRole("button", { name, exact: true }).click();
+    const composer = new URL((await page.evaluate(() => sessionStorage.getItem("share-composer")))!);
+    expect(composer.hostname).toBe(host);
+    expect(composer.searchParams.get(parameter)).toBe(parameter === "text" ? `New research milestone\n${articleUrl}` : articleUrl);
+  }
 });
 
 test("news editor schedules an article in Asia/Manila", async ({ page }) => {
+  await page.clock.install({ time: new Date("2030-01-02T02:29:00Z") });
   let submitted: Record<string, unknown> | undefined;
+  let scheduled: Record<string, unknown> | undefined;
   await page.route("**/api/admin/news", async (route) => {
-    if (route.request().method() !== "POST") return route.fulfill({ json: { posts: [] } });
+    if (route.request().method() !== "POST") return route.fulfill({ json: { posts: scheduled ? [scheduled] : [] } });
     submitted = route.request().postDataJSON();
-    return route.fulfill({ status: 201, json: { post: { id: 43, slug: "scheduled-news", publishedAt: submitted.publishAt, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...submitted } } });
+    scheduled = { id: 43, slug: "scheduled-news", publishedAt: submitted?.publishAt, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...submitted };
+    return route.fulfill({ status: 201, json: { post: scheduled } });
   });
 
   await page.goto("/admin/Components/news.html");
@@ -152,6 +182,13 @@ test("news editor schedules an article in Asia/Manila", async ({ page }) => {
   await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect.poll(() => submitted).toMatchObject({ status: "published" });
   expect(String(submitted?.publishAt)).toContain("2030-01-02T02:30:00.000Z");
+  const row = page.locator(".peas-admin-news-row");
+  await expect(row.getByRole("heading", { name: "Scheduled milestone" })).toBeVisible();
+  await expect(row.getByRole("button", { name: "Publish now", exact: true })).toBeVisible();
+  await expect(row.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Share published article" })).toHaveCount(0);
+  await page.clock.fastForward(61_000);
+  await expect(row.getByRole("button", { name: "Share", exact: true })).toBeVisible();
 });
 
 test("news composer remains usable on a mobile viewport", async ({ page }) => {
@@ -174,21 +211,54 @@ test("news composer remains usable on a mobile viewport", async ({ page }) => {
 });
 
 test("news list keeps the search label hidden and places publish above row actions", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => { throw new Error("Clipboard unavailable"); } },
+    });
+    document.execCommand = () => false;
+  });
   let updated: Record<string, unknown> | undefined;
+  const draft = { id: 9, title: "Draft story", slug: "draft-story", excerpt: "Summary", body: "Body", bodyFormat: "plain", coverImageUrl: null, coverImageAlt: "", authorName: "Office", status: "draft", publishedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), taggedAuthors: [], taggedWorks: [] };
+  const published = { ...draft, status: "published", publishedAt: new Date().toISOString() };
   await page.route("**/api/admin/news**", async (route) => {
     if (route.request().method() === "PUT") {
       updated = route.request().postDataJSON();
-      return route.fulfill({ json: { post: { id: 9, title: "Draft story", slug: "draft-story", excerpt: "Summary", body: "Body", bodyFormat: "plain", coverImageUrl: null, coverImageAlt: "", authorName: "Office", status: "published", publishedAt: new Date().toISOString(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), taggedAuthors: [], taggedWorks: [] } } });
+      return route.fulfill({ json: { post: published } });
     }
-    return route.fulfill({ json: { posts: [{ id: 9, title: "Draft story", slug: "draft-story", excerpt: "Summary", body: "Body", bodyFormat: "plain", coverImageUrl: null, coverImageAlt: "", authorName: "Office", status: "draft", publishedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), taggedAuthors: [], taggedWorks: [] }] } });
+    return route.fulfill({ json: { posts: [updated ? published : draft] } });
   });
   await page.goto("/admin/Components/news.html");
   await expect(page.getByText("Search news posts", { exact: true })).toBeHidden();
   const row = page.locator(".peas-admin-news-row");
   await expect(row.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
   await expect(row.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  await expect(row.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
   await row.getByRole("button", { name: "Publish", exact: true }).click();
   await expect.poll(() => updated).toMatchObject({ status: "published", publishAt: null });
+  const shareDialog = page.getByRole("dialog", { name: "Share published article" });
+  await expect(shareDialog).toBeVisible();
+  await shareDialog.getByRole("button", { name: "Copy link" }).click();
+  await expect(shareDialog.getByRole("textbox", { name: "Article link" })).toHaveValue(new URL("/news/draft-story.html?shared=1", page.url()).href);
+  await shareDialog.getByRole("button", { name: "Close dialog" }).click();
+  await row.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(shareDialog).toBeVisible();
+});
+
+test("publishing errors keep the editor open without sharing options", async ({ page }) => {
+  await page.route("**/api/admin/news", (route) => route.request().method() === "POST"
+    ? route.fulfill({ status: 500, json: { error: "Unable to publish this article" } })
+    : route.fulfill({ json: { posts: [] } }));
+  await page.goto("/admin/Components/news.html");
+  await page.getByRole("button", { name: "New article" }).click();
+  const editor = page.getByRole("dialog", { name: "New article" });
+  await editor.getByPlaceholder("Write a clear, compelling headline…").fill("Draft milestone");
+  await editor.getByPlaceholder("Give readers the essential context in one or two sentences.").fill("A summary.");
+  await editor.getByPlaceholder(/Begin the story here/).fill("The article body.");
+  await editor.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page.getByText("Unable to publish this article", { exact: true })).toBeVisible();
+  await expect(editor).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Share published article" })).toHaveCount(0);
 });
 
 async function mockAdminIdentity(page: Page) {

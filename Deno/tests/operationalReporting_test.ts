@@ -41,6 +41,8 @@ Deno.test("home aliases normalize to one server-owned page key", () => {
 
 Deno.test("public page keys exclude query strings and identifiers", () => {
   assertEquals(canonicalPublicPageKey("/index.html"), "/");
+  assertEquals(canonicalPublicPageKey("/news/news-headline.html"), "/news");
+  assertEquals(canonicalPublicPageKey("/news/out/news-headline.html"), "/news");
   assertEquals(canonicalPublicPageKey("/pages/guest-single.html"), "/works/detail");
   assertEquals(canonicalPublicPageKey("/pages/guest-single.html?id=42"), null);
   assertEquals(canonicalPublicPageKey("/unknown.html"), null);

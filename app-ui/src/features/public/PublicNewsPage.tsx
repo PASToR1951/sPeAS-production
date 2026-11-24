@@ -1,25 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, ChevronRight, Link2, Mail, Newspaper, Share2 } from "lucide-react";
-import { FaFacebookF, FaLinkedinIn, FaWhatsapp, FaXTwitter } from "react-icons/fa6";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, CalendarDays, ChevronRight, Newspaper, Share2 } from "lucide-react";
 import { motion } from "motion/react";
 import { PeasErrorState } from "../../components/feedback/PeasStates";
 import { PeasPagination } from "../../components/data-display/PeasPagination";
 import { NewsPreviewCard } from "../../components/public/NewsPreviewCard";
 import { NewsArticleBody } from "../../components/news/NewsArticleBody";
+import { NewsShareOptions } from "../../components/news/NewsShareOptions";
 import { NewsArticleAuthors, NewsArticleWorks } from "../../components/news/NewsArticleReferences";
 import { PublicPageShell } from "../../components/public/PublicPageShell";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Button } from "../../components/ui/button";
-import { PeasToaster, toast } from "../../components/ui/toast";
-import { getErrorMessage } from "../../lib/api/http";
+import { PeasToaster } from "../../components/ui/toast";
+import { ApiError, getErrorMessage } from "../../lib/api/http";
 import { fetchPublishedNews, fetchPublishedNewsPost, type NewsPost } from "../../lib/api/news";
 
 const PAGE_SIZE = 9;
 
 export function PublicNewsPage() {
-  const slug = useMemo(() => new URLSearchParams(window.location.search).get("slug")?.trim() || "", []);
   const [posts, setPosts] = useState<NewsPost[]>([]);
-  const [article, setArticle] = useState<NewsPost | null>(null);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -29,26 +27,60 @@ export function PublicNewsPage() {
   const loadNews = useCallback(() => {
     setLoading(true);
     setError("");
-    const request = slug
-      ? fetchPublishedNewsPost(slug).then((post) => setArticle(post))
-      : fetchPublishedNews(page, PAGE_SIZE).then((result) => {
-        setPosts(result.posts);
-        setTotalCount(result.totalCount);
-        setTotalPages(result.totalPages);
-      });
-
-    request.catch((caughtError) => setError(getErrorMessage(caughtError))).finally(() => setLoading(false));
-  }, [page, slug]);
+    fetchPublishedNews(page, PAGE_SIZE).then((result) => {
+      setPosts(result.posts);
+      setTotalCount(result.totalCount);
+      setTotalPages(result.totalPages);
+    }).catch((caughtError) => setError(getErrorMessage(caughtError))).finally(() => setLoading(false));
+  }, [page]);
 
   useEffect(() => { loadNews(); }, [loadNews]);
 
   return (
     <PublicPageShell mainClassName="peas-news-shell peas-news-page">
-        {loading ? <NewsSkeleton article={Boolean(slug)} /> : error ? (
-          <PeasErrorState title="Unable to load news" message={error} onRetry={loadNews} />
-        ) : article ? <NewsArticle post={article} /> : (
-          <NewsFeed posts={posts} page={page} totalCount={totalCount} totalPages={totalPages} onPageChange={setPage} />
-        )}
+      {loading ? <NewsSkeleton /> : error ? (
+        <PeasErrorState title="Unable to load news" message={error} onRetry={loadNews} />
+      ) : (
+        <NewsFeed posts={posts} page={page} totalCount={totalCount} totalPages={totalPages} onPageChange={setPage} />
+      )}
+    </PublicPageShell>
+  );
+}
+
+export function PublicNewsArticlePage({ slug, standalone }: { slug: string; standalone: boolean }) {
+  const [post, setPost] = useState<NewsPost | null>(null);
+  const [loading, setLoading] = useState(Boolean(slug));
+  const [requestFailed, setRequestFailed] = useState(false);
+
+  const loadArticle = useCallback(async () => {
+    if (!slug) return;
+    setLoading(true);
+    setRequestFailed(false);
+    try {
+      const article = await fetchPublishedNewsPost(slug);
+      setPost(article);
+      document.title = `${article.title} | PeAS`;
+    } catch (error) {
+      setPost(null);
+      setRequestFailed(!(error instanceof ApiError && error.status === 404));
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => { void loadArticle(); }, [loadArticle]);
+
+  return (
+    <PublicPageShell mainClassName="peas-news-shell peas-news-page" showNavbar={!standalone} showFooter={!standalone}>
+      {loading ? <NewsSkeleton article /> : post ? (
+        <NewsArticle post={post} standalone={standalone} />
+      ) : (
+        <PeasErrorState
+          title="Article unavailable"
+          message={requestFailed ? "The article could not be loaded. Try again shortly." : "This article is no longer available or has not been published."}
+          onRetry={requestFailed ? loadArticle : undefined}
+        />
+      )}
     </PublicPageShell>
   );
 }
@@ -92,18 +124,18 @@ function NewsFeed({ posts, page, totalCount, totalPages, onPageChange }: {
   );
 }
 
-function NewsArticle({ post }: { post: NewsPost }) {
+function NewsArticle({ post, standalone }: { post: NewsPost; standalone: boolean }) {
   return (
     <article className="peas-news-article">
       <PeasToaster />
-      <a className="peas-news-back" href="/news.html"><ArrowLeft aria-hidden="true" /> All news</a>
+      {standalone ? null : <a className="peas-news-back" href="/news.html"><ArrowLeft aria-hidden="true" /> All news</a>}
       <header>
         <span>Office of Research &amp; Publications</span>
         <h1>{post.title}</h1>
         <NewsMeta post={post} />
         <NewsArticleActions post={post} />
         <p>{post.excerpt}</p>
-        <NewsArticleAuthors authors={post.taggedAuthors || []} />
+        <NewsArticleAuthors authors={post.taggedAuthors || []} standalone={standalone} />
       </header>
       <NewsCoverMedia post={post} />
       <div className="peas-news-article__content">
@@ -112,12 +144,10 @@ function NewsArticle({ post }: { post: NewsPost }) {
           format={post.bodyFormat}
           authors={post.taggedAuthors || []}
           media={post.media || []}
+          standalone={standalone}
         />
       </div>
-      <NewsArticleWorks
-        works={post.taggedWorks || []}
-        authenticated={false}
-      />
+      <NewsArticleWorks works={post.taggedWorks || []} standalone={standalone} />
     </article>
   );
 }
@@ -132,147 +162,19 @@ function NewsCoverMedia({ post }: { post: NewsPost }) {
 }
 
 function NewsArticleActions({ post }: { post: NewsPost }) {
-  const [nativeShare, setNativeShare] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const canonicalUrl = useMemo(() => new URL(`/news.html?slug=${encodeURIComponent(post.slug)}`, window.location.origin).toString(), [post.slug]);
-
-  useEffect(() => {
-    setNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
-  }, []);
-
-  const shareData = { title: post.title, text: post.excerpt, url: canonicalUrl };
-  const share = async () => {
-    if (!navigator.share) return;
-    try {
-      await navigator.share(shareData);
-    } catch (caught) {
-      if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-        toast.error("Sharing is unavailable right now");
-      }
-    }
-  };
-
-  const copyLink = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(canonicalUrl);
-        } catch {
-          copyTextWithSelection(canonicalUrl);
-        }
-      } else {
-        copyTextWithSelection(canonicalUrl);
-      }
-      toast.success("Article link copied");
-    } catch {
-      toast.error("Unable to copy the article link");
-    }
-  };
-
-  const emailArticle = () => {
-    window.location.assign(`mailto:?subject=${encodeURIComponent(post.title)}&body=${encodeURIComponent(`${post.excerpt}\n\n${canonicalUrl}`)}`);
-  };
-
-  const openSocialShare = (platform: SocialPlatform) => {
-    const encodedUrl = encodeURIComponent(canonicalUrl);
-    const encodedTitle = encodeURIComponent(post.title);
-    const encodedMessage = encodeURIComponent(`${post.title}\n${canonicalUrl}`);
-    const shareUrls = {
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-      x: `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`,
-      whatsapp: `https://wa.me/?text=${encodedMessage}`,
-      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-    };
-    window.open(shareUrls[platform], "_blank", "noopener,noreferrer");
-  };
-
   return (
     <div className="peas-news-article__actions" aria-label="Article actions">
       <div className="peas-news-share">
-        <Button
-          variant="outline"
-          aria-expanded={shareOpen}
-          aria-controls="news-share-options"
-          onClick={() => setShareOpen((open) => !open)}
-        >
+        <Button variant="outline" aria-expanded={shareOpen} aria-controls="news-share-options"
+          onClick={() => setShareOpen((open) => !open)}>
           <Share2 aria-hidden="true" /> Share
           <ChevronRight className={`peas-news-share__chevron${shareOpen ? " is-open" : ""}`} aria-hidden="true" />
         </Button>
-        {shareOpen ? (
-          <div id="news-share-options" className="peas-news-share__options" role="group" aria-label="Share options">
-            {nativeShare ? (
-              <Button className="peas-news-share__option" size="icon" variant="ghost" aria-label="Use device share" title="Use device share" onClick={() => void share()}>
-                <Share2 aria-hidden="true" />
-              </Button>
-            ) : null}
-            <SocialShareButton platform="facebook" onShare={openSocialShare} />
-            <SocialShareButton platform="x" onShare={openSocialShare} />
-            <SocialShareButton platform="whatsapp" onShare={openSocialShare} />
-            <SocialShareButton platform="linkedin" onShare={openSocialShare} />
-            <Button className="peas-news-share__option" size="icon" variant="ghost" aria-label="Copy link" title="Copy link" onClick={() => void copyLink()}>
-              <Link2 aria-hidden="true" />
-            </Button>
-            <Button className="peas-news-share__option" size="icon" variant="ghost" aria-label="Email article" title="Email article" onClick={emailArticle}>
-              <Mail aria-hidden="true" />
-            </Button>
-          </div>
-        ) : null}
+        {shareOpen ? <NewsShareOptions post={post} id="news-share-options" /> : null}
       </div>
     </div>
   );
-}
-
-type SocialPlatform = "facebook" | "x" | "whatsapp" | "linkedin";
-
-function SocialShareButton({ platform, onShare }: { platform: SocialPlatform; onShare: (platform: SocialPlatform) => void }) {
-  const label = {
-    facebook: "Facebook",
-    x: "X (Twitter)",
-    whatsapp: "WhatsApp",
-    linkedin: "LinkedIn",
-  }[platform];
-  return (
-    <Button
-      className="peas-news-share__option"
-      data-platform={platform}
-      size="icon"
-      variant="ghost"
-      aria-label={label}
-      title={label}
-      onClick={() => onShare(platform)}
-    >
-      <SocialIcon platform={platform} />
-    </Button>
-  );
-}
-
-function SocialIcon({ platform }: { platform: SocialPlatform }) {
-  if (platform === "facebook") {
-    return <FaFacebookF aria-hidden="true" focusable="false" />;
-  }
-  if (platform === "x") {
-    return <FaXTwitter aria-hidden="true" focusable="false" />;
-  }
-  if (platform === "whatsapp") {
-    return <FaWhatsapp aria-hidden="true" focusable="false" />;
-  }
-  return <FaLinkedinIn aria-hidden="true" focusable="false" />;
-}
-
-function copyTextWithSelection(value: string) {
-  const fallback = document.createElement("textarea");
-  fallback.value = value;
-  fallback.setAttribute("readonly", "");
-  fallback.style.position = "fixed";
-  fallback.style.opacity = "0";
-  document.body.appendChild(fallback);
-  try {
-    fallback.focus();
-    fallback.select();
-    if (!document.execCommand("copy")) throw new Error("Copy command was rejected");
-  } finally {
-    fallback.remove();
-  }
 }
 
 function NewsMeta({ post }: { post: NewsPost }) {
@@ -285,7 +187,7 @@ function NewsMeta({ post }: { post: NewsPost }) {
   );
 }
 
-function NewsSkeleton({ article }: { article: boolean }) {
+function NewsSkeleton({ article = false }: { article?: boolean }) {
   return (
     <div className={article ? "peas-news-article" : "peas-news-feed"} aria-label="Loading news">
       <Skeleton className="peas-skeleton-line peas-skeleton-line--wide" />

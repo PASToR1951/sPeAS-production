@@ -625,7 +625,7 @@ test("news cards use the branded editorial preview layout", async ({ page }) => 
 
   const cards = page.locator(".peas-news-card");
   await expect(cards).toHaveCount(3);
-  await expect(page.getByRole("link", { name: posts[0].title })).toHaveAttribute("href", "/news.html?slug=research-collaboration");
+  await expect(page.getByRole("link", { name: posts[0].title })).toHaveAttribute("href", "/news/research-collaboration.html");
   await expect(cards.first().locator(".peas-news-card__logos img")).toHaveCount(2);
   await expect(cards.first().locator(".peas-news-card__image > img")).toHaveAttribute("src", posts[0].coverImageUrl);
 
@@ -663,20 +663,26 @@ test("news cards use the branded editorial preview layout", async ({ page }) => 
     body: JSON.stringify({ post: posts[0] }),
   }));
   const transitionStarted = page.waitForFunction(() => document.documentElement.classList.contains("peas-news-route-leaving"));
-  const articleLoaded = page.waitForURL("**/news.html?slug=research-collaboration");
+  const articleLoaded = page.waitForURL("**/news/research-collaboration.html");
   await homeNews.getByRole("link", { name: posts[0].title }).click();
   await transitionStarted;
   await articleLoaded;
   await expect(page.locator(".peas-news-article").getByRole("heading", { name: posts[0].title })).toBeVisible();
+  await expect(page.getByRole("navigation")).toBeVisible();
+  await expect(page.getByRole("link", { name: "All news", exact: true })).toHaveAttribute("href", "/news.html");
+  await page.getByRole("link", { name: "All news", exact: true }).click();
+  await page.getByRole("link", { name: posts[0].title }).click();
+  await expect(page).toHaveURL(/\/news\/research-collaboration\.html$/);
+  await expect(page.getByRole("navigation")).toBeVisible();
 });
 
-test("formatted news articles render semantic, safe public content", async ({ page }) => {
+test("formatted news articles render semantic, safe public content", async ({ page, baseURL }) => {
   await page.route("**/api/news/formatted-story", (route) => route.fulfill({ json: { post: {
     id: 8,
     title: "Research milestone",
     slug: "formatted-story",
     excerpt: "A formatted story from the research office.",
-    body: "## What changed\n\n@[Dr. Elena Santos](author:d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41) led the team that **completed** the study with [public resources](https://example.com).\n\n- Shared findings\n- New partnerships\n\n> Research should serve the community.\n\n[unsafe](javascript:alert(1))",
+    body: `## What changed\n\n@[Dr. Elena Santos](author:d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41) led the team that **completed** the study with [public resources](https://example.com). See [What changed](#what-changed), [the PeAS homepage](/index.html), and [more news](${new URL("/news.html", baseURL).href}).\n\n- Shared findings\n- New partnerships\n\n> Research should serve the community.\n\n[unsafe](javascript:alert(1))`,
     bodyFormat: "markdown",
     coverImageUrl: "/Components/images/peas-news-1-p-500.png",
     coverImageAlt: "Researchers presenting their findings to community partners",
@@ -688,7 +694,6 @@ test("formatted news articles render semantic, safe public content", async ({ pa
     taggedAuthors: [{
       id: "d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41",
       fullName: "Dr. Elena Santos",
-      spudId: "SPUD-2048",
       affiliation: "St. Paul University Dumaguete",
       department: "College of Arts and Sciences",
       biography: "A community health and participatory research specialist.",
@@ -706,7 +711,7 @@ test("formatted news articles render semantic, safe public content", async ({ pa
     }],
   } } }));
 
-  await page.goto("/news.html?slug=formatted-story");
+  await page.goto("/news/formatted-story.html");
   const article = page.locator(".peas-news-article");
   await expect(article.getByRole("heading", { name: "What changed" })).toBeVisible();
   await expect(article.locator("strong", { hasText: "completed" })).toBeVisible();
@@ -715,101 +720,120 @@ test("formatted news articles render semantic, safe public content", async ({ pa
   await expect(article.locator("blockquote")).toContainText("Research should serve the community.");
   await expect(article.locator("img.peas-news-article__cover")).toHaveAttribute("alt", "Researchers presenting their findings to community partners");
   await expect(article.locator('a[href^="javascript:"]')).toHaveCount(0);
-  const authorLink = article.locator(".peas-news-tagged-authors").getByRole("link", { name: "Dr. Elena Santos" });
-  await expect(authorLink).toHaveAttribute(
-    "href",
-    "/pages/authorprofile.html?id=d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41",
-  );
-  await authorLink.focus();
-  const authorCard = article.locator(".peas-news-tagged-authors").getByRole("tooltip");
-  await expect(authorCard).toBeVisible();
-  await expect(authorCard).toContainText("community health and participatory research");
-  await expect(authorCard).toContainText("7 works");
-  const inlineMention = article.locator(".peas-news-author-reference.is-inline");
-  await expect(inlineMention.getByRole("link", { name: "@Dr. Elena Santos" })).toHaveAttribute(
-    "href",
-    "/pages/authorprofile.html?id=d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41",
-  );
-  await inlineMention.getByRole("link").focus();
-  await expect(inlineMention.getByRole("tooltip")).toBeVisible();
-  await expect(article.getByRole("link", { name: /Community Health Research Handbook/ })).toHaveAttribute(
-    "href",
-    "/pages/guest-single.html?id=314",
-  );
+  await expect(article.getByRole("link", { name: "What changed" })).toHaveAttribute("href", "#what-changed");
+  await expect(article.getByRole("heading", { name: "What changed" })).toHaveAttribute("id", "what-changed");
+  await expect(article.getByText("the PeAS homepage", { exact: false })).toBeVisible();
+  await expect(article.getByText("more news", { exact: false })).toBeVisible();
+  await expect(article.locator(".peas-news-tagged-authors")).toContainText("Dr. Elena Santos");
+  await expect(article.locator(".peas-news-author-reference.is-inline")).toContainText("@Dr. Elena Santos");
+  await expect(article.getByRole("heading", { name: "Community Health Research Handbook" })).toBeVisible();
+  await expect(article.getByRole("link")).toHaveCount(2);
+
+  await page.goto("/news.html");
+  await page.goto("/news/formatted-story.html");
+  await expect(article.getByRole("link", { name: "the PeAS homepage" })).toHaveAttribute("href", "/index.html");
+  await expect(article.getByRole("link", { name: "Dr. Elena Santos", exact: true })).toHaveAttribute("href", "/pages/authorprofile.html?id=d3f1b8a6-2e6f-4eb4-9b98-8d1d1382ee41");
+  await expect(article.getByRole("link", { name: /Community Health Research Handbook/ })).toHaveAttribute("href", "/pages/guest-single.html?id=314");
 });
 
-test("guests can share a news article and are returned to it when they choose Save", async ({ page }) => {
-  await page.route("**/api/auth/get-session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "null" }));
-  await page.route("**/api/news/save-intent-story", (route) => route.fulfill({ json: { post: {
+test("the public browsing flag controls navigation on the same news URL", async ({ page, browser }) => {
+  const articlePath = "/news/shared-story.html";
+  const sharedPath = `${articlePath}?shared=1`;
+  const post = {
     id: 19,
-    title: "Save intent story",
-    slug: "save-intent-story",
-    excerpt: "A story a reader may want to revisit.",
+    title: "Shared research story",
+    slug: "shared-story",
+    excerpt: "An update from the research office.",
     body: "Article body",
     bodyFormat: "plain",
-    coverImageUrl: null,
-    coverImageAlt: "",
     authorName: "Office of Research & Publications",
     status: "published",
     publishedAt: "2026-08-01T00:00:00.000Z",
-    createdAt: "2026-08-01T00:00:00.000Z",
-    updatedAt: "2026-08-01T00:00:00.000Z",
     taggedAuthors: [],
     taggedWorks: [],
-  } } }));
+  };
+  await page.context().route("**/api/news/shared-story", (route) => route.fulfill({ json: { post } }));
+  await page.context().route("**/api/auth/get-session", (route) => route.fulfill({
+    json: null,
+  }));
+  const sessionRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/auth/get-session")) sessionRequests.push(request.url());
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => sessionStorage.setItem("copied-article", value) },
+    });
+  });
 
-  await page.goto("/news.html?slug=save-intent-story");
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page).toHaveURL(/\/log-in\.html\?redirect=.*news\.html.*save-intent-story/);
+  await page.goto(articlePath);
+  await expect(page.getByRole("heading", { name: post.title })).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await expect(page.getByRole("contentinfo")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "All news" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+  expect(sessionRequests).toEqual([]);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const options = page.getByRole("group", { name: "Share options" });
+  for (const name of ["Facebook", "LinkedIn", "X (Twitter)", "WhatsApp"]) {
+    await expect(options.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await options.getByRole("button", { name: "Copy link" }).click();
+  const sharedUrl = new URL(sharedPath, page.url()).href;
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("copied-article"))).toBe(sharedUrl);
+
+  await page.goto("/news.html");
+  await page.goto(articlePath);
+  await expect(page.getByRole("heading", { name: post.title })).toBeVisible();
+  await expect(page.getByRole("navigation")).toBeVisible();
+  const copiedBrowsingAddress = page.url();
+  await page.evaluate(() => sessionStorage.removeItem("copied-article"));
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("copied-article"))).toBe(sharedUrl);
+
+  const secondTab = await page.context().newPage();
+  await secondTab.goto(copiedBrowsingAddress);
+  await expect(secondTab.getByRole("navigation")).toBeVisible();
+  await secondTab.goto(sharedUrl);
+  await expect(secondTab.getByRole("heading", { name: post.title })).toBeVisible();
+  await expect(secondTab.getByRole("navigation")).toHaveCount(0);
+  await secondTab.close();
+
+  const freshContext = await browser.newContext();
+  try {
+    const recipient = await freshContext.newPage();
+    await recipient.route("**/api/news/shared-story", (route) => route.fulfill({ json: { post } }));
+    await recipient.goto(sharedUrl);
+    await expect(recipient.getByRole("heading", { name: post.title })).toBeVisible();
+    await expect(recipient.getByRole("navigation")).toHaveCount(0);
+    await expect(recipient.getByRole("contentinfo")).toHaveCount(0);
+    await expect(recipient.getByRole("link")).toHaveCount(1);
+    await recipient.goto(copiedBrowsingAddress);
+    await expect(recipient).toHaveURL(copiedBrowsingAddress);
+    await expect(recipient.getByRole("heading", { name: post.title })).toBeVisible();
+    await expect(recipient.getByRole("navigation")).toHaveCount(0);
+    await recipient.goto(new URL("/news/out/shared-story.html?browse=1", sharedUrl).href);
+    await expect(recipient.getByRole("heading", { name: post.title })).toBeVisible();
+    await expect(recipient.getByRole("navigation")).toHaveCount(0);
+    await recipient.goto(new URL("/index.html", sharedUrl).href);
+    await expect(recipient.getByRole("navigation").getByRole("link", { name: "News", exact: true })).toBeVisible();
+  } finally {
+    await freshContext.close();
+  }
 });
 
-test("authenticated news readers can save, unsave, and use the collapsible share options", async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
-  });
-  await page.route("**/api/auth/get-session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ session: { id: "session-1" }, user: { id: "user-1", name: "Ada Researcher", role: "user" } }) }));
-  await page.route("**/api/news/authenticated-save-story", (route) => route.fulfill({ json: { post: {
-    id: 20,
-    title: "Authenticated save story",
-    slug: "authenticated-save-story",
-    excerpt: "A story saved by a registered reader.",
-    body: "Article body",
-    bodyFormat: "plain",
-    coverImageUrl: null,
-    coverImageAlt: "",
-    authorName: "Office of Research & Publications",
-    status: "published",
-    publishedAt: "2026-08-01T00:00:00.000Z",
-    createdAt: "2026-08-01T00:00:00.000Z",
-    updatedAt: "2026-08-01T00:00:00.000Z",
-    taggedAuthors: [],
-    taggedWorks: [],
-  } } }));
-  await page.route("**/api/user/saved-news/20/status", (route) => route.fulfill({ json: { success: true, saved: false, count: 0 } }));
-  await page.route("**/api/user/saved-news/20", (route) => route.fulfill({ json: { success: true, saved: route.request().method() === "POST", count: 1 } }));
-
-  await page.goto("/news.html?slug=authenticated-save-story");
-  const saveButton = page.getByRole("button", { name: "Save", exact: true });
-  await expect(saveButton).toBeVisible();
-  await saveButton.click();
-  await expect(page.getByRole("button", { name: "Saved", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAttribute("aria-pressed", "false");
-
-  const shareButton = page.getByRole("button", { name: "Share", exact: true });
-  await expect(shareButton).toHaveAttribute("aria-expanded", "false");
-  await shareButton.click();
-  await expect(shareButton).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("button", { name: "Facebook" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "X (Twitter)" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "WhatsApp" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "LinkedIn" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Email article" })).toBeVisible();
-  await shareButton.click();
-  await expect(shareButton).toHaveAttribute("aria-expanded", "false");
+test("missing and empty article links stay in the standalone view", async ({ page }) => {
+  await page.route("**/api/news/unavailable-story", (route) => route.fulfill({ status: 404, json: { error: "News post not found" } }));
+  for (const path of ["/news/unavailable-story.html", "/news.html?slug=unavailable-story", "/news.html?slug="]) {
+    await page.goto(path);
+    await expect(page.getByText("Article unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "All news" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  }
 });
 
 test("contact validates fields and preserves values after a failed submission", async ({ page }) => {

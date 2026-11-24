@@ -1,4 +1,5 @@
 import { pool } from "../config/db.ts";
+import { getNewsArticlePath } from "../../shared/newsArticlePaths.ts";
 
 export type SuggestionType = "work" | "news" | "author" | "topic" | "keyword";
 export interface SearchSuggestion {
@@ -123,7 +124,7 @@ export async function getSearchSuggestions(query: string, category = "All", limi
 
     const suggestions: Record<SuggestionType, SearchSuggestion[]> = {
       work: workRows.rows.map((row) => ({ key: `work:${row.record_type}:${row.id}`, type: "work", label: String(row.title || "Untitled work"), description: `${String(row.category || "Research")} · ${String(row.authors || "Unknown author")}`, href: `/pages/${row.record_type === "compiled" ? "guest-compiled" : "guest-single"}.html?id=${encodeURIComponent(String(row.public_id))}` })),
-      news: newsRows.rows.map((row) => ({ key: `news:${row.id}`, type: "news", label: String(row.title || "Untitled article"), description: `News · ${String(row.author_name || "Office of Research & Publications")}`, href: `/news.html?slug=${encodeURIComponent(String(row.slug))}` })),
+      news: newsRows.rows.map((row) => ({ key: `news:${row.id}`, type: "news", label: String(row.title || "Untitled article"), description: `News · ${String(row.author_name || "Office of Research & Publications")}`, href: getNewsArticlePath(String(row.slug)) })),
       author: authorRows.rows.map((row) => ({ key: `author:${row.id}`, type: "author", label: String(row.full_name), description: `${String(row.department || row.affiliation || "Author")} · ${Number(row.public_work_count || 0)} public works`, href: `/pages/authorprofile.html?id=${encodeURIComponent(String(row.id))}` })),
       topic: topicRows.rows.map((row) => ({ key: `topic:${row.id}`, type: "topic", label: String(row.name), description: `Approved topic · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?topic=${encodeURIComponent(String(row.id))}` })),
       keyword: keywordRows.rows.map((row) => ({ key: `keyword:${row.id}`, type: "keyword", label: String(row.term), description: `Keyword · ${Number(row.public_work_count || 0)} public works`, href: `/pages/searchResultsPage.html?keyword=${encodeURIComponent(String(row.term))}` })),

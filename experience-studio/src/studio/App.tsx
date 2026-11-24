@@ -17,6 +17,7 @@ import {
   getExperiencePublishIssues,
   migrateExperienceConfigToV6,
 } from "../../../Deno/shared/experienceConfig";
+import { ADMIN_COMPACT_VIEWPORT } from "../../../shared/adminViewport";
 import { experiencePuckConfig } from "../shared/puckConfig";
 
 type PageKey = ExperiencePageKey;
@@ -889,6 +890,8 @@ function issueLabel(issue: ReturnType<typeof getExperiencePublishIssues>[number]
 }
 
 export default function App() {
+  const [compactViewport, setCompactViewport] = useState(() => window.matchMedia(ADMIN_COMPACT_VIEWPORT).matches);
+  const draftLoadStarted = useRef(false);
   const [config, setConfig] = useState<ExperienceConfig>(defaultExperienceConfig);
   const [savedConfig, setSavedConfig] = useState(config);
   const [published, setPublished] = useState<ExperienceConfig | null>(null);
@@ -904,9 +907,7 @@ export default function App() {
   const [heroPanel, setHeroPanel] = useState<"photos" | "text">("photos");
   const [canvasScroll, setCanvasScroll] = useState({});
   const [canvasReady, setCanvasReady] = useState(false);
-  const [device, setDevice] = useState<DeviceKey>(() =>
-    window.innerWidth < 640 ? "mobile" : window.innerWidth < 1100 ? "tablet" : "desktop"
-  );
+  const [device, setDevice] = useState<DeviceKey>("desktop");
   const [versions, setVersions] = useState<VersionSummary[]>([]);
   const [historyStatus, setHistoryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [status, setStatus] = useState("");
@@ -964,8 +965,25 @@ export default function App() {
   const loadOnMount = useEffectEvent(loadDraft);
   useEffect(() => {
     applyThemeVars(EXPERIENCE_FIXED_THEME);
-    void loadOnMount();
+    const media = window.matchMedia(ADMIN_COMPACT_VIEWPORT);
+    const updateViewport = () => setCompactViewport(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
   }, []);
+
+  useEffect(() => {
+    if (compactViewport) {
+      setCanvasReady(false);
+      setConfirm(null);
+      if (draftLoadStarted.current) document.getElementById("studio-desktop-required")?.focus();
+      return;
+    }
+    if (draftLoadStarted.current) return;
+    draftLoadStarted.current = true;
+    if (window.innerWidth < 1100) setDevice("tablet");
+    void loadOnMount();
+  }, [compactViewport]);
 
   async function loadVersions() {
     setHistoryStatus("loading");
@@ -992,7 +1010,7 @@ export default function App() {
     }
     field.focus({ preventScroll: true });
     field.scrollIntoView({ block: "nearest" });
-  }, [focusRequest, loadState]);
+  }, [focusRequest, loadState, compactViewport]);
 
   useEffect(() => {
     if (!dirty && !working) return;
@@ -1080,7 +1098,7 @@ export default function App() {
   }
 
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (screen !== "edit" || confirm || working || !(event.metaKey || event.ctrlKey)) return;
+    if (compactViewport || screen !== "edit" || confirm || working || !(event.metaKey || event.ctrlKey)) return;
     if ((event.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable]")) return;
     const key = event.key.toLowerCase();
     if (key !== "z" && key !== "y") return;
@@ -1107,7 +1125,7 @@ export default function App() {
   }
 
   async function runAction(action: NonNullable<typeof busy>, operationBody: () => Promise<void>) {
-    if (operation.current || loadState !== "ready" || conflict || uploads) return;
+    if (compactViewport || operation.current || loadState !== "ready" || conflict || uploads) return;
     operation.current = true;
     setBusy(action);
     setError("");
@@ -1143,10 +1161,10 @@ export default function App() {
     });
   });
   useEffect(() => {
-    if (!dirty || invalidDraft || working || conflict || loadState !== "ready" || error || confirm || screen === "review") return;
+    if (compactViewport || !dirty || invalidDraft || working || conflict || loadState !== "ready" || error || confirm || screen === "review") return;
     const timer = setTimeout(() => autosave(), 25000);
     return () => clearTimeout(timer);
-  }, [config, dirty, invalidDraft, working, conflict, loadState, error, confirm, screen]);
+  }, [compactViewport, config, dirty, invalidDraft, working, conflict, loadState, error, confirm, screen]);
 
   function publishChanges() {
     if (issues.length || !changes.length) return;
@@ -1207,7 +1225,7 @@ export default function App() {
   }
 
   const receiveCanvasMessage = useEffectEvent((event: MessageEvent) => {
-    if (event.origin !== window.location.origin || event.source !== canvasRef.current?.contentWindow || !event.data) return;
+    if (compactViewport || event.origin !== window.location.origin || event.source !== canvasRef.current?.contentWindow || !event.data) return;
     const { type, block, field, value, index, open } = event.data;
     if (type === "experience-canvas-ready") {
       sendCanvas(true);
@@ -1266,8 +1284,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (screen === "edit") syncCanvas();
-  }, [config, screen]);
+    if (!compactViewport && screen === "edit") syncCanvas();
+  }, [config, screen, compactViewport]);
 
   useEffect(() => {
     if (screen === "edit" && canvasReady) syncCanvas(true);
@@ -1289,7 +1307,7 @@ export default function App() {
     const observer = new ResizeObserver(fitPreview);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [screen, device, activePage]);
+  }, [screen, device, activePage, compactViewport]);
 
   const resumeLocation = resume ?? changes.find((change) => editableFields[change.section]);
   const pageName = pages[activePage].name;
@@ -1298,7 +1316,7 @@ export default function App() {
     : screen === "tools" ? "Version history and images"
     : pageName;
 
-  const editing = screen === "edit" && loadState === "ready";
+  const editing = !compactViewport && screen === "edit" && loadState === "ready";
   const landingHero = config.pages.landing.data.content.find((block) => block.type === "HeroBlock");
   const coverImage = (landingHero?.props.images as HeroImage[] | undefined)?.[0]?.url;
   const faqContent = config.pages.faq.data.content.find((block) => block.type === "FaqBlock");
@@ -1306,12 +1324,12 @@ export default function App() {
 
   return (
     <div className="xp-studio-shell">
-      <header className={`xp-workspace-header${editing ? " is-editing" : ""}`}>
+      <header className="xp-workspace-header">
         <div className="xp-studio-identity">
-          <button className="xp-studio-button xp-exit-button" type="button" aria-label="Exit to Admin" title="Exit to Admin" onClick={exit} disabled={working}>
+          {!compactViewport && <button className="xp-studio-button xp-exit-button" type="button" aria-label="Exit to Admin" title="Exit to Admin" onClick={exit} disabled={working}>
             <ArrowLeft size={18} aria-hidden="true" />
             <span>Admin</span>
-          </button>
+          </button>}
           {editing ? (
             <h1 id="studio-title" tabIndex={-1}><LayoutTemplate size={18} aria-hidden="true" /> PeAS Studio</h1>
           ) : <strong><LayoutTemplate size={18} aria-hidden="true" /> PeAS Studio</strong>}
@@ -1323,7 +1341,7 @@ export default function App() {
             <button type="button" aria-pressed={activePage === "faq"} disabled={working} onClick={() => { if (activePage !== "faq") openPage("faq"); }}><CircleHelp size={16} aria-hidden="true" />FAQ</button>
           </nav>
         )}
-        {loadState === "ready" && (
+        {!compactViewport && loadState === "ready" && (
           <p className={`xp-draft-status${dirty ? " is-dirty" : ""}`} role="status" aria-label="Draft status">
             <span aria-hidden="true" />
             {statusText}
@@ -1334,11 +1352,21 @@ export default function App() {
             <button className="xp-studio-button xp-icon-action" type="button" aria-label="Undo" title="Undo" onClick={() => undoOrRedo("past")} disabled={working || !history.current.past.length}><Undo2 size={18} aria-hidden="true" /></button>
             <button className="xp-studio-button xp-icon-action" type="button" aria-label="Redo" title="Redo" onClick={() => undoOrRedo("future")} disabled={working || !history.current.future.length}><Redo2 size={18} aria-hidden="true" /></button>
             <button className="xp-studio-button" type="button" onClick={saveDraft} disabled={working || conflict || !dirty}><ArrowDownToLine size={16} aria-hidden="true" />Save draft</button>
-            <button className="xp-studio-button primary xp-review-action" type="button" aria-label="Review changes" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}><span>Review<span className="xp-review-long-label"> changes</span></span><ArrowRight size={16} aria-hidden="true" /></button>
+            <button className="xp-studio-button primary xp-review-action" type="button" aria-label="Review changes" disabled={working || (!dirty && !hasDraft && !issues.length)} onClick={() => navigate("review")}><span>Review changes</span><ArrowRight size={16} aria-hidden="true" /></button>
           </div>
         )}
       </header>
-      <main className={`xp-workspace-main${editing ? " xp-visual-workspace" : screen === "pages" && loadState === "ready" ? " xp-page-picker" : ""}`}>
+      {compactViewport ? (
+        <main className="xp-workspace-main">
+          <section className="xp-workspace-surface xp-desktop-notice" aria-labelledby="studio-desktop-required">
+            <Monitor size={27} aria-hidden="true" />
+            <h1 id="studio-desktop-required" tabIndex={-1}>Use a larger screen to edit website pages</h1>
+            <p>Open Experience Studio on a computer or widen your browser window.</p>
+            {dirty && <p>Your unsaved edits are still in this tab. Widen the window to continue editing.</p>}
+            <button className="xp-studio-button primary" type="button" onClick={exit} disabled={working}>Back to Admin</button>
+          </section>
+        </main>
+      ) : <main className={`xp-workspace-main${editing ? " xp-visual-workspace" : screen === "pages" && loadState === "ready" ? " xp-page-picker" : ""}`}>
         {loadState === "loading" && <p role="status">Loading website pages…</p>}
         {loadState === "error" && (
           <div className="xp-workspace-notice">
@@ -1519,7 +1547,7 @@ export default function App() {
             </details>
           </div>}
         </>}
-      </main>
+      </main>}
       {confirm && (
         <dialog ref={dialogRef} className="xp-modal" aria-labelledby="studio-dialog-title" aria-describedby="studio-dialog-description" onClose={() => setConfirm(null)}>
           <h2 id="studio-dialog-title">{confirm.title}</h2>

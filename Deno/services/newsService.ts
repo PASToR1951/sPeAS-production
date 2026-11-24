@@ -23,7 +23,7 @@ export interface NewsWorkInput {
 export interface NewsAuthorReference {
   id: string;
   fullName: string;
-  spudId: string | null;
+  spudId?: string | null;
   affiliation: string | null;
   department: string | null;
   biography: string | null;
@@ -463,7 +463,7 @@ export async function deleteNewsPost(id: number): Promise<boolean> {
   return Boolean(result.rowCount);
 }
 
-async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, editorId?: string): Promise<NewsPost[]> {
+async function hydrateNewsPosts(posts: NewsPost[], includePrivate = false, editorId?: string): Promise<NewsPost[]> {
   if (!posts.length) return posts;
   const postIds = posts.map((post) => post.id);
   const [authorsResult, worksResult] = await Promise.all([
@@ -490,8 +490,10 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, 
                d.publication_date, 0::bigint AS child_count
         FROM news_post_works npw
         JOIN documents d ON npw.record_type = 'document' AND d.id = npw.record_id
+        LEFT JOIN compiled_documents parent ON parent.id = d.compiled_parent_id AND parent.deleted_at IS NULL
         WHERE npw.news_post_id = ANY($1::bigint[])
           AND d.deleted_at IS NULL AND d.review_status = 'approved' AND d.is_public IS TRUE
+          AND ($2 OR d.compiled_parent_id IS NULL OR parent.review_status = 'approved')
         UNION ALL
         SELECT npw.news_post_id, npw.position, cd.id, 'compiled'::varchar AS record_type,
                COALESCE(cd.category, 'Collection') || ' Vol. ' || COALESCE(cd.volume::text, '1') ||
@@ -510,7 +512,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, 
       ) related_works
       ORDER BY news_post_id, position, title
     `,
-      [postIds],
+      [postIds, includePrivate],
     ),
   ]);
 
@@ -518,7 +520,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, 
   for (const row of authorsResult.rows) {
     const postId = Number(row.news_post_id);
     const list = authorsByPost.get(postId) ?? [];
-    list.push(mapAuthorReference(editorId ? { ...row, spud_id: null } : row));
+    list.push(mapAuthorReference(editorId ? { ...row, spud_id: null } : row, includePrivate));
     authorsByPost.set(postId, list);
   }
   const worksByPost = new Map<number, NewsWorkReference[]>();
@@ -534,7 +536,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, 
   );
   const mediaByPost = new Map<number, NewsMediaAsset[]>();
   await Promise.all(mediaLinks.rows.map(async (link) => {
-    const media = await getNewsMedia(editorId ?? null, link.asset_id, includePrivateMedia);
+    const media = await getNewsMedia(editorId ?? null, link.asset_id, includePrivate);
     if (!media) return;
     const postId = Number(link.news_post_id);
     const list = mediaByPost.get(postId) ?? [];
@@ -544,7 +546,7 @@ async function hydrateNewsPosts(posts: NewsPost[], includePrivateMedia = false, 
   await Promise.all(posts.map(async (post) => {
     const existing = mediaByPost.get(post.id) ?? [];
     if (!post.coverMediaId || existing.some((media) => media.id === post.coverMediaId)) return;
-    const cover = await getNewsMedia(editorId ?? null, post.coverMediaId, includePrivateMedia);
+    const cover = await getNewsMedia(editorId ?? null, post.coverMediaId, includePrivate);
     if (!cover) return;
     const list = mediaByPost.get(post.id) ?? [];
     list.unshift(cover);
@@ -731,11 +733,11 @@ function mapNewsRow(row: NewsRow): NewsPost {
   };
 }
 
-function mapAuthorReference(row: AuthorReferenceRow): NewsAuthorReference {
+function mapAuthorReference(row: AuthorReferenceRow, includeSchoolId = true): NewsAuthorReference {
   return {
     id: String(row.id),
     fullName: row.full_name,
-    spudId: row.spud_id || null,
+    ...(includeSchoolId ? { spudId: row.spud_id || null } : {}),
     affiliation: row.affiliation || null,
     department: row.department || null,
     biography: row.biography || null,

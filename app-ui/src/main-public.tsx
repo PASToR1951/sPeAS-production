@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { PublicErrorBoundary, PublicErrorPage } from "./components/public/PublicPageShell";
 import { PublicSessionProvider } from "./components/public/PublicSessionProvider";
 import { PublicRouteLoader, PublicRouteLoadingScreen } from "./components/public/PublicRouteLoader";
+import { PeasErrorState } from "./components/feedback/PeasStates";
+import { getNewsArticleSlug } from "../../shared/newsArticlePaths";
 import "./styles/globals.css";
 
 const routes: Array<{ paths: string[]; component: ComponentType }> = [
@@ -27,18 +29,26 @@ function RetiredAccountRoute() {
 }
 
 const root = document.getElementById("react-public-root");
+const NewsArticlePage = lazy(() => import("./features/public/PublicNewsPage").then(({ PublicNewsArticlePage }) => ({ default: PublicNewsArticlePage })));
 
 if (root) {
-  const matchedRoute = routes.find((route) => route.paths.includes(window.location.pathname));
-  const fallbackRoute = { component: PublicErrorPage };
-  const Page = (matchedRoute ?? fallbackRoute).component;
+  const reactRoot = createRoot(root);
+  const { pathname, search } = window.location;
+  const articleSlug = getNewsArticleSlug(pathname, new URLSearchParams(search));
+  const standalone = articleSlug !== null && !document.body.hasAttribute("data-peas-news-browsing");
+  const Page = routes.find((route) => route.paths.includes(pathname))?.component ?? PublicErrorPage;
+  const view = articleSlug !== null ? <NewsArticlePage slug={articleSlug} standalone={standalone} /> : <Page />;
 
-  createRoot(root).render(
+  reactRoot.render(standalone ? (
+    <PublicErrorBoundary fallback={<main className="peas-news-shell"><PeasErrorState title="Article unavailable" message="Refresh the page to try again." /></main>}>
+      <Suspense fallback={<PublicRouteLoadingScreen />}>{view}</Suspense>
+    </PublicErrorBoundary>
+  ) : (
     <PublicSessionProvider>
       <PublicErrorBoundary>
         <PublicRouteLoader />
-        <Suspense fallback={<PublicRouteLoadingScreen />}><Page /></Suspense>
+        <Suspense fallback={<PublicRouteLoadingScreen />}>{view}</Suspense>
       </PublicErrorBoundary>
-    </PublicSessionProvider>,
-  );
+    </PublicSessionProvider>
+  ));
 }

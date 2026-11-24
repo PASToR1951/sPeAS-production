@@ -32,6 +32,7 @@ import {
   Save,
   Search,
   Send,
+  Share2,
   Trash2,
   Upload,
   Video,
@@ -39,6 +40,7 @@ import {
 } from "lucide-react";
 import { AdminPageHeader } from "../../components/layout/AdminPageHeader";
 import { NewsArticleBody } from "../../components/news/NewsArticleBody";
+import { NewsShareOptions } from "../../components/news/NewsShareOptions";
 import { ArticleReferenceSelector } from "../../components/news/ArticleReferenceSelector";
 import { InlineAuthorMentionPicker } from "../../components/news/InlineAuthorMentionPicker";
 import { PeasStatusBadge } from "../../components/data-display/PeasStatusBadge";
@@ -65,6 +67,7 @@ import {
 } from "../../components/ui/dialog";
 import { DropdownMenuSeparator } from "../../components/ui/dropdown-menu";
 import { getErrorMessage } from "../../lib/api/http";
+import { getNewsArticlePath, getSharedNewsArticlePath } from "../../../../shared/newsArticlePaths";
 import {
   createNewsPost,
   deleteNewsPost,
@@ -122,12 +125,17 @@ export function AdminNewsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(canPublish ? "all" : "draft");
   const [actionPostId, setActionPostId] = useState<number | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget>(null);
+  const [sharePost, setSharePost] = useState<NewsPost | null>(null);
+  const [publicationClock, setPublicationClock] = useState(Date.now);
 
   const loadPosts = useCallback(() => {
     setLoading(true);
     setError("");
     fetchAdminNews()
-      .then(setPosts)
+      .then((items) => {
+        setPosts(items);
+        setPublicationClock(Date.now());
+      })
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
   }, []);
@@ -136,18 +144,30 @@ export function AdminNewsPage() {
     loadPosts();
   }, [loadPosts]);
 
+  useEffect(() => {
+    const nextPublication = posts.reduce((earliest, post) => {
+      if (post.status !== "published" || !post.publishedAt) return earliest;
+      const publication = Date.parse(post.publishedAt);
+      return publication > publicationClock ? Math.min(earliest, publication) : earliest;
+    }, Infinity);
+    if (!Number.isFinite(nextPublication)) return;
+    const delay = Math.min(Math.max(0, nextPublication - Date.now()), 2_147_483_647);
+    const timer = window.setTimeout(() => setPublicationClock(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [posts, publicationClock]);
+
   const filteredPosts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return posts.filter((post) => {
-      if (statusFilter === "scheduled" && !isScheduled(post)) return false;
+      if (statusFilter === "scheduled" && !isScheduled(post, publicationClock)) return false;
       if (statusFilter === "draft" && post.status !== "draft") return false;
-      if (statusFilter === "published" && (post.status !== "published" || isScheduled(post))) return false;
+      if (statusFilter === "published" && !isLive(post, publicationClock)) return false;
       return !normalized ||
         [post.title, post.excerpt, post.authorName].some((value) =>
           value.toLowerCase().includes(normalized)
         );
     });
-  }, [posts, query, statusFilter]);
+  }, [posts, query, statusFilter, publicationClock]);
 
   const openCreate = () => {
     const next = { ...EMPTY_FORM };
@@ -203,10 +223,9 @@ export function AdminNewsPage() {
     }
     setSaving(true);
     try {
-      if (editing) {
-        await updateNewsPost(editing.id, nextForm);
-      } else {
-        await createNewsPost(nextForm);
+      const post = editing ? await updateNewsPost(editing.id, nextForm) : await createNewsPost(nextForm);
+      if (canPublish && nextForm.status === "published" && !nextForm.publishAt && isLive(post)) {
+        setSharePost(post);
       }
       toast.success(successMessage ?? (nextForm.status === "published"
         ? nextForm.publishAt
@@ -268,7 +287,8 @@ export function AdminNewsPage() {
   ) => {
     setActionPostId(post.id);
     try {
-      await updateNewsPost(post.id, publicationInput(post, status, publishAt));
+      const updated = await updateNewsPost(post.id, publicationInput(post, status, publishAt));
+      if (status === "published" && !publishAt && isLive(updated)) setSharePost(updated);
       toast.success(message);
       loadPosts();
     } catch (caughtError) {
@@ -365,9 +385,9 @@ export function AdminNewsPage() {
                     {status === "all"
                       ? posts.length
                       : status === "scheduled"
-                      ? posts.filter(isScheduled).length
+                      ? posts.filter((post) => isScheduled(post, publicationClock)).length
                       : status === "published"
-                      ? posts.filter((post) => post.status === "published" && !isScheduled(post)).length
+                      ? posts.filter((post) => isLive(post, publicationClock)).length
                       : posts.filter((post) => post.status === status).length}
                   </span>
                 </button>
@@ -402,8 +422,8 @@ export function AdminNewsPage() {
                 </div>
                 <div className="peas-admin-news-row__copy">
                   <div>
-                    <PeasStatusBadge status={isScheduled(post) ? "scheduled" : post.status} />
-                    <span>{isScheduled(post)
+                    <PeasStatusBadge status={isScheduled(post, publicationClock) ? "scheduled" : post.status} />
+                    <span>{isScheduled(post, publicationClock)
                       ? `Scheduled ${formatScheduleDate(post.publishedAt)}`
                       : post.status === "published"
                       ? `Published ${formatDate(post.publishedAt)}`
@@ -425,7 +445,7 @@ export function AdminNewsPage() {
                         onPublish={() => publishRow(post)}
                         onSchedule={() => openSchedule(post)}
                       />
-                      : isScheduled(post)
+                      : isScheduled(post, publicationClock)
                       ? <PublishSplitButton
                         label="Publish now"
                         disabled={isBusy(post)}
@@ -440,18 +460,23 @@ export function AdminNewsPage() {
                           },
                         ]}
                       />
-                      : (
+                      : isLive(post, publicationClock) ? (
                         <Button
                           className="peas-admin-news-row__view-action"
                           variant="default"
                           size="sm"
-                          onClick={() => window.open(`/news.html?slug=${encodeURIComponent(post.slug)}`, "_blank", "noopener,noreferrer")}
+                          onClick={() => window.open(getSharedNewsArticlePath(post.slug), "_blank", "noopener,noreferrer")}
                         >
                           <Eye aria-hidden="true" /> View
                         </Button>
-                      )}
+                      ) : null}
                   </div> : null}
                   <div className="peas-admin-news-row__secondary-actions">
+                    {canPublish && isLive(post, publicationClock) ? (
+                      <Button variant="outline" size="sm" onClick={() => setSharePost(post)}>
+                        <Share2 aria-hidden="true" /> Share
+                      </Button>
+                    ) : null}
                     <Button variant="outline" size="sm" onClick={() => openEdit(post)}>
                       <Edit3 aria-hidden="true" /> Edit
                     </Button>
@@ -506,6 +531,17 @@ export function AdminNewsPage() {
         onOpenChange={(open) => { if (!open) setScheduleTarget(null); }}
         onConfirm={confirmSchedule}
       />
+      <Dialog open={Boolean(sharePost)} onOpenChange={(open) => { if (!open) setSharePost(null); }}>
+        {sharePost ? (
+          <DialogContent className="peas-news-share-dialog">
+            <DialogHeader>
+              <DialogTitle>Share published article</DialogTitle>
+              <DialogDescription>{sharePost.title}</DialogDescription>
+            </DialogHeader>
+            <NewsShareOptions post={sharePost} />
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </main>
   );
 }
@@ -1095,8 +1131,7 @@ function NewsEditor(
               <div className="peas-editor-slug">
                 <span>Article URL</span>
                 <code>
-                  /news.html?slug={editing?.slug || slugify(form.title) ||
-                    "your-headline"}
+                  {getNewsArticlePath(editing?.slug || slugify(form.title) || "your-headline")}
                 </code>
               </div>
             </section>
@@ -1337,10 +1372,14 @@ function ScheduleDialog(
   );
 }
 
-function isScheduled(post: Pick<NewsPost, "status" | "publishedAt">) {
+function isScheduled(post: Pick<NewsPost, "status" | "publishedAt">, now = Date.now()) {
   return post.status === "published" && Boolean(
-    post.publishedAt && new Date(post.publishedAt).getTime() > Date.now(),
+    post.publishedAt && Date.parse(post.publishedAt) > now,
   );
+}
+
+function isLive(post: Pick<NewsPost, "status" | "publishedAt">, now = Date.now()) {
+  return post.status === "published" && Boolean(post.publishedAt && Date.parse(post.publishedAt) <= now);
 }
 
 function isScheduledInput(form: Pick<NewsPostInput, "status" | "publishAt">) {

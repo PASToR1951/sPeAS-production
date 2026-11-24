@@ -54,12 +54,15 @@ async function mockStudio(page: Page) {
   let unavailable = false;
   let publishRequests = 0;
   let saveRequests = 0;
+  let loadRequests = 0;
   await page.route("**/api/auth/get-session", (route) => route.fulfill({
     json: { session: { id: "session-admin" }, user: { id: "admin-01", name: "Administrator", role: "admin", username: "admin-01" } },
   }));
   await page.route("**/api/admin/experience/draft", async (route) => {
+    const method = route.request().method();
+    if (method === "GET") loadRequests++;
     if (unavailable) return route.fulfill({ status: 503, json: { error: "Unavailable" } });
-    if (route.request().method() === "PUT") {
+    if (method === "PUT") {
       saveRequests++;
       const body = route.request().postDataJSON();
       if (body.expectedVersion !== version) return route.fulfill({ status: 409, json: { error: "Draft changed" } });
@@ -80,6 +83,7 @@ async function mockStudio(page: Page) {
   return {
     publishRequests: () => publishRequests,
     saveRequests: () => saveRequests,
+    loadRequests: () => loadRequests,
     changeDraftInAnotherTab: () => { version++; },
     setUnavailable: (value: boolean) => { unavailable = value; },
   };
@@ -93,7 +97,45 @@ async function openMission(page: Page) {
   await section.selectOption("RichTextBlock");
 }
 
-test("experience studio exits to Settings for clean and unsaved sessions", async ({ page }) => {
+test("experience studio requires a desktop-width viewport before loading the draft", async ({ page, isMobile }) => {
+  if (!isMobile) await page.setViewportSize({ width: 980, height: 800 });
+  const studio = await mockStudio(page);
+  await page.goto(studioUrl);
+
+  await expect(page.getByRole("heading", { name: "Use a larger screen to edit website pages" })).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review changes" })).toHaveCount(0);
+  expect(studio.loadRequests()).toBe(0);
+
+  await page.getByRole("button", { name: "Back to Admin" }).click();
+  await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
+  expect(studio.loadRequests()).toBe(0);
+});
+
+test("narrowing the Studio pauses autosave and keeps unsaved edits", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
+  const studio = await mockStudio(page);
+  await page.clock.install();
+  await page.goto(studioUrl);
+  await openMission(page);
+  const title = page.getByRole("textbox", { name: "Title", exact: true });
+  await title.fill("An unsaved desktop edit");
+
+  await page.setViewportSize({ width: 980, height: 800 });
+  await expect(page.getByRole("heading", { name: "Use a larger screen to edit website pages" })).toBeFocused();
+  await expect(page.getByText("Your unsaved edits are still in this tab.", { exact: false })).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await page.clock.fastForward(26000);
+  expect(studio.saveRequests()).toBe(0);
+
+  await page.setViewportSize({ width: 981, height: 800 });
+  await expect(title).toHaveValue("An unsaved desktop edit");
+  await expect(page.frameLocator("iframe").getByRole("textbox", { name: "Mission title" })).toHaveText("An unsaved desktop edit");
+  expect(studio.loadRequests()).toBe(1);
+});
+
+test("experience studio exits to Settings for clean and unsaved sessions", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
   await mockStudio(page);
   await page.goto(studioUrl);
   const exit = page.getByRole("button", { name: "Exit to Admin" });
@@ -115,7 +157,8 @@ test("experience studio exits to Settings for clean and unsaved sessions", async
   await expect(page).toHaveURL(/\/admin\/Components\/admin_settings\.html$/);
 });
 
-test("the live canvas edits, saves, and reviews changes across pages", async ({ page }) => {
+test("the live canvas edits, saves, and reviews changes across pages", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
   const studio = await mockStudio(page);
   await page.goto(studioUrl);
   await expect(page.getByRole("heading", { name: "Which page do you want to update?" })).toBeVisible();
@@ -175,7 +218,8 @@ test("the live canvas edits, saves, and reviews changes across pages", async ({ 
   expect(studio.publishRequests()).toBe(1);
 });
 
-test("publish blockers link to the exact field and stale drafts cannot publish", async ({ page }) => {
+test("publish blockers link to the exact field and stale drafts cannot publish", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
   const studio = await mockStudio(page);
   await page.goto(studioUrl);
   await page.getByRole("button", { name: /^Home page Welcome message/ }).click();
@@ -209,7 +253,8 @@ test("publish blockers link to the exact field and stale drafts cannot publish",
   await expect(page.getByRole("button", { name: "Publish changes" })).toBeDisabled();
 });
 
-test("the editor waits for the saved draft and offers retry", async ({ page }) => {
+test("the editor waits for the saved draft and offers retry", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Editing requires a desktop-width viewport");
   const studio = await mockStudio(page);
   studio.setUnavailable(true);
   await page.goto(studioUrl);

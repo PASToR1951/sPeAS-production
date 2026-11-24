@@ -511,6 +511,12 @@ html.sidebar-collapsed .side-bar [data-label]:hover::after {
 }
 
 /* ---------- Responsive ---------- */
+@media (max-width: 980px) {
+    .side-bar a[href="/admin/Components/experience-studio.html"] {
+        display: none;
+    }
+}
+
 @media (max-width: 768px) {
     :root { --sidebar-width: 220px; }
 }

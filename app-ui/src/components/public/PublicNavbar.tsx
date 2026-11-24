@@ -1,4 +1,5 @@
 import { isStaffRole, ROLE_LABELS, STAFF_WORKSPACE } from "../../../../shared/staffRoles";
+import { getNewsArticleSlug } from "../../../../shared/newsArticlePaths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, LayoutDashboard, LogOut, Menu, X } from "lucide-react";
 import { Button } from "../ui/button";
@@ -288,11 +289,14 @@ function getInitials(name: string) {
 }
 
 function usesAlwaysGreenNavbar() {
-  return ["/news.html", "/faq.html", "/contact", "/contact.html"].includes(window.location.pathname);
+  const { pathname } = window.location;
+  return ["/news.html", "/faq.html", "/contact", "/contact.html"].includes(pathname) ||
+    getNewsArticleSlug(pathname) !== null;
 }
 
 function isActivePath(href: string) {
   const current = window.location.pathname;
   if (href === "/index.html") return current === "/" || current === "/index.html";
+  if (href === "/news.html" && getNewsArticleSlug(current) !== null) return true;
   return current === href;
 }

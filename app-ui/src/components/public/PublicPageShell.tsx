@@ -321,14 +321,14 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string) 
   return shader;
 }
 
-export class PublicErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class PublicErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: Error, info: ErrorInfo) { console.error("Public page render failed", error, info); }
 
   render() {
     if (this.state.failed) {
-      return <PublicErrorPage status={500} />;
+      return this.props.fallback ?? <PublicErrorPage status={500} />;
     }
     return this.props.children;
   }

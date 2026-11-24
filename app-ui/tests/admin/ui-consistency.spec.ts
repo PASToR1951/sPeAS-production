@@ -291,6 +291,17 @@ test("settings remains available from the administrator profile menu", async ({ 
   await expect(page.getByRole("button", { name: "Open profile menu for Admin M User" })).toBeVisible();
 });
 
+test("Settings hides Experience Studio on compact viewports", async ({ page }) => {
+  await page.setViewportSize({ width: 980, height: 800 });
+  await page.goto("/admin/Components/admin_settings.html");
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const settings = page.getByRole("navigation", { name: "Settings", exact: true });
+  await expect(settings.getByRole("link")).toHaveText(SETTINGS_LINKS.filter((label) => label !== "Edit website pages"));
+
+  await page.setViewportSize({ width: 981, height: 800 });
+  await expect(settings.getByRole("link", { name: "Edit website pages" })).toBeVisible();
+});
+
 test("Settings shows profile content with accessible collapsed section links", async ({ page }) => {
   await page.goto("/admin/Components/admin_settings.html");
   await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();

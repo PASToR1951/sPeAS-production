@@ -17,7 +17,7 @@ test("desktop global search provides a persistent grouped workspace and closes c
     total: 3,
     suggestions: {
       work: [{ key: "work:document:1", type: "work", label: "Community Research", description: "THESIS · Author One", href: "/pages/guest-single.html?id=1" }],
-      news: [{ key: "news:1", type: "news", label: "Research Week News", description: "News · Office of Research & Publications", href: "/news.html?slug=research-week-news" }],
+      news: [{ key: "news:1", type: "news", label: "Research Week News", description: "News · Office of Research & Publications", href: "/news/research-week-news.html" }],
       author: [{ key: "author:a1", type: "author", label: "Author One", description: "Research · 1 public work", href: "/pages/authorprofile.html?id=a1" }],
       topic: [], keyword: [], agenda: [],
     },
@@ -60,7 +60,7 @@ test("public search autocomplete groups mixed destinations and supports keyboard
       total: 3,
       suggestions: {
         work: [{ key: "work:document:1", type: "work", label: "A viewed thesis", description: "THESIS · Author One", href: "/pages/guest-single.html?id=1" }],
-        news: [{ key: "news:1", type: "news", label: "Research Week News", description: "News · Office of Research & Publications", href: "/news.html?slug=research-week-news" }],
+        news: [{ key: "news:1", type: "news", label: "Research Week News", description: "News · Office of Research & Publications", href: "/news/research-week-news.html" }],
         author: [{ key: "author:a1", type: "author", label: "Author One", description: "Research · 1 public work", href: "/pages/authorprofile.html?id=a1" }],
       topic: [{ key: "topic:1", type: "topic", label: "Sustainability", description: "Approved topic · 1 public work", href: "/pages/searchResultsPage.html?topic=1" }],
       keyword: [],
@@ -77,7 +77,7 @@ test("public search autocomplete groups mixed destinations and supports keyboard
   await expect(page.getByRole("heading", { name: "News" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Authors" })).toBeVisible();
   await expect(page.getByRole("option", { name: /A viewed thesis/ })).toHaveAttribute("href", "/pages/guest-single.html?id=1");
-  await expect(page.getByRole("option", { name: /Research Week News/ })).toHaveAttribute("href", "/news.html?slug=research-week-news");
+  await expect(page.getByRole("option", { name: /Research Week News/ })).toHaveAttribute("href", "/news/research-week-news.html");
   await input.press("ArrowDown");
   await input.press("Enter");
   await expect(page).toHaveURL(/\/pages\/guest-single\.html\?id=1/);
@@ -132,7 +132,7 @@ test("autocomplete replaces stale results and shows a readable empty state", asy
   await expect(page.getByRole("option", { name: /Single Thesis Sample/ })).toBeVisible();
   await input.fill("eee");
   await expect(page.getByRole("option", { name: /Single Thesis Sample/ })).toHaveCount(0);
-  const emptyState = page.getByText("No suggestions found. Press Enter to search.");
+  const emptyState = page.locator(".peas-public-hero-search").getByText("No suggestions found. Press Enter to search.");
   await expect(emptyState).toBeVisible();
   await expect(emptyState).toHaveCSS("color", "rgb(100, 116, 139)");
 

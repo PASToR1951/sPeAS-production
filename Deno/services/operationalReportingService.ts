@@ -1,5 +1,6 @@
 import { client, withTransaction } from "../db/denopost_conn.ts";
 import { UserDocumentHistoryModel } from "../models/userDocumentHistoryModel.ts";
+import { getNewsArticleSlug } from "../../shared/newsArticlePaths.ts";
 
 export const REPORT_RANGES = ["24h", "7d", "30d", "90d", "1y", "all"] as const;
 export type ReportRange = typeof REPORT_RANGES[number];
@@ -539,7 +540,7 @@ export function normalizePageKey(pathname: string): string {
 }
 
 export function canonicalPublicPageKey(pathname: string): string | null {
-  return PUBLIC_PAGE_KEYS[String(pathname ?? "")] ?? null;
+  return PUBLIC_PAGE_KEYS[String(pathname ?? "")] ?? (getNewsArticleSlug(pathname) ? "/news" : null);
 }
 
 export function isKnownCrawler(userAgent: string | null): boolean {

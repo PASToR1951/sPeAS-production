@@ -1497,29 +1497,6 @@ body:has(.xp-studio-shell) { margin: 0; }
   .xp-editor-fields { max-height: max(30rem, calc(100dvh - 5.5rem)); overflow: auto; scrollbar-gutter: stable; }
 }
 
-@media (max-width: 760px) {
-  .xp-workspace-header.is-editing {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: .35rem .5rem;
-  }
-  .xp-workspace-header.is-editing .xp-studio-identity { grid-area: 1 / 1 / 2 / -1; justify-self: start; }
-  .xp-workspace-header.is-editing .xp-page-switch { grid-area: 1 / 1 / 2 / -1; justify-self: end; }
-  .xp-workspace-header.is-editing .xp-draft-status { margin: 0; justify-self: start; grid-row: 2; min-width: 0; }
-  .xp-workspace-header .xp-edit-actions { grid-column: 2; grid-row: 2; }
-  .xp-workspace-header .xp-edit-actions button { min-height: 42px; padding-inline: .47rem; }
-  .xp-studio-identity h1 { font-size: .89rem; }
-  .xp-studio-identity h1 svg, .xp-review-long-label { display: none; }
-  .xp-workspace-header.is-editing .xp-exit-button span { display: none; }
-  .xp-device-switch button span { display: none; }
-}
-
-@media (max-width: 380px) {
-  .xp-page-switch button { font-size: .73rem; padding-inline: .42rem; }
-  .xp-page-switch button:not(:first-child) svg { display: none; }
-  .xp-workspace-header .xp-edit-actions button { padding-inline: .38rem; font-size: .78rem; }
-  .xp-workspace-header .xp-edit-actions button:last-child svg { display: none; }
-  .xp-workspace-header .xp-draft-status { font-size: .71rem; padding-inline: .35rem; }
-  .xp-canvas-heading > span { font-size: .71rem; }
-  .xp-device-switch button { padding-inline: .38rem; }
-}
+.xp-desktop-notice > svg { color: var(--brand-green-dark); }
+.xp-desktop-notice h1 { margin: .55rem 0; font-size: 1.5rem; line-height: 1.2; letter-spacing: -.02em; }
+.xp-desktop-notice p { margin: 0 0 1rem; color: var(--academic-slate); }

@@ -2,6 +2,7 @@ import { ArrowRight, CalendarDays, Newspaper } from "lucide-react";
 import { motion } from "motion/react";
 import type { MouseEvent } from "react";
 import type { NewsPost } from "../../lib/api/news";
+import { getNewsArticlePath } from "../../../../shared/newsArticlePaths";
 
 const NEWS_NAVIGATION_DELAY_MS = 220;
 
@@ -11,7 +12,7 @@ export function NewsPreviewCard({ post, index = 0, transitionOnNavigate = false,
   transitionOnNavigate?: boolean;
   variant?: "default" | "compact";
 }) {
-  const href = `/news.html?slug=${encodeURIComponent(post.slug)}`;
+  const href = getNewsArticlePath(post.slug);
   const titleId = `news-card-title-${post.id}`;
 
   return (

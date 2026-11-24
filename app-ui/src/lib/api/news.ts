@@ -53,7 +53,7 @@ export interface NewsMediaAsset {
 export interface NewsAuthorReference {
   id: string;
   fullName: string;
-  spudId: string | null;
+  spudId?: string | null;
   affiliation: string | null;
   department: string | null;
   biography: string | null;

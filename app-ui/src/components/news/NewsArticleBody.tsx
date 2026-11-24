@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import type { NewsAuthorReference, NewsBodyFormat, NewsMediaAsset } from "../../lib/api/news";
-import { NewsAuthorReferenceTag } from "./NewsArticleReferences";
+import { NewsArticleAuthorName, NewsAuthorReferenceTag } from "./NewsArticleReferences";
 
 export function NewsArticleBody(
-  { body, format = "plain", authors = [], media = [] }: {
+  { body, format = "plain", authors = [], media = [], standalone = false }: {
     body: string;
     format?: NewsBodyFormat;
     authors?: NewsAuthorReference[];
     media?: NewsMediaAsset[];
+    standalone?: boolean;
   },
 ) {
   if (format !== "markdown") {
@@ -22,7 +23,7 @@ export function NewsArticleBody(
     );
   }
 
-  return <>{parseMarkdownBlocks(body, authors, media)}</>;
+  return <>{parseMarkdownBlocks(body, authors, media, standalone)}</>;
 }
 
 function parsePlainBlocks(body: string, media: NewsMediaAsset[]): ReactNode[] {
@@ -36,9 +37,10 @@ function parsePlainBlocks(body: string, media: NewsMediaAsset[]): ReactNode[] {
   }).filter((node) => node !== null);
 }
 
-function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], media: NewsMediaAsset[]): ReactNode[] {
+function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], media: NewsMediaAsset[], standalone: boolean): ReactNode[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
+  const headingIds = new Set(["main-content"]);
   let index = 0;
 
   while (index < lines.length) {
@@ -64,11 +66,15 @@ function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], m
 
     const heading = /^(#{2,3})\s+(.+)$/.exec(line);
     if (heading) {
-      const content = renderInline(heading[2], `heading-${index}`, authors);
+      const content = renderInline(heading[2], `heading-${index}`, authors, standalone);
+      const base = heading[2].toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "section";
+      let id = base;
+      for (let suffix = 2; headingIds.has(id); suffix++) id = `${base}-${suffix}`;
+      headingIds.add(id);
       blocks.push(
         heading[1].length === 2
-          ? <h2 key={`h-${index}`}>{content}</h2>
-          : <h3 key={`h-${index}`}>{content}</h3>,
+          ? <h2 id={id} key={`h-${index}`}>{content}</h2>
+          : <h3 id={id} key={`h-${index}`}>{content}</h3>,
       );
       index += 1;
       continue;
@@ -82,7 +88,7 @@ function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], m
       }
       blocks.push(
         <blockquote key={`quote-${index}`}>
-          {renderInline(quote.join(" "), `quote-${index}`, authors)}
+          {renderInline(quote.join(" "), `quote-${index}`, authors, standalone)}
         </blockquote>,
       );
       continue;
@@ -98,7 +104,7 @@ function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], m
         <ul key={`ul-${index}`}>
           {items.map((item, itemIndex) => (
             <li key={itemIndex}>
-              {renderInline(item, `ul-${index}-${itemIndex}`, authors)}
+              {renderInline(item, `ul-${index}-${itemIndex}`, authors, standalone)}
             </li>
           ))}
         </ul>,
@@ -116,7 +122,7 @@ function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], m
         <ol key={`ol-${index}`}>
           {items.map((item, itemIndex) => (
             <li key={itemIndex}>
-              {renderInline(item, `ol-${index}-${itemIndex}`, authors)}
+              {renderInline(item, `ol-${index}-${itemIndex}`, authors, standalone)}
             </li>
           ))}
         </ol>,
@@ -134,7 +140,7 @@ function parseMarkdownBlocks(markdown: string, authors: NewsAuthorReference[], m
     }
     blocks.push(
       <p key={`p-${index}`}>
-        {renderInline(paragraph.join(" "), `p-${index}`, authors)}
+        {renderInline(paragraph.join(" "), `p-${index}`, authors, standalone)}
       </p>,
     );
   }
@@ -199,7 +205,7 @@ function isBlockStart(line: string) {
   return /^(#{2,3})\s+|^>\s?|^[-*]\s+|^\d+\.\s+|^---\s*$/.test(line);
 }
 
-function renderInline(value: string, keyPrefix: string, authors: NewsAuthorReference[]): ReactNode[] {
+function renderInline(value: string, keyPrefix: string, authors: NewsAuthorReference[], standalone: boolean): ReactNode[] {
   const pattern = /(@\[[^\]]+\](?:\(author:[0-9a-f-]+\))?|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/gi;
   const nodes: ReactNode[] = [];
   let cursor = 0;
@@ -215,16 +221,18 @@ function renderInline(value: string, keyPrefix: string, authors: NewsAuthorRefer
       const author = mention[2]
         ? authors.find((item) => item.id.toLowerCase() === mention[2].toLowerCase())
         : authors.find((item) => item.fullName.replace(/[\[\]()]/g, "").trim().toLowerCase() === mention[1].trim().toLowerCase());
-      nodes.push(author ? (
+      nodes.push(!author ? <Fragment key={key}>@{mention[1]}</Fragment> : standalone ? (
+        <NewsArticleAuthorName author={author} inline key={key} />
+      ) : (
         <NewsAuthorReferenceTag
           author={author}
           inline
           key={key}
           tooltipId={`inline-author-${key.replace(/[^a-z0-9]/gi, "")}`}
         />
-      ) : <Fragment key={key}>@{mention[1]}</Fragment>);
+      ));
     } else if (link) {
-      const href = safeHref(link[2]);
+      const href = safeHref(link[2], standalone);
       nodes.push(
         href
           ? (
@@ -251,8 +259,19 @@ function renderInline(value: string, keyPrefix: string, authors: NewsAuthorRefer
   return nodes;
 }
 
-function safeHref(value: string) {
+function safeHref(value: string, standalone: boolean) {
   const href = value.trim();
-  if (/^(https?:|mailto:|\/|#)/i.test(href)) return href;
+  if (!/^(https?:|mailto:|\/|#)/i.test(href)) return "";
+  if (!standalone || href.startsWith("#")) return href;
+
+  try {
+    const destination = new URL(href, window.location.href);
+    const site = window.location.hostname.replace(/^www\./, "");
+    if (/^https?:$/.test(destination.protocol) && destination.hostname.replace(/^www\./, "") !== site) {
+      return href;
+    }
+  } catch {
+    // Malformed links render as article text.
+  }
   return "";
 }

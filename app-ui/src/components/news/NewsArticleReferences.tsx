@@ -5,18 +5,25 @@ import type {
   NewsWorkReference,
 } from "../../lib/api/news";
 
-export function NewsArticleAuthors({ authors }: { authors: NewsAuthorReference[] }) {
+export function NewsArticleAuthors({ authors, standalone }: { authors: NewsAuthorReference[]; standalone: boolean }) {
   if (!authors.length) return null;
   return (
     <div className="peas-news-tagged-authors" aria-label="Authors featured in this article">
       <span>Featuring</span>
       <div>
-        {authors.map((author) => {
-          const tooltipId = `news-author-${author.id.replace(/[^a-z0-9]/gi, "")}`;
-          return <NewsAuthorReferenceTag author={author} tooltipId={tooltipId} key={author.id} />;
-        })}
+        {authors.map((author) => standalone
+          ? <NewsArticleAuthorName author={author} key={author.id} />
+          : <NewsAuthorReferenceTag author={author} tooltipId={`news-author-${author.id}`} key={author.id} />)}
       </div>
     </div>
+  );
+}
+
+export function NewsArticleAuthorName({ author, inline = false }: { author: NewsAuthorReference; inline?: boolean }) {
+  return (
+    <span className={`peas-news-author-reference${inline ? " is-inline" : ""}`}>
+      <span className="peas-news-author-name"><AuthorAvatar author={author} />{inline ? `@${author.fullName}` : author.fullName}</span>
+    </span>
   );
 }
 
@@ -29,14 +36,16 @@ export function NewsAuthorReferenceTag({
   tooltipId: string;
   inline?: boolean;
 }) {
+  const label = inline ? `@${author.fullName}` : author.fullName;
   return (
     <span className={`peas-news-author-reference${inline ? " is-inline" : ""}`}>
       <a
         href={`/pages/authorprofile.html?id=${encodeURIComponent(author.id)}`}
+        aria-label={label}
         aria-describedby={tooltipId}
       >
         <AuthorAvatar author={author} />
-        {inline ? `@${author.fullName}` : author.fullName}
+        {label}
       </a>
       <span className="peas-news-author-card" id={tooltipId} role="tooltip">
         <span className="peas-news-author-card__head">
@@ -60,10 +69,10 @@ export function NewsAuthorReferenceTag({
 
 export function NewsArticleWorks({
   works,
-  authenticated,
+  standalone,
 }: {
   works: NewsWorkReference[];
-  authenticated: boolean;
+  standalone: boolean;
 }) {
   if (!works.length) return null;
   return (
@@ -76,8 +85,9 @@ export function NewsArticleWorks({
         </div>
       </div>
       <div className="peas-news-related-works__grid">
-        {works.map((work) => (
-          <a href={workHref(work, authenticated)} key={`${work.recordType}:${work.id}`}>
+        {works.map((work) => {
+          const key = `${work.recordType}:${work.id}`;
+          const content = <>
             <span className="peas-news-related-works__label">
               {work.category || (work.recordType === "compiled" ? "Collection" : "Research work")}
             </span>
@@ -88,10 +98,13 @@ export function NewsArticleWorks({
               {work.recordType === "compiled" ? (
                 <span><Files aria-hidden="true" /> {work.childCount} {work.childCount === 1 ? "item" : "items"}</span>
               ) : null}
-              <ArrowUpRight aria-hidden="true" />
+              {standalone ? null : <ArrowUpRight aria-hidden="true" />}
             </span>
-          </a>
-        ))}
+          </>;
+          if (standalone) return <div className="peas-news-related-works__work" key={key}>{content}</div>;
+          const page = work.recordType === "compiled" ? "guest-compiled" : "guest-single";
+          return <a className="peas-news-related-works__work" href={`/pages/${page}.html?id=${encodeURIComponent(String(work.id))}`} key={key}>{content}</a>;
+        })}
       </div>
     </section>
   );
@@ -99,11 +112,4 @@ export function NewsArticleWorks({
 
 function AuthorAvatar({ author, large = false }: { author: NewsAuthorReference; large?: boolean }) {
   return <AuthorImage className={large ? "is-large" : ""} src={author.profilePicture} name={author.fullName} alt="" />;
-}
-
-function workHref(work: NewsWorkReference, authenticated: boolean) {
-  const page = work.recordType === "compiled"
-    ? authenticated ? "user-compiled" : "guest-compiled"
-    : authenticated ? "user-single" : "guest-single";
-  return `/pages/${page}.html?id=${encodeURIComponent(String(work.id))}`;
 }

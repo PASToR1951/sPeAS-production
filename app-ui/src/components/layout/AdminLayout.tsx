@@ -1,3 +1,4 @@
+import { ADMIN_COMPACT_VIEWPORT } from "../../../../shared/adminViewport";
 import { isStaffRole, ROLE_LABELS, STAFF_ROLES, STAFF_WORKSPACE, type WorkspaceRole } from "../../../../shared/staffRoles";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import {
@@ -56,6 +57,7 @@ type AdminNavigationItem = {
   icon: LucideIcon;
   roles: WorkspaceRole[];
   activePaths?: string[];
+  desktopOnly?: boolean;
 };
 const ADMIN_ONLY_ROLES: WorkspaceRole[] = ["admin"];
 const WORKSPACE_BOOTSTRAP_KEY = "peas-admin-workspace-bootstrap-v1";
@@ -98,7 +100,7 @@ const settingsNavItems: AdminNavigationItem[] = [
   { label: "Profile", href: "/admin/Components/admin_settings.html", icon: UserRound, roles: ADMIN_ONLY_ROLES },
   { label: "Operational Reports", href: "/admin/Components/reports.html", icon: ClipboardList, roles: ADMIN_ONLY_ROLES, activePaths: ["/admin/Components/search-analytics.html"] },
   { label: "System Logs", href: "/admin/Components/admin_logs.html", icon: ScrollText, roles: ADMIN_ONLY_ROLES },
-  { label: "Edit website pages", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES },
+  { label: "Edit website pages", href: "/admin/Components/experience-studio.html", icon: FileArchive, roles: ADMIN_ONLY_ROLES, desktopOnly: true },
   { label: "Role Management", href: "/admin/Components/role-management.html", icon: ShieldCheck, roles: ADMIN_ONLY_ROLES },
   { label: "Research Agenda", href: "/admin/Components/research-agenda.html", icon: ListOrdered, roles: ADMIN_ONLY_ROLES },
 ];
@@ -112,7 +114,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
   const [profile, setProfile] = useState<UserProfile | null>(initialBootstrap?.profile ?? null);
   const [collapsed, setCollapsed] = useStoredSidebarState();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia("(max-width: 980px)").matches);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia(ADMIN_COMPACT_VIEWPORT).matches);
   const [contactNewCount, setContactNewCount] = useState(0);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [notificationSummary, setNotificationSummary] = useState<AdminNotificationSummary>({ total: 0, unread: 0, urgent: 0 });
@@ -121,7 +123,7 @@ export function AdminLayout({ children, allowedRoles = ADMIN_ONLY_ROLES, pathnam
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 980px)");
+    const media = window.matchMedia(ADMIN_COMPACT_VIEWPORT);
     const updateViewport = () => {
       setIsMobileViewport(media.matches);
       if (!media.matches) setMobileOpen(false);
@@ -339,7 +341,9 @@ function AdminSidebar({
   pathname: string;
 }) {
   const inSettings = settingsNavItems.some((item) => isNavigationItemActive(item, pathname));
-  const visibleNavItems = (inSettings ? settingsNavItems : navItems).filter((item) => item.roles.includes(role));
+  const visibleNavItems = (inSettings ? settingsNavItems : navItems).filter((item) =>
+    item.roles.includes(role) && (!isMobileViewport || !item.desktopOnly)
+  );
   const visibleUtilityItems = utilityItems.filter((item) => item.roles.includes(role));
   const showCollapsedTooltips = collapsed && !isMobileViewport;
 

@@ -577,6 +577,7 @@ router.get("/api/news/media/:id/hls/:file", async (ctx) => {
 });
 
 router.get("/api/news/:slug", async (ctx) => {
+  ctx.response.headers.set("Cache-Control", "no-store");
   const post = await getPublishedNewsBySlug(String(ctx.params.slug || ""));
   if (!post) {
     ctx.response.status = 404;
