@@ -5,8 +5,8 @@ const artifacts = process.env.IMPORT_TEST_ARTIFACTS;
 test.skip(!artifacts, "Use the isolated import browser harness");
 test("I03/I04: nested-folder discovery rejects ambiguous catalog paths and supports manual regrouping", async ({ page }) => {
   await page.goto("/admin/Components/upload_document.html");
-  await page.getByRole("button", { name: "Open batch workspace", exact: true })
-    .click();
+  await page.getByText("Journal issue or batch", { exact: true }).click();
+  await page.getByRole("button", { name: "Import a batch", exact: true }).click();
   await page.getByLabel("Choose a folder", { exact: true }).setInputFiles(
     path.join(artifacts!, "ambiguous"),
   );

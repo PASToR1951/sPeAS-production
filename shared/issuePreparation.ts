@@ -57,8 +57,10 @@ export function validateIssueRanges(
   pages: number,
   papers: IssuePaperRange[],
   sections: IssuePageSection[] = [],
-) {
+  proposedPaper?: Pick<IssuePaperRange, "first" | "last">,
+): { errors: string[]; gaps: number[]; proposedError?: string } {
   const errors: string[] = [];
+  const proposedErrors: string[] = [];
   const owners = new Map<number, string>();
   if (!Number.isSafeInteger(pages) || pages < 1) {
     return {
@@ -66,19 +68,19 @@ export function validateIssueRanges(
       gaps: [] as number[],
     };
   }
-  const mark = (first: number, last: number, label: string) => {
+  const mark = (first: number, last: number, label: string, issues = errors) => {
     if (
       !Number.isSafeInteger(first) || !Number.isSafeInteger(last) ||
       first < 1 || last < first || last > pages
     ) {
-      errors.push(
+      issues.push(
         `${label}: choose an inclusive range between 1 and ${pages}.`,
       );
       return;
     }
     for (let page = first; page <= last; page++) {
       if (owners.has(page)) {
-        errors.push(`${label}: page ${page} overlaps ${owners.get(page)}.`);
+        issues.push(`${label}: page ${page} overlaps ${owners.get(page)}.`);
       } else owners.set(page, label);
     }
   };
@@ -90,12 +92,13 @@ export function validateIssueRanges(
     if (s.role === "excluded" && !s.reason?.trim()) {
       errors.push(`Section ${i + 1}: explain the exclusion.`);
     }
-    mark(s.first, s.last, `Section ${i + 1} (${s.role})`);
+    mark(s.first, s.last, `Section ${i + 1} (${s.role === "front_matter" ? "front matter" : s.role})`);
   });
+  const gaps = Array.from({ length: pages }, (_, i) => i + 1).filter((p) => !owners.has(p));
+  if (proposedPaper) mark(proposedPaper.first, proposedPaper.last, "New paper range", proposedErrors);
   return {
     errors,
-    gaps: Array.from({ length: pages }, (_, i) => i + 1).filter((p) =>
-      !owners.has(p)
-    ),
+    gaps,
+    ...(proposedErrors.length ? { proposedError: proposedErrors[0] } : {}),
   };
 }

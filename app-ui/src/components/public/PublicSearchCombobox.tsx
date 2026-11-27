@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { LoaderCircle, Search, X } from "lucide-react";
 import { fetchSearchSuggestions, markPendingSearch, recordSearchEvent, type SearchSuggestion, type SearchSuggestionType } from "../../lib/api/search";
 import type { DocumentCategory } from "../../lib/constants/categories";
+import { PublicSearchMatch } from "./PublicSearchMatch";
 
 const GROUPS: Array<{ type: SearchSuggestionType; label: string }> = [
   { type: "work", label: "Works" },
@@ -43,13 +44,13 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
   const abortRef = useRef<AbortController | null>(null);
   const listId = useId();
   const flattened = GROUPS.flatMap((group) => suggestions[group.type]);
+  const query = value.trim().replace(/\s+/gu, " ");
 
   function isInputFocused() {
     return document.activeElement === inputRef.current;
   }
 
   useEffect(() => {
-    const query = value.trim().replace(/[\s]+/gu, " ");
     abortRef.current?.abort();
     if (!active || query.length < 2) {
       setSuggestions(emptySuggestions());
@@ -82,7 +83,7 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [active, category, value]);
+  }, [active, category, query]);
 
   useEffect(() => {
     function closeOnOutsidePointer(event: PointerEvent) {
@@ -146,7 +147,29 @@ export function PublicSearchCombobox({ value, category, source, onChange, onSubm
       {error ? <p className="peas-public-search-combobox__message" role="status">{error}</p> : null}
       {!error && loading ? <p className="peas-public-search-combobox__message" role="status">Searching…</p> : null}
       {!error && !loading && !flattened.length ? <p className="peas-public-search-combobox__message" role="status">No suggestions found. Press Enter to search.</p> : null}
-      {!loading ? GROUPS.map((group) => suggestions[group.type].length ? <section key={group.type} className="peas-public-search-combobox__group"><h3>{group.label}</h3>{suggestions[group.type].map((suggestion) => { const index = flattened.indexOf(suggestion); return <a key={suggestion.key} id={`${listId}-${suggestion.key}`} role="option" aria-selected={index === activeIndex} className={index === activeIndex ? "is-active" : ""} href={suggestion.href} onMouseEnter={() => setActiveIndex(index)} onClick={() => { void recordSearchEvent({ query: suggestion.label, source, action: "suggestion_select", suggestionType: suggestion.type }); }}>{suggestion.label}<small>{suggestion.description}{suggestion.historical ? " · Historical" : ""}</small></a>; })}</section> : null) : null}
+      {!loading ? GROUPS.map((group) => suggestions[group.type].length ? (
+        <section key={group.type} className="peas-public-search-combobox__group">
+          <h3>{group.label}</h3>
+          {suggestions[group.type].map((suggestion) => {
+            const index = flattened.indexOf(suggestion);
+            return (
+              <a
+                key={suggestion.key}
+                id={`${listId}-${suggestion.key}`}
+                role="option"
+                aria-selected={index === activeIndex}
+                className={index === activeIndex ? "is-active" : ""}
+                href={suggestion.href}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => { void recordSearchEvent({ query: suggestion.label, source, action: "suggestion_select", suggestionType: suggestion.type }); }}
+              >
+                <span><PublicSearchMatch text={suggestion.label} query={query} /></span>
+                <small><PublicSearchMatch text={suggestion.description} query={query} />{suggestion.historical ? " · Historical" : ""}</small>
+              </a>
+            );
+          })}
+        </section>
+      ) : null) : null}
     </div>
   </div>;
 }

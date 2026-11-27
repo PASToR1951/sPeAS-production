@@ -5,7 +5,7 @@ import { handleFileUpload } from "../controllers/uploadController.ts";
 import { isAuthenticated, isAdmin, requireCapability } from "../middleware/authMiddleware.ts";
 import { DOCUMENT_MAX_BYTES, DOCUMENT_MAX_FILES } from "../../shared/documentFormats.ts";
 import { getUploadJob, listUploadJobs, saveUploadReview, retryUploadJob, uploadAsset } from "../services/uploadReviewService.ts";
-import { DocumentConversionError } from "../services/documentConversionService.ts";
+import { DocumentConversionError, guidedConversionAvailable } from "../services/documentConversionService.ts";
 import { client } from "../db/denopost_conn.ts";
 
 // Create a router
@@ -13,9 +13,9 @@ const router = new Router();
 const requireDocumentUpload = requireCapability("documents:upload");
 
 // Allow updated clients to reject multi-file submissions to older web processes.
-router.get("/api/content/upload/capabilities", isAuthenticated, requireDocumentUpload, (ctx) => {
+router.get("/api/content/upload/capabilities", isAuthenticated, requireDocumentUpload, async (ctx) => {
   ctx.response.headers.set("Cache-Control", "no-store");
-  ctx.response.body = { stitching: true, uploadReview: true, maxFiles: DOCUMENT_MAX_FILES, maxBytes: DOCUMENT_MAX_BYTES };
+  ctx.response.body = { stitching: true, uploadReview: true, nonPdfConversion: await guidedConversionAvailable(), maxFiles: DOCUMENT_MAX_FILES, maxBytes: DOCUMENT_MAX_BYTES };
 });
 
 const reviewRoute = (fn: (ctx: any) => Promise<unknown>) => async (ctx: any) => {

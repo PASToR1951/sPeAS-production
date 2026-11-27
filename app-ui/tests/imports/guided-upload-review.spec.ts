@@ -5,6 +5,7 @@ const artifacts = process.env.IMPORT_TEST_ARTIFACTS;
 test.skip(!artifacts, "Use the isolated import browser harness.");
 
 test("guided upload retains sources, saves incomplete manuscripts privately and enforces the separate publication decision", async ({ page }) => {
+  await page.addInitScript({ content: axeSource });
   await page.goto("/admin/Components/upload_document.html");
   await page.getByLabel("Document file", { exact: true }).setInputFiles([
     path.join(artifacts!, "front.pdf"),
@@ -51,12 +52,6 @@ test("guided upload retains sources, saves incomplete manuscripts privately and 
   await page.getByRole("button", { name: "Save internal review", exact: true })
     .click();
   await expect(page.getByText(/Internal review saved/)).toBeVisible();
-  await page.addScriptTag({ content: axeSource });
-  const collapse = page.getByRole("button", {
-    name: "Collapse upload checklist",
-    exact: true,
-  });
-  if (await collapse.isVisible()) await collapse.click();
   for (const width of [390, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() =>
@@ -102,7 +97,7 @@ test("guided upload retains sources, saves incomplete manuscripts privately and 
     new URL(r.url()).pathname === "/api/documents" &&
     r.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Upload for review", exact: true })
+  await page.getByRole("button", { name: "Save privately for review", exact: true })
     .click();
   const record = await (await saved).json();
   expect(record.review_status).toBe("pending_review");
@@ -158,4 +153,37 @@ test("guided upload retains sources, saves incomplete manuscripts privately and 
       .status(),
   ).toBe(200);
   await anonymous.close();
+});
+
+test("switching to an issue or batch preserves the selected paper", async ({ page }) => {
+  await page.goto("/admin/Components/upload_document.html");
+  const file = page.getByLabel("Document file", { exact: true });
+  await expect(file).toBeEnabled();
+  await file.setInputFiles(path.join(artifacts!, "front.pdf"));
+  const order = page.getByRole("list", { name: "Document file reading order" });
+  for (const [task, heading] of [
+    ["Upload a journal issue", "1. Select the issue PDF"],
+    ["Import a batch", "Import a batch"],
+  ]) {
+    await page.getByText("Journal issue or batch", { exact: true }).click();
+    await page.getByRole("button", { name: task, exact: true }).click();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to guided upload" }).click();
+    await expect(order).toContainText("front.pdf");
+  }
+});
+
+test("immediate reload restores the latest reading order", async ({ page }) => {
+  await page.goto("/admin/Components/upload_document.html");
+  const file = page.getByLabel("Document file", { exact: true });
+  await expect(file).toBeEnabled();
+  await file.setInputFiles(["front.pdf", "appendix.pdf"].map(name => path.join(artifacts!, name)));
+  await expect(page.getByText("File order saved on this device.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Move appendix.pdf up" }).click();
+  page.once("dialog", dialog => dialog.accept());
+  await page.reload();
+  const rows = page.getByRole("list", { name: "Document file reading order" }).getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("appendix.pdf");
+  await expect(rows.last()).toContainText("front.pdf");
 });

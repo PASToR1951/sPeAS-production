@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ComponentType } f
 import { createPortal } from "react-dom";
 import { ArrowRight, FileText, Flame, LoaderCircle, Newspaper, Search, Sparkles, Tag, Users, X } from "lucide-react";
 import { Button } from "../ui/button";
+import { PublicSearchMatch } from "./PublicSearchMatch";
 import { fetchPublicTopics, fetchTrendingKeywords, searchResultsUrl, type PublicTopic } from "../../lib/api/public";
 import { CATEGORY_ORDER, getCategoryMeta, type DocumentCategory } from "../../lib/constants/categories";
 import { fetchSearchSuggestions, markPendingSearch, recordSearchEvent, type SearchSuggestion, type SearchSuggestionType } from "../../lib/api/search";
@@ -72,6 +73,7 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestionError, setSuggestionError] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
+  const normalizedQuery = query.trim().replace(/\s+/gu, " ");
 
   const visibleGroups = GROUPS.filter((group) => scope === "all" || scope === "trending" || group.scope === scope);
   const flattened = visibleGroups.flatMap((group) => suggestions[group.type]);
@@ -130,11 +132,10 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
   }, [topic, topicQuery]);
 
   useEffect(() => {
-    const normalized = query.trim().replace(/[\s]+/gu, " ");
     suggestionAbortRef.current?.abort();
     setActiveIndex(-1);
     setSuggestionError("");
-    if (normalized.length < 2) {
+    if (normalizedQuery.length < 2) {
       setSuggestions(emptySuggestions());
       setSuggestionLoading(false);
       return;
@@ -148,7 +149,7 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
     const timer = window.setTimeout(() => {
       const controller = new AbortController();
       suggestionAbortRef.current = controller;
-      fetchSearchSuggestions(normalized, category, controller.signal)
+      fetchSearchSuggestions(normalizedQuery, category, controller.signal)
         .then((result) => {
           if (!controller.signal.aborted) setSuggestions(normalizeSuggestions(result.suggestions));
         })
@@ -160,7 +161,7 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
         .finally(() => { if (!controller.signal.aborted) setSuggestionLoading(false); });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [category, query, scope]);
+  }, [category, normalizedQuery, scope]);
 
   useEffect(() => { setActiveIndex(-1); }, [scope]);
 
@@ -197,7 +198,6 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
   }
 
   const hasSelection = Boolean(query || category !== "All" || year || topic || topicQuery || sort !== "latest" || scope !== "trending");
-  const normalizedQuery = query.trim();
   const activeId = activeIndex >= 0 && flattened[activeIndex] ? `${resultsId}-${flattened[activeIndex].key.replace(/[^a-zA-Z0-9_-]/gu, "-")}` : undefined;
 
   return createPortal((
@@ -358,8 +358,8 @@ export function PublicSearchOverlay({ onClose, draft }: Props) {
                                   void recordSearchEvent({ query: suggestion.label, source: "results", action: "suggestion_select", suggestionType: suggestion.type });
                                 }}
                               >
-                                <strong>{suggestion.label}</strong>
-                                <span>{suggestion.description}{suggestion.historical ? " · Historical" : ""}</span>
+                                <strong><PublicSearchMatch text={suggestion.label} query={normalizedQuery} /></strong>
+                                <span><PublicSearchMatch text={suggestion.description} query={normalizedQuery} />{suggestion.historical ? " · Historical" : ""}</span>
                                 <ArrowRight aria-hidden="true" />
                               </a>
                             );

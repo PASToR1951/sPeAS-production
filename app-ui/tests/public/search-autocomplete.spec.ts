@@ -32,8 +32,8 @@ test("desktop global search provides a persistent grouped workspace and closes c
 
   await dialog.getByRole("combobox", { name: "Search the archive" }).fill("research");
   await expect(dialog.locator(".peas-public-search-overlay__result-group")).toHaveCount(3);
-  await expect(dialog.getByRole("link", { name: /Community Research/ })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: /Research Week News/ })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /Community Research/ }).locator("mark")).toHaveText("Research");
+  await expect(dialog.getByRole("link", { name: /Research Week News/ }).locator("mark")).toHaveText(["Research", "Research"]);
 
   await dialog.getByRole("button", { name: /News articles/ }).click();
   await expect(dialog.getByRole("link", { name: /Research Week News/ })).toBeVisible();
@@ -133,6 +133,7 @@ test("public search autocomplete groups mixed destinations and supports keyboard
   await expect(page.getByRole("heading", { name: "News" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Authors" })).toBeVisible();
   await expect(page.getByRole("option", { name: /A viewed thesis/ })).toHaveAttribute("href", "/pages/guest-single.html?id=1");
+  await expect(page.getByRole("option", { name: /A viewed thesis/ }).locator("mark")).toHaveText(["th", "TH", "th"]);
   await expect(page.getByRole("option", { name: /Research Week News/ })).toHaveAttribute("href", "/news/research-week-news.html");
   await input.press("ArrowDown");
   await input.press("Enter");

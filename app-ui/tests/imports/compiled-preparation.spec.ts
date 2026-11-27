@@ -12,10 +12,9 @@ test("I02/I03/I05/M01/R07 compiled catalog, missing manuscripts, cover and forew
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/admin/Components/upload_document.html");
-  await page.getByRole("button", {
-    name: "Prepare a compiled volume",
-    exact: true,
-  }).click();
+  await page.getByText("Journal issue or batch", { exact: true }).click();
+  await page.getByRole("button", { name: "Upload a journal issue", exact: true }).click();
+  await page.getByText("Have separate paper files?", { exact: true }).click();
   await page.getByRole("radio", {
     name: "Upload separate research papers",
     exact: true,

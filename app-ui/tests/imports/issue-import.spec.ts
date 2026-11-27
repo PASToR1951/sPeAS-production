@@ -7,19 +7,15 @@ test.skip(!artifacts, "Use the isolated import browser harness.");
 test("native complete issue import preserves front matter and serves independent issue/paper PDFs", async ({ page, browser }) => {
   test.setTimeout(120000);
   await page.goto("/admin/Components/upload_document.html");
-  await page.getByRole("button", {
-    name: "Prepare a compiled volume",
-    exact: true,
-  }).click();
-  await expect(
-    page.getByRole("radio", { name: "Upload a complete issue", exact: true }),
-  ).toBeChecked();
-  await page.getByLabel("Choose multiple files", { exact: true }).setInputFiles(
+  await page.getByText("Journal issue or batch", { exact: true }).click();
+  await page.getByRole("button", { name: "Upload a journal issue", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "1. Select the issue PDF" })).toBeVisible();
+  await page.getByLabel("Issue, cover or foreword files", { exact: true }).setInputFiles(
     ["issue-main.pdf", "covers.pdf", "front.pdf"].map((name) => path.join(artifacts!, name)),
   );
   await page.getByRole("button", { name: "Stage selected files", exact: true })
     .click();
-  await expect(page.getByText(/Sources attached. Assign the main issue/))
+  await expect(page.getByText("Sources staged privately.", { exact: true }))
     .toBeVisible();
   await expect(page.getByLabel("Paper to prepare", { exact: true }))
     .toHaveCount(0);
@@ -28,7 +24,6 @@ test("native complete issue import preserves front matter and serves independent
       hasText: "Collection metadata, covers and foreword",
     }),
   });
-  await collection.locator("summary").click();
   await collection.getByLabel("Collection type", { exact: true }).selectOption(
     "SYNERGY",
   );
@@ -70,6 +65,13 @@ test("native complete issue import preserves front matter and serves independent
     name: "Main issue paper ranges",
     exact: true,
   });
+  await ranges.getByLabel("Paper title", { exact: true }).fill("Range check");
+  const lastPage = ranges.getByLabel("Last physical page", { exact: true });
+  await lastPage.fill("2");
+  await expect(lastPage).toHaveAccessibleDescription(/page 1 overlaps Section 1 .front matter./);
+  await expect(ranges.getByRole("button", { name: "Add paper range" })).toBeDisabled();
+  await lastPage.fill("9");
+  await expect(lastPage).toHaveAccessibleDescription(/choose an inclusive range between 1 and 8/);
   for (const [index, first, last] of [[1, 3, 5], [2, 6, 8]]) {
     await ranges.getByLabel("Paper title", { exact: true }).fill(
       `Native journal paper ${index}`,
@@ -220,6 +222,7 @@ test("native complete issue import preserves front matter and serves independent
   await savedPaper.getByRole("button", { name: "Save completeness and hold notes", exact: true }).click();
   await expect(complete.getByRole("button", { name: "Prepare complete issue", exact: true })).toBeEnabled();
   await expect(page.getByText("Save the paper and collection changes before preparing, committing or publishing the issue.", { exact: true })).toHaveCount(0);
+  await page.getByText("Workspace tools", { exact: true }).click();
   await page.getByRole("button", { name: "Refresh workspace", exact: true }).click();
   await expect(savedPaper.getByRole("textbox", { name: "Publication hold reason", exact: true })).toHaveValue("Author-approved source correction required.");
   await expect(complete.getByRole("button", { name: "Prepare complete issue", exact: true })).toBeEnabled();
@@ -266,7 +269,9 @@ test("native complete issue import preserves front matter and serves independent
   await expect(completeDownload).toHaveAttribute("href", `/api/compiled-documents/${batch.compiledDocumentId}/complete/download`);
   const savedWorkspaces = await (await page.request.get("/api/admin/import-batches")).json();
   expect(savedWorkspaces.find((workspace: any) => workspace.id === batch.id)).toMatchObject({ committedPapers: 2, includedPapers: 2, status: "draft" });
-  await page.getByRole("button", { name: "Choose another workspace", exact: true }).click();
+  await page.getByText("Workspace tools", { exact: true }).click();
+  await page.getByRole("button", { name: "Start another workspace", exact: true }).click();
+  await page.getByText("Saved preparation workspaces", { exact: true }).click();
   const resume = page.getByRole("combobox", { name: "Resume a workspace", exact: true });
   await expect(resume.locator(`option[value="${batch.id}"]`)).toHaveText(`compiled · Saved privately · pending review · ${batch.id.slice(0, 8)}`);
   await resume.selectOption(batch.id);

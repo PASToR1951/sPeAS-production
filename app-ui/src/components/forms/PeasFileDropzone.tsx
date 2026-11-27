@@ -15,6 +15,7 @@ interface PeasFileDropzoneProps {
   description?: string;
   disabled?: boolean;
   accept?: string;
+  selectionError?: (file: File) => string | undefined;
 }
 
 export function PeasFileDropzone({
@@ -29,14 +30,29 @@ export function PeasFileDropzone({
   description,
   disabled,
   accept = "application/pdf,.pdf",
+  selectionError,
 }: PeasFileDropzoneProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [rejected, setRejected] = useState("");
   const files = file ? [file, ...additionalFiles] : [];
+  const descriptionId = `${inputId}-description`;
+  const feedback = rejected || error;
+  const feedbackId = `${fieldKey || inputId}-error`;
+  const describedBy = feedback ? `${descriptionId} ${feedbackId}` : descriptionId;
   const selectFiles = (selected: File[]) => {
-    if (onFilesChange) onFilesChange([...files, ...selected]);
-    else onFileChange?.(selected[0] ?? null);
+    if (!selected.length) return;
+    const messages: string[] = [];
+    const accepted = selected.filter((source) => {
+      const message = selectionError?.(source);
+      if (message) messages.push(`${source.name}. ${message}`);
+      return !message;
+    });
+    setRejected(messages.join(" "));
+    if (!accepted.length) return;
+    if (onFilesChange) onFilesChange([...files, ...accepted]);
+    else onFileChange?.(accepted[0]);
   };
   const moveFile = (index: number, offset: number) => {
     const reordered = [...files];
@@ -72,18 +88,18 @@ export function PeasFileDropzone({
           accept={accept}
           multiple={Boolean(onFilesChange)}
           aria-label={label}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={fieldKey ? `${fieldKey}-description${error ? ` ${fieldKey}-error` : ""}` : undefined}
+          aria-invalid={error || (rejected && !files.length) ? true : undefined}
+          aria-describedby={describedBy}
           disabled={disabled}
           onChange={(event) => { selectFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }}
         />
-        <button type="button" disabled={disabled} aria-invalid={error ? true : undefined} aria-describedby={`${fieldKey ? `${fieldKey}-description` : ""}${error ? ` ${fieldKey}-error` : ""}`.trim() || undefined} onClick={() => inputRef.current?.click()}>
+        <button type="button" disabled={disabled} aria-invalid={error || (rejected && !files.length) ? true : undefined} aria-describedby={describedBy} onClick={() => inputRef.current?.click()}>
           <span className="peas-file-dropzone__icon">
             {file ? <FileText aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
           </span>
           <span className="peas-file-dropzone__copy">
             <strong>{file ? `${error ? "Rejected: " : ""}${file.name}` : "Choose file or drag it here"}</strong>
-            <span id={fieldKey ? `${fieldKey}-description` : undefined}>{file ? `${formatFileSize(file.size)}${onFilesChange ? " · Choose more files to stitch" : ""}` : description ?? "PDF files are supported."}</span>
+            {file ? <span>{formatFileSize(file.size)}{onFilesChange ? " · Choose more files to add to this PDF" : ""}</span> : null}
           </span>
         </button>
         {file ? (
@@ -99,8 +115,8 @@ export function PeasFileDropzone({
           </PeasIconButton>
         ) : null}
       </div>
+      <p className="peas-upload-inline-hint" id={descriptionId}>{description ?? "PDF files are supported."}</p>
       {onFilesChange ? <>
-        <p className="peas-upload-inline-hint">Choose or add files in reading order. Non-PDF documents are converted first, then all pages are stitched into one PDF. Up to 20 files and 100 MB combined.</p>
         {files.length ? <ol className="peas-document-files" aria-label={`${label} reading order`}>
           {files.map((source, index) => <li key={index}>
             <span className="peas-document-files__name">{index + 1}. {source.name} <small>{formatFileSize(source.size)}</small></span>
@@ -112,12 +128,12 @@ export function PeasFileDropzone({
           </li>)}
         </ol> : null}
       </> : null}
-      {error ? <p className="peas-field__error" id={fieldKey ? `${fieldKey}-error` : undefined} role="alert">{error}</p> : null}
+      {feedback ? <p className="peas-field__error" id={feedbackId} role="alert">{feedback}</p> : null}
     </div>
   );
 }
 
-function formatFileSize(bytes: number) {
+export function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

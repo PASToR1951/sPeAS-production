@@ -4,6 +4,17 @@ const STORE_NAME = "drafts";
 const LOCAL_STORAGE_PREFIX = "peas-upload-recovery:";
 const writeClocks = new Map<string, { generation: number; savedAt: number }>();
 const fileBytes = new WeakMap<File, Promise<unknown>>();
+const fileIds = new WeakMap<File, string>();
+
+function fileId(file: File) {
+  let id = fileIds.get(file);
+  if (!id) {
+    id = crypto.randomUUID();
+    fileIds.set(file, id);
+  }
+  return id;
+}
+
 function writeClock(id: string) {
   let clock = writeClocks.get(id);
   if (!clock) { clock = { generation: 0, savedAt: 0 }; writeClocks.set(id, clock); }
@@ -18,6 +29,11 @@ export interface UploadDraftRecord<T> {
   savedAt: number;
   filesIncluded: boolean;
   state: T;
+  latestChangesMissing?: boolean;
+}
+
+interface LocalDraftRecord<T> extends UploadDraftRecord<T> {
+  stateWithFileRefs?: T;
 }
 
 export interface UploadDraftSaveResult {
@@ -31,10 +47,23 @@ export function createUploadDraftKey(userId: string) {
 
 export async function loadUploadDraft<T>(id: string): Promise<UploadDraftRecord<T> | null> {
   const candidates: UploadDraftRecord<T>[] = [];
+  const sources = new Map<string, File>();
 
   try {
-    const stored = await readIndexedDbDraft<T>(id);
-    if (isDraftRecord<T>(stored, id)) candidates.push({ ...stored, state: restoreFiles(stored.state) as T });
+    const stored = await readIndexedDbDraft(id);
+    if (isDraftRecord<T>(stored, id) && Date.now() - stored.savedAt <= UPLOAD_DRAFT_MAX_AGE_MS) {
+      let legacyIndex = 0;
+      const state = mapDraftFiles(stored.state, (value) => {
+        const file = value instanceof File ? value : unpackFile(value);
+        if (!file) return value;
+        const sourceId = value instanceof File ? undefined : (value as { id?: string }).id;
+        const key = sourceId ?? `legacy:${stored.savedAt}:${legacyIndex++}`;
+        sources.set(key, file);
+        fileIds.set(file, key);
+        return file;
+      }) as T;
+      candidates.push({ ...stored, state });
+    } else if (isDraftRecord<T>(stored, id)) candidates.push(stored);
   } catch {
     // Browser storage is best effort. The metadata-only fallback may still work.
   }
@@ -42,7 +71,20 @@ export async function loadUploadDraft<T>(id: string): Promise<UploadDraftRecord<
   try {
     const raw = window.localStorage.getItem(localStorageKey(id));
     const stored: unknown = raw ? JSON.parse(raw) : null;
-    if (isDraftRecord<T>(stored, id)) candidates.push(stored);
+    if (isDraftRecord<T>(stored, id)) {
+      const { stateWithFileRefs, ...fallback } = stored as LocalDraftRecord<T>;
+      if (stateWithFileRefs) {
+        let missing = false;
+        const state = mapDraftFiles(stateWithFileRefs, (value) => {
+          const ref = (value as { __peasUploadFileRef?: string }).__peasUploadFileRef;
+          if (!ref) return value;
+          const file = sources.get(ref);
+          if (!file) missing = true;
+          return file;
+        }) as T;
+        candidates.push(missing ? { ...fallback, latestChangesMissing: true } : { ...fallback, state, filesIncluded: true });
+      } else candidates.push(fallback);
+    }
   } catch {
     // Storage can be unavailable or contain an interrupted write.
   }
@@ -51,7 +93,12 @@ export async function loadUploadDraft<T>(id: string): Promise<UploadDraftRecord<
     .filter((candidate) => Date.now() - candidate.savedAt <= UPLOAD_DRAFT_MAX_AGE_MS)
     .sort((left, right) => right.savedAt - left.savedAt || Number(right.filesIncluded) - Number(left.filesIncluded))[0];
 
-  if (current) return current;
+  if (current) {
+    const clock = writeClock(id);
+    clock.savedAt = Math.max(clock.savedAt, current.savedAt);
+    const earlier = candidates.find((candidate) => candidate.filesIncluded && Date.now() - candidate.savedAt <= UPLOAD_DRAFT_MAX_AGE_MS);
+    return current.latestChangesMissing && earlier ? { ...earlier, latestChangesMissing: true } : current;
+  }
   if (candidates.length) await deleteUploadDraft(id);
   return null;
 }
@@ -65,7 +112,17 @@ export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState
   let fallbackSaved = false;
 
   try {
-    window.localStorage.setItem(localStorageKey(id), JSON.stringify(fallbackRecord));
+    let hasFiles = false;
+    const stateWithFileRefs = filesIncluded ? mapDraftFiles(state, (value) => {
+      if (!(value instanceof File)) return value;
+      hasFiles = true;
+      return { __peasUploadFileRef: fileId(value) };
+    }) : undefined;
+    // The latest order can survive a reload using bytes from an earlier IndexedDB write.
+    window.localStorage.setItem(localStorageKey(id), JSON.stringify({
+      ...fallbackRecord,
+      stateWithFileRefs: hasFiles ? stateWithFileRefs : undefined,
+    }));
     fallbackSaved = true;
   } catch {
     // IndexedDB may still preserve the complete draft, including File objects.
@@ -76,11 +133,13 @@ export async function saveUploadDraft<T>(id: string, state: T, metadataOnlyState
     await writeIndexedDbDraft({ ...fullRecord, state: await persistFiles(state) }, generation);
     return { savedAt, filesIncluded };
   } catch {
-    try {
-      await writeIndexedDbDraft(fallbackRecord, generation);
-      fallbackSaved = true;
-    } catch {
-      // Report the failure below only when neither storage mechanism worked.
+    if (!fallbackSaved) {
+      try {
+        await writeIndexedDbDraft(fallbackRecord, generation);
+        fallbackSaved = true;
+      } catch {
+        // Report the failure below only when neither storage mechanism worked.
+      }
     }
   }
 
@@ -127,7 +186,7 @@ function isDraftRecord<T>(value: unknown, id: string): value is UploadDraftRecor
     && typeof record.state === "object";
 }
 
-async function readIndexedDbDraft<T>(id: string): Promise<unknown> {
+async function readIndexedDbDraft(id: string): Promise<unknown> {
   const database = await openDatabase();
   try {
     return await new Promise<unknown>((resolve, reject) => {
@@ -182,7 +241,7 @@ async function persistFiles(value: unknown): Promise<unknown> {
   if (value instanceof File) {
     let bytes = fileBytes.get(value);
     if (!bytes) {
-      bytes = value.arrayBuffer().then((buffer) => ({ __peasUploadFile: 1, name: value.name, type: value.type, lastModified: value.lastModified, bytes: buffer }))
+      bytes = value.arrayBuffer().then((buffer) => ({ __peasUploadFile: 1, id: fileId(value), name: value.name, type: value.type, lastModified: value.lastModified, bytes: buffer }))
         .catch((error) => { fileBytes.delete(value); throw error; });
       fileBytes.set(value, bytes);
     }
@@ -198,17 +257,21 @@ export function prepareUploadDraftFiles(state: unknown) {
   void persistFiles(state).catch(() => undefined);
 }
 
-function restoreFiles(value: unknown): unknown {
-  if (value instanceof File) return value;
-  if (Array.isArray(value)) return value.map(restoreFiles);
+function mapDraftFiles(value: unknown, map: (value: object) => unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => mapDraftFiles(item, map));
   if (value && typeof value === "object") {
-    const file = value as Record<string, unknown>;
-    if (file.__peasUploadFile === 1 && file.bytes instanceof ArrayBuffer && typeof file.name === "string" && typeof file.type === "string" && typeof file.lastModified === "number") {
-      return new File([file.bytes], file.name, { type: file.type, lastModified: file.lastModified });
-    }
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, restoreFiles(item)]));
+    const mapped = map(value);
+    if (mapped !== value || value instanceof File) return mapped;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, mapDraftFiles(item, map)]));
   }
   return value;
+}
+
+function unpackFile(value: object) {
+  const file = value as Record<string, unknown>;
+  if (file.__peasUploadFile === 1 && file.bytes instanceof ArrayBuffer && typeof file.name === "string" && typeof file.type === "string" && typeof file.lastModified === "number") {
+    return new File([file.bytes], file.name, { type: file.type, lastModified: file.lastModified });
+  }
 }
 
 export interface AbstractReviewDraft {

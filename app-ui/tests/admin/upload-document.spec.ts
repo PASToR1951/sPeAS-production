@@ -76,7 +76,7 @@ test.describe("guided upload workflow", () => {
     await page.locator("#single-topic-search").press("Enter");
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByRole("button", {name:/Select and review files/}).click();
-    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
     await expect(page.getByRole("group", { name: "Abstract method" })).toHaveCount(0);
     let fileUploadRequests = 0;
     page.on("request", (request) => {
@@ -89,10 +89,10 @@ test.describe("guided upload workflow", () => {
     await advanceSingleReview(page);
     await expect(page.getByRole("heading", { name: "Review your document" })).toBeVisible();
     await expect(page.locator(".peas-upload-review").getByText("community-health.docx", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload for review" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save privately for review" })).toBeVisible();
 
     const documentRequest = page.waitForRequest((request) => request.url().includes("/api/documents") && request.method() === "POST");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     const documentPayload = (await documentRequest).postDataJSON();
     expect(fileUploadRequests).toBe(1);
     expect(documentPayload.publication_date).toBe("2026-08-01");
@@ -111,7 +111,7 @@ test.describe("guided upload workflow", () => {
 
     await page.reload();
     await waitForWorkspace(page);
-    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
     await expect(page.locator(".peas-upload-draft-status")).toHaveCount(0);
   });
 
@@ -144,14 +144,13 @@ test.describe("guided upload workflow", () => {
     await expect(order.getByRole("listitem").first()).toContainText("appendix.rtf");
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
-    await page.getByRole("button", { name: "Collapse upload checklist", exact: true }).click();
     await page.screenshot({ path: `output/document-stitching-${test.info().project.name}.png`, fullPage: true });
     await prepareVisiblePdfs(page);
     await advanceSingleReview(page);
     await expect(page.locator(".peas-upload-review")).toContainText("1. appendix.rtf → 2. chapter.docx (one stitched PDF)");
     expect(uploadCount).toBe(1);
     const record = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/documents" && request.method() === "POST");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     const payload = (await record).postDataJSON();
     expect(uploadCount).toBe(1);
     expect(multipart.indexOf('filename="appendix.rtf"')).toBeGreaterThan(-1);
@@ -192,7 +191,7 @@ test.describe("guided upload workflow", () => {
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.locator(".peas-upload-review")).toContainText("foreword-part.txt");
     await expect(page.locator(".peas-upload-review")).toContainText("study-part.docx");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     await expect.poll(() => requests.length).toBe(2);
     expect(requests[0]).toContain('filename="foreword.pdf"');
     expect(requests[0]).toContain('filename="foreword-part.txt"');
@@ -242,7 +241,7 @@ test.describe("guided upload workflow", () => {
     });
 
     await prepareSingleDocument(page, "Extraction fixture");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
     await expect(page.locator(".peas-upload-draft-status")).toContainText("This upload is protected");
     expect(documentCreates).toBe(1);
@@ -284,7 +283,7 @@ test.describe("guided upload workflow", () => {
       return route.fulfill({ json: { status: "queued" } });
     });
     await prepareSingleDocument(page, "Failed extraction fixture");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     await expect(page.getByText("The local abstract extraction engine is unavailable.", { exact: false }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Save for review and start another upload" })).toBeEnabled();
     await page.getByRole("button", { name: "Retry extraction", exact: true }).click();
@@ -295,8 +294,8 @@ test.describe("guided upload workflow", () => {
     await page.getByRole("button", { name: "Save for review and start another upload" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath("extraction-retry-ready.png") });
     await page.getByRole("button", { name: "Save for review and start another upload" }).click();
-    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
-    await expect(page.getByRole("tab", { name: /Compiled publication/ })).toBeEnabled();
+    await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
+    await expect(page.getByText("Journal issue upload", { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("next-upload-ready.png") });
     expect(retried).toBe(true);
     expect(uploads).toBe(1);
@@ -324,7 +323,7 @@ test.describe("guided upload workflow", () => {
     await page.route("**/api/documents/42/review", (route) => route.fulfill({ json: { document: { id: 42, review_status: "approved", is_public: true } } }));
 
     await prepareSingleDocument(page, "Slow extraction fixture");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
     await expect(page.getByText("Verifying PDF", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Enter manually instead" })).toHaveCount(0);
@@ -359,7 +358,7 @@ test.describe("guided upload workflow", () => {
 
     await prepareCompiledPublication(page);
     const compiledRequest = page.waitForRequest((request) => request.url().endsWith("/api/compiled-documents") && request.method() === "POST");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     const compiledPayload = (await compiledRequest).postDataJSON();
     expect(compiledPayload.compiledDoc).toMatchObject({
       review_status: "pending_review",
@@ -391,28 +390,26 @@ test.describe("guided upload workflow", () => {
         attemptCount: 3, errorCode: status === "failed" ? "ABSTRACT_DEPENDENCY_UNAVAILABLE" : null, updatedAt: "2026-08-13T00:00:00Z",
       }] } }));
       await prepareSingleDocument(page, "Saved review fixture");
-      await page.getByRole("button", { name: "Upload for review" }).click();
+      await page.getByRole("button", { name: "Save privately for review" }).click();
       if (status === "failed") {
         await expect(page.locator(".peas-upload-progress-status summary")).toContainText("Extraction failed");
         await page.getByLabel("Manual abstract").fill("Keep this unsaved abstract text.");
         await page.setViewportSize({ width: 1265, height: 850 });
         await page.screenshot({ path: testInfo.outputPath("failed-extraction-desktop.png"), fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 400, height: 850 });
-        const backdrop = page.getByRole("button", { name: "Close upload checklist" });
-        if (await backdrop.isVisible()) await page.getByRole("button", { name: "Collapse upload checklist" }).click();
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         await expect.poll(() => page.getByRole("button", { name: "Save for review and start another upload" }).evaluate((button) => button.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
         await page.screenshot({ path: testInfo.outputPath("failed-extraction-mobile.png"), fullPage: true, animations: "disabled" });
       }
       await page.getByRole("button", { name: "Save for review and start another upload" }).click();
-      await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
-      await expect(page.getByRole("tab", { name: /Compiled publication/ })).toBeEnabled();
+      await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
+      await expect(page.getByText("Journal issue upload", { exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Resume review in Documents" })).toBeVisible();
       const draft = await page.evaluate(() => JSON.parse(localStorage.getItem("peas-upload-recovery:admin:admin-01:abstract:document:42") || "null"));
       if (status === "failed") expect(draft.state.drafts["document:42"]).toBe("Keep this unsaved abstract text.");
       await page.reload();
       await waitForWorkspace(page);
-      await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toHaveCount(0);
     });
   }
@@ -420,15 +417,15 @@ test.describe("guided upload workflow", () => {
   test("reloading a saved job offers recovery without locking the next upload", async ({ page }) => {
     await page.route("**/api/admin/abstract-reviews?record_type=document&record_id=42", (route) => route.fulfill({ json: { items: [] } }));
     await prepareSingleDocument(page, "Recovered review fixture");
-    await page.getByRole("button", { name: "Upload for review" }).click();
+    await page.getByRole("button", { name: "Save privately for review" }).click();
     await expect(page.getByRole("heading", { name: "Confirm extracted abstracts" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("peas-upload-recovery:admin:admin-01") || "null")?.state?.extractionSession?.documentId)).toBe(42);
     page.once("dialog", (dialog) => void dialog.accept());
     await page.reload();
     await waitForWorkspace(page);
     await expect(page.getByRole("link", { name: "Resume review in Documents" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
-    await expect(page.getByRole("tab", { name: /Compiled publication/ })).toBeEnabled();
+    await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
+    await expect(page.getByText("Journal issue upload", { exact: true })).toBeVisible();
   });
 
   test("author dialogs repeatedly dismiss with Cancel, Close and Escape", async ({ page }) => {
@@ -496,13 +493,12 @@ test.describe("guided upload workflow", () => {
     await page.locator("#single-abstract").fill("A valid manually entered abstract.");
     await page.getByRole("button", {name:/Select and review files/}).click();
     await page.getByRole("button",{name:"Remove abstract-fixture.pdf",exact:true}).click();
-    await expect(page.getByRole("heading", { name: "Upload document", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose your files", level: 2 })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
     await page.getByLabel("Document file", { exact: true }).setInputFiles({ name: "chapter.exe", mimeType: "application/octet-stream", buffer: Buffer.from("not a PDF") });
-    await expect(page.getByText("Rejected: chapter.exe", { exact: true })).toBeVisible();
-    await expect(page.getByText("Choose a supported document file.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("chapter.exe. Choose a supported document format.");
     await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
-    await page.getByRole("button", { name: "Remove chapter.exe", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove chapter.exe" })).toHaveCount(0);
     await page.getByLabel("Document file", { exact: true }).setInputFiles({ name: "valid.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
     await prepareVisiblePdfs(page);
     await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
@@ -604,7 +600,7 @@ test.describe("guided upload workflow", () => {
   test("compiled publications expose conditional fields and study status", async ({ page }) => {
     await page.goto("/admin/Components/upload_document.html");
     await waitForWorkspace(page);
-    await page.getByRole("tab", { name: /Compiled publication/ }).click();
+    await openGuidedIssue(page);
     await page.getByRole("combobox", { name: "Compiled document category" }).click();
     await page.getByRole("option", { name: "Synergy" }).click();
     await expect(page.getByRole("combobox", { name: "Synergy department" })).toBeVisible();
@@ -670,83 +666,46 @@ test.describe("guided upload workflow", () => {
     await prepareVisiblePdfs(page);
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Review your publication" })).toBeVisible();
-    await expect(page.getByRole("definition").filter({ hasText: "1 study with metadata entered" })).toBeVisible();
+    await expect(page.locator(".peas-upload-review__row").filter({ hasText: "Study authors" })).toContainText("Student research study");
     await expect(page.locator(".peas-upload-review__row").filter({ has: page.getByText("Studies", { exact: true }) })).toContainText("1 PDF prepared");
     await expect(page.locator(".peas-upload-review__row").filter({ hasText: "Cover page mapping" })).toContainText("Front: page 1 · Back: page 2");
   });
 
-  test("upload checklist keeps text stable while expanding as a side menu", async ({ page }) => {
-    await page.setViewportSize({ width: 1152, height: 900 });
+  test("file selection is visible on entry and alternate tasks are discoverable", async ({ page }) => {
     await page.goto("/admin/Components/upload_document.html");
     await waitForWorkspace(page);
+    await expect(page.getByRole("heading", { name: "Upload a paper" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Upload a journal issue" })).toBeHidden();
+    await openGuidedIssue(page);
+    await expect(page.locator("#compiled-start-year")).toBeVisible();
+    await page.getByRole("button", { name: "Back to paper upload" }).click();
+    await expect(page.getByLabel("Document file", { exact: true })).toBeEnabled();
+  });
 
-    const shell = page.locator(".peas-upload-shell");
-    const checklist = page.getByRole("complementary", { name: "Upload checklist" });
-    await expect(shell).toHaveClass(/is-checklist-expanded/);
-    await expect(checklist.getByText("Document details", { exact: true })).toBeVisible();
-
-    const mainBox = await page.locator(".peas-upload-main").boundingBox();
-    const checklistBox = await checklist.boundingBox();
-    expect(mainBox).not.toBeNull();
-    expect(checklistBox).not.toBeNull();
-    expect(checklistBox!.x).toBeGreaterThan(mainBox!.x);
-
-    await page.getByRole("button", { name: "Collapse upload checklist" }).click();
-    await expect(shell).toHaveClass(/is-checklist-collapsed/);
-    await expect(checklist.locator("#upload-checklist-content")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toHaveAttribute("aria-expanded", "false");
-
-    await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    await shell.evaluate(async (element) => {
-      await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => {})));
-    });
-    // Capture from the first frame; locator actionability would otherwise wait
-    // for movement to stop and miss the intermediate wrapping regression.
-    const frames = await checklist.evaluate(async (element) => {
-      const heading = element.querySelector<HTMLElement>(".peas-upload-checklist__header-copy")!;
-      const content = element.querySelector<HTMLElement>(".peas-upload-checklist__content")!;
-      element.querySelector<HTMLButtonElement>(".peas-upload-checklist__toggle")!.click();
-      const frames: { headingWidth: number; headingHeight: number; contentWidth: number; contentHeight: number; textFits: boolean; toggleFits: boolean }[] = [];
-      const started = performance.now();
-      do {
-        await new Promise(requestAnimationFrame);
-        const h = heading.getBoundingClientRect();
-        const c = content.getBoundingClientRect();
-        const panel = element.getBoundingClientRect();
-        const toggle = element.querySelector<HTMLButtonElement>(".peas-upload-checklist__toggle")!.getBoundingClientRect();
-        frames.push({
-          headingWidth: h.width, headingHeight: h.height,
-          contentWidth: c.width, contentHeight: c.height,
-          textFits: Number(getComputedStyle(content).opacity) < 0.01 || (c.left >= panel.left && c.right <= panel.right),
-          toggleFits: toggle.left >= panel.left && toggle.right <= panel.right,
-        });
-      } while (performance.now() - started < 400);
-      return frames;
-    });
-    for (const dimension of ["headingWidth", "headingHeight", "contentWidth", "contentHeight"] as const) {
-      const values = frames.map((frame) => frame[dimension]);
-      expect(Math.max(...values) - Math.min(...values), `${dimension} changes during expansion`).toBeLessThanOrEqual(1);
-    }
-    expect(frames.every((frame) => frame.textFits)).toBe(true);
-    expect(frames.every((frame) => frame.toggleFits)).toBe(true);
-    await expect(shell).toHaveClass(/is-checklist-expanded/);
-    await expect(checklist.getByText("Document details", { exact: true })).toBeVisible();
-
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.getByRole("button", { name: "Collapse upload checklist" }).click();
-    await page.getByRole("button", { name: "Expand upload checklist" }).click();
-    expect(await shell.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(0);
-    await expect(checklist.getByText("Document details", { exact: true })).toBeVisible();
+  test("PDF-only upload explains how to use a Word source and keeps accepted files", async ({ page }) => {
+    await page.route("**/api/content/upload/capabilities", route => route.fulfill({
+      json: { uploadReview: true, stitching: true, nonPdfConversion: false },
+    }));
+    await page.goto("/admin/Components/upload_document.html");
+    const input = page.getByLabel("Document file", { exact: true });
+    await expect(input).toHaveAttribute("accept", ".pdf,application/pdf");
+    await expect(page.getByText(/PDF. Non-PDF conversion is unavailable/)).toBeVisible();
+    await input.setInputFiles([
+      { name: "paper.pdf", mimeType: "application/pdf", buffer: createPdf(1) },
+      { name: "appendix.docx", mimeType: "application/octet-stream", buffer: Buffer.from("fixture") },
+    ]);
+    await expect(page.getByRole("alert")).toContainText("appendix.docx");
+    await expect(page.getByRole("alert")).toContainText("Export the source as a PDF");
+    const order = page.getByRole("list", { name: "Document file reading order" });
+    await expect(order.getByRole("listitem")).toHaveCount(1);
+    await expect(order).toContainText("paper.pdf");
   });
 
   test("mobile upload page has no critical accessibility issues or overflow", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/admin/Components/upload_document.html");
-    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toBeVisible();
-    await page.getByRole("button", { name: "Expand upload checklist" }).click();
-    await expect(page.getByRole("button", { name: "Close upload checklist" })).toBeVisible();
-    await page.getByRole("button", { name: "Close upload checklist" }).click({ position: { x: 4, y: 4 } });
-    await expect(page.getByRole("button", { name: "Expand upload checklist" })).toBeVisible();
+    await waitForWorkspace(page);
+    await expect(page.locator(".peas-file-dropzone").first()).toBeInViewport();
     await page.addScriptTag({ content: axeSource });
     const critical = await page.evaluate(async () => (await (window as any).axe.run(document)).violations.filter((item: any) => item.impact === "critical"));
     expect(critical).toEqual([]);
@@ -786,10 +745,15 @@ async function prepareSingleDocument(page: Page, title: string) {
   await expect(page.getByRole("heading", { name: "Review your document" })).toBeVisible();
 }
 
+async function openGuidedIssue(page: Page) {
+  await page.getByText("Journal issue upload", { exact: true }).click();
+  await page.getByRole("button", { name: "Upload a journal issue", exact: true }).click();
+}
+
 async function prepareCompiledPublication(page: Page) {
   await page.goto("/admin/Components/upload_document.html");
   await waitForWorkspace(page);
-  await page.getByRole("tab", { name: /Compiled publication/ }).click();
+  await openGuidedIssue(page);
   await page.locator("#compiled-start-year").fill("2025");
   await page.locator("#compiled-end-year").fill("2026");
   await page.locator("#compiled-volume").fill("1");
@@ -827,7 +791,7 @@ async function mockUploadApis(page: Page, reviewStatus: "approved" | "pending_re
     mockJobs.set(page,new Map());
   await page.route("**/api/content/upload/jobs",route=>route.fulfill({json:[...mockJobs.get(page)!.values()]}));
   await page.route("**/api/content/upload/jobs/**",route=>{const u=new URL(route.request().url());const id=u.pathname.split("/")[5];const job=mockJobs.get(page)!.get(id);if(u.pathname.includes("/assets/"))return route.fulfill({contentType:"application/pdf",body:createPdf(2)});if(u.pathname.endsWith("/review")&&job){job.review=route.request().postDataJSON();return route.fulfill({json:job});}return job?route.fulfill({json:job}):route.fulfill({status:404,json:{error:"Not found"}});});
-  await page.route("**/api/content/upload/capabilities", (route) => route.fulfill({ json: { uploadReview:true, stitching: true, maxFiles: 20, maxBytes: 100_000_000 } }));
+  await page.route("**/api/content/upload/capabilities", (route) => route.fulfill({ json: { uploadReview:true, stitching: true, nonPdfConversion: true, maxFiles: 20, maxBytes: 100_000_000 } }));
   await page.route("**/api/admin/abstract-reviews/diagnostics", (route) => route.fulfill({ json: { workerAvailable: true, extractionReady: true, errorCode: null, checkedAt: new Date().toISOString() } }));
   await page.route("**/api/authors/all*", (route) => route.fulfill({ json: {
     count: 2,

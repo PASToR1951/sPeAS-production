@@ -10,8 +10,8 @@ test("A05 unmocked multi-file preparation, review, private commit and explicit p
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/admin/Components/upload_document.html");
-  await page.getByRole("button", { name: "Prepare one paper", exact: true })
-    .click();
+  await page.getByText("Paper tools", { exact: true }).click();
+  await page.getByRole("button", { name: "Open advanced paper preparation", exact: true }).click();
   await page.getByLabel("Choose multiple files", { exact: true }).setInputFiles(
     ["front.pdf", "body.pdf", "appendix.pdf"].map((name) =>
       path.join(artifacts!, name)
@@ -28,12 +28,6 @@ test("A05 unmocked multi-file preparation, review, private commit and explicit p
   );
   await page.waitForTimeout(250);
   await page.reload();
-  await page.getByRole("button", { name: "Prepare one paper", exact: true })
-    .click();
-  await page.getByRole("button", {
-    name: "Resume last preparation workspace",
-    exact: true,
-  }).click();
   await expect(page.getByLabel("Paper title", { exact: true })).toHaveValue(
     "Synthetic multiple-file thesis",
   );
@@ -180,6 +174,7 @@ test("A05 unmocked multi-file preparation, review, private commit and explicit p
       .status(),
   ).toBe(200);
   await anonymous.close();
+  await page.getByText("Workspace tools", { exact: true }).click();
   await page.getByRole("button", { name: "Create source archive", exact: true })
     .click();
   await expect(page.getByRole("link", { name: "Download source ZIP" }))
@@ -193,8 +188,8 @@ test("A05 unmocked multi-file preparation, review, private commit and explicit p
 
 test("A01/A02/A03 workspace layouts at 320, 360, 736 and 1024 px with light and dark surface tokens", async ({ page }) => {
   await page.goto("/admin/Components/upload_document.html");
-  await page.getByRole("button", { name: "Open batch workspace", exact: true })
-    .click();
+  await page.getByText("Journal issue or batch", { exact: true }).click();
+  await page.getByRole("button", { name: "Import a batch", exact: true }).click();
   await page.addScriptTag({ content: axeSource });
   for (const theme of ["light", "dark"]) {
     for (const width of [320, 360, 736, 1024]) {

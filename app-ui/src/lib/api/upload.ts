@@ -3,6 +3,7 @@ import type { DocumentAuthorReference, DocumentAuthorSelection } from "../author
 import type { UploadCompiledDocumentPayload, UploadSingleDocumentPayload } from "./types";
 import type { DocumentClassification } from "./types";
 import type { UploadJob } from "../../../../shared/uploadReview";
+import { documentExtension } from "../../../../shared/documentFormats";
 
 export interface UploadedFileResult {
   uploadJobId?: string;
@@ -64,16 +65,19 @@ export function uploadDocumentFile(formData: FormData) {
   });
 }
 
+export function fetchUploadCapabilities() {
+  return apiFetch<{ stitching?: boolean; uploadReview?: boolean; nonPdfConversion?: boolean }>("/api/content/upload/capabilities", { cache: "no-store" });
+}
+
+export const GUIDED_PDF_WORKAROUND = "Non-PDF conversion is unavailable for guided upload. Export the source as a PDF and attach that PDF.";
+
 export async function uploadFile(file: File | File[], options: { storagePath: string; documentType: string; category?: string; isForeword?: boolean; isCover?: boolean; reviewContext?: string }, onProgress?: (progress: UploadTransferProgress) => void) {
   const files = Array.isArray(file) ? file : [file];
-  {
-    try {
-      const capabilities = await apiFetch<{ stitching?: boolean; uploadReview?: boolean }>("/api/content/upload/capabilities", { cache: "no-store" });
-      if (!capabilities.uploadReview || files.length>1&&!capabilities.stitching) throw new Error("Preparation is unavailable.");
-    } catch {
-      throw new Error(`${files.length>1?"Document stitching":"Converted-PDF review"} is temporarily unavailable. Your selected files are preserved; try again after the service update.`);
-    }
+  const capabilities = await fetchUploadCapabilities().catch(() => null);
+  if (!capabilities?.uploadReview || files.length > 1 && !capabilities.stitching) {
+    throw new Error(`${files.length > 1 ? "Document stitching" : "Converted-PDF review"} is temporarily unavailable. Your selected files are preserved; try again after the service update.`);
   }
+  if (!capabilities.nonPdfConversion && files.some((source) => documentExtension(source.name) !== "pdf")) throw new Error(GUIDED_PDF_WORKAROUND);
   const totalBytes = files.reduce((total, source) => total + source.size, 0);
   const formData = new FormData();
   for (const source of files) formData.append("file", source);

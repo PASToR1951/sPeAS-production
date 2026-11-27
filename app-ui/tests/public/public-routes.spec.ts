@@ -1147,6 +1147,31 @@ test("repository search presents focused filters and scannable results", async (
   expect(critical).toEqual([]);
 });
 
+test("repository search highlights literal matches across result fields", async ({ page }) => {
+  await page.route("**/api/documents?*", (route) => route.fulfill({ json: {
+    documents: [{
+      id: 201,
+      title: "C++ compared with C",
+      document_type: "CONFLUENCE",
+      parent_issue: { id: "202", label: "C++ research issue" },
+      description: "Using C++ and c++ in classroom research.",
+      authors: [{ full_name: "C++ Research Group" }],
+    }],
+    totalCount: 1,
+    totalPages: 1,
+    currentPage: 1,
+  } }));
+
+  await page.goto("/pages/searchResultsPage.html?q=c%2B%2B");
+  const card = page.getByRole("link", { name: "View paper: C++ compared with C" });
+  await expect(card.locator("mark")).toHaveText(["C++", "C++", "C++", "c++", "C++"]);
+  await expect(card.getByRole("heading")).toHaveText("C++ compared with C");
+
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(card).toBeVisible();
+  await expect(card.locator("mark")).toHaveCount(0);
+});
+
 test("repository search reports represented public authors", async ({ page }) => {
   await page.route("**/api/auth/get-session", (route) => route.fulfill({
     status: 200,

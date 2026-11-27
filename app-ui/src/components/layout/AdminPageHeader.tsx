@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 interface AdminPageHeaderProps {
   eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   actions?: ReactNode;
   titleId?: string;
 }
@@ -18,7 +18,7 @@ export function AdminPageHeader({
     <header className="peas-admin-page-header">
       <div>
         <h1 id={titleId}>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
       {actions ? <div className="peas-admin-page-header__actions">{actions}</div> : null}
     </header>

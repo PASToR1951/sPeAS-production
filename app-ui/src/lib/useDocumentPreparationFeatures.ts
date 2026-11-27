@@ -4,6 +4,7 @@ export function useDocumentPreparationFeatures() {
   const [features, setFeatures] = useState({
     imports: false,
     volumeReader: false,
+    loaded: false,
   });
   useEffect(() => {
     let active = true;
@@ -13,10 +14,11 @@ export function useDocumentPreparationFeatures() {
           setFeatures({
             imports: data.imports === true,
             volumeReader: data.volumeReader === true,
+            loaded: true,
           });
         }
       },
-    ).catch(() => undefined);
+    ).catch(() => { if (active) setFeatures((current) => ({ ...current, loaded: true })); });
     return () => {
       active = false;
     };

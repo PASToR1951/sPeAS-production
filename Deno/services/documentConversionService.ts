@@ -6,6 +6,28 @@ export class DocumentConversionError extends Error {
   constructor(message: string, public status = 422) { super(message); }
 }
 
+const converter = "soffice";
+let converterCheck: { expiresAt: number; ready: Promise<boolean> } | undefined;
+
+export function guidedConversionAvailable(): Promise<boolean> {
+  const now = Date.now();
+  if (!converterCheck || converterCheck.expiresAt <= now) {
+    const ready = (async () => {
+      try {
+        const result = await new Deno.Command(converter, {
+          args: ["--version"], stdin: "null", stdout: "null", stderr: "null",
+          signal: AbortSignal.timeout(3_000),
+        }).output();
+        return result.success;
+      } catch {
+        return false;
+      }
+    })();
+    converterCheck = { expiresAt: now + 30_000, ready };
+  }
+  return converterCheck.ready;
+}
+
 export function validateDocumentPdf(bytes: Uint8Array): void {
   if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") {
     throw new DocumentConversionError("The document could not be converted to a valid PDF.");
@@ -31,12 +53,12 @@ export async function convertDocumentToPdf(name: string, bytes: Uint8Array): Pro
     await Deno.writeFile(source, bytes);
     let child;
     try {
-      child = new Deno.Command("soffice", {
+      child = new Deno.Command(converter, {
         args: ["--headless", "--nologo", "--nodefault", "--norestore", `-env:UserInstallation=${pathToFileURL(join(directory, "profile")).href}`, "--convert-to", "pdf", "--outdir", outputDirectory, source],
         stdin: "null", stdout: "null", stderr: "null",
       }).spawn();
     } catch {
-      throw new DocumentConversionError("Document conversion is unavailable. Install LibreOffice and make soffice available on PATH.", 503);
+      throw new DocumentConversionError("Document conversion is unavailable. Export the source as a PDF and upload that PDF.", 503);
     }
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch { /* Already exited. */ } }, 120_000);

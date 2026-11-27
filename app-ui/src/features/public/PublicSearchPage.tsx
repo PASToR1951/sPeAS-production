@@ -308,6 +308,7 @@ export function PublicSearchPage() {
                     session={session}
                     showDescription
                     variant="search"
+                    searchQuery={submittedQuery}
                     key={`${document.id}-${document.isCompiled}`}
                   />
                 ))}

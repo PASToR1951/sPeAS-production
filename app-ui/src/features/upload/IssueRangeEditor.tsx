@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ImportBatch } from "../../../../shared/imports";
 import { emptyImportMetadata } from "../../../../shared/imports";
 import {
@@ -22,6 +22,8 @@ export function IssueRangeEditor({ batch, busy, run, onChanged }: {
     [last, setLast] = useState(1),
     [preview, setPreview] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [rangeEdited, setRangeEdited] = useState(false);
+  const rangeErrorId = useId();
   if (!main) {
     return (
       <p>Save collection details with a main issue PDF to add paper ranges.</p>
@@ -39,7 +41,9 @@ export function IssueRangeEditor({ batch, busy, run, onChanged }: {
     main.pageCount ?? 0,
     ranges,
     batch.collection?.pageSections ?? [],
+    { first, last },
   );
+  const rangeError = (rangeEdited || title.trim()) && accounting.proposedError;
   return (
     <section
       className="peas-preparation-surface"
@@ -116,7 +120,9 @@ export function IssueRangeEditor({ batch, busy, run, onChanged }: {
               min={1}
               max={main.pageCount ?? undefined}
               value={first}
-              onChange={(e) => setFirst(Number(e.target.value))}
+              aria-invalid={rangeError ? true : undefined}
+              aria-describedby={rangeErrorId}
+              onChange={(e) => { setRangeEdited(true); setFirst(Number(e.target.value)); }}
             />
           </label>
           <label className="peas-preparation-field">
@@ -125,17 +131,15 @@ export function IssueRangeEditor({ batch, busy, run, onChanged }: {
               min={first}
               max={main.pageCount ?? undefined}
               value={last}
-              onChange={(e) => setLast(Number(e.target.value))}
+              aria-invalid={rangeError ? true : undefined}
+              aria-describedby={rangeErrorId}
+              onChange={(e) => { setRangeEdited(true); setLast(Number(e.target.value)); }}
             />
           </label>
         </div>
+        <p className="peas-field__error" id={rangeErrorId} aria-live="polite" aria-atomic="true">{rangeError}</p>
         <Button
-          disabled={!title.trim() ||
-            validateIssueRanges(main.pageCount ?? 0, [...ranges, {
-                id: "new",
-                first,
-                last,
-              }], batch.collection?.pageSections ?? []).errors.length > 0}
+          disabled={!title.trim() || accounting.errors.length > 0 || Boolean(accounting.proposedError)}
           onClick={() =>
             void run(async () => {
               // Stable draft/range identity makes retries after a lost response safe.
@@ -170,6 +174,7 @@ export function IssueRangeEditor({ batch, busy, run, onChanged }: {
                 });
               }
               setTitle("");
+              setRangeEdited(false);
               setFirst(last + 1);
               setLast(last + 1);
               await onChanged();

@@ -1,6 +1,6 @@
-import { DOCUMENT_ACCEPT, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_FILES, isSupportedDocument } from "../../../../shared/documentFormats";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, FilePlus2, ListPlus, Plus, RefreshCw, Save, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
+import { DOCUMENT_ACCEPT, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_FILES, documentExtension, isSupportedDocument } from "../../../../shared/documentFormats";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, Plus, RefreshCw, Save, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
 import { getDocument as getPdfDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { ApiError, apiFetch, getErrorMessage } from "../../lib/api/http";
@@ -16,6 +16,8 @@ import {
   linkDocumentsToCompilation,
   searchTopics,
   createTopic,
+  fetchUploadCapabilities,
+  GUIDED_PDF_WORKAROUND,
   uploadFile,
   type UploadTransferProgress,
   type UploadedFileResult,
@@ -30,7 +32,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import type { ImportMode } from "../../../../shared/imports";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { PeasIconButton } from "../../components/ui/peas-button";
@@ -145,6 +147,7 @@ interface ExtractionSession {
 interface UploadDraftState {
   mode: UploadMode;
   step: UploadStep;
+  stepsByMode?: Record<UploadMode, UploadStep>;
   singleForm: SingleFormState;
   compiledForm: CompiledFormState;
   extractionSession: ExtractionSession | null;
@@ -194,15 +197,20 @@ const FINAL_UPLOAD_STEP: UploadStep = 5;
 
 export function UploadDocumentPage() {
   const preparationFeatures = useDocumentPreparationFeatures();
-  const [preparationMode, setPreparationMode] = useState<"single" | "compiled" | "batch" | null>(() => {
-    const params = new URLSearchParams(location.search);
-    const mode = params.get("preparation");
-    return mode === "single" || mode === "compiled" || mode === "batch" ? mode : params.has("import_batch") ? "compiled" : null;
-  });
+  const [entry] = useState(() => new URLSearchParams(location.search));
+  const requestedMode = entry.get("preparation");
+  const initialPreparation: ImportMode | null = requestedMode === "single" || requestedMode === "compiled" || requestedMode === "batch" ? requestedMode : entry.has("import_batch") ? "compiled" : null;
+  const [preparationMode, setPreparationMode] = useState(initialPreparation);
+  const [openedWorkspaces, setOpenedWorkspaces] = useState<ImportMode[]>(initialPreparation ? [initialPreparation] : []);
+  const batchIds = useRef<Partial<Record<ImportMode, string | null>>>(initialPreparation ? { [initialPreparation]: entry.get("import_batch") } : {});
+  const [showWorkspaceHistory, setShowWorkspaceHistory] = useState(false);
+  const [resumeError, setResumeError] = useState("");
+  const [reviewId, setReviewId] = useState(() => entry.get("upload_review"));
   const { role, userId } = useAdminIdentity();
   const isPublisher = false;
-  const [mode, setMode] = useState<UploadMode>("single");
+  const [mode, setMode] = useState<UploadMode>(entry.get("guided") === "issue" ? "compiled" : "single");
   const [step, setStep] = useState<UploadStep>(1);
+  const stepsByMode = useRef<Record<UploadMode, UploadStep>>({ single: 1, compiled: 1 });
   const [singleForm, setSingleForm] = useState<SingleFormState>(initialSingleForm);
   const [compiledForm, setCompiledForm] = useState<CompiledFormState>(initialCompiledForm);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -222,13 +230,14 @@ export function UploadDocumentPage() {
   const [publicationError, setPublicationError] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftRecovered, setDraftRecovered] = useState(false);
+  const [draftChangesMissing, setDraftChangesMissing] = useState(false);
   const [draftStatus, setDraftStatus] = useState<DraftPersistenceStatus>("loading");
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [draftFilesIncluded, setDraftFilesIncluded] = useState(true);
+  const restoredDraft = useRef<UploadDraftState | null>(null);
+  const saveSourcesImmediately = useRef(false);
   const [authors, setAuthors] = useState<AuthorRecord[]>([]);
-  const [checklistExpanded, setChecklistExpanded] = useState(() =>
-    typeof window === "undefined" || window.matchMedia("(min-width: 901px)").matches
-  );
+  const [nonPdfConversion, setNonPdfConversion] = useState<boolean | null>(null);
   const [reuseMetadata,setReuseMetadata]=useState(false);
   const nextSingleForm=()=>reuseMetadata?{...initialSingleForm,category:singleForm.category,pubMonth:singleForm.pubMonth,pubYear:singleForm.pubYear,authors:singleForm.authors,topicIds:singleForm.topicIds,topicNames:singleForm.topicNames,keywords:singleForm.keywords}:initialSingleForm;
   const [savedReview, setSavedReview] = useState<ExtractionSession | null>(null);
@@ -237,6 +246,11 @@ export function UploadDocumentPage() {
 
   useEffect(() => {
     void fetchAuthors().then(setAuthors).catch(() => setAuthors([]));
+    let active = true;
+    void fetchUploadCapabilities().catch(() => null).then((capabilities) => {
+      if (active) setNonPdfConversion(capabilities?.nonPdfConversion === true);
+    });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -250,28 +264,43 @@ export function UploadDocumentPage() {
           setDraftStatus("idle");
           return;
         }
-        if (record.state.extractionSession) {
-          const session = record.state.extractionSession;
+        let draft = record.state;
+        let migratedReview = false;
+        if (draft.extractionSession) {
+          const session = draft.extractionSession;
           const id = session.compiledDocumentId ?? session.documentId;
           if (!id) throw new Error("The saved review has no record identifier.");
-          const state = { drafts: record.state.abstractDrafts, manualEntryTargets: record.state.manualEntryTargets };
+          const state = { drafts: draft.abstractDrafts, manualEntryTargets: draft.manualEntryTargets };
           await saveUploadDraft(createAbstractDraftKey(userId, session.type === "compiled" ? "compiled" : "document", id), state, state);
           if (!active) return;
-          await deleteUploadDraft(draftKey);
           setSavedReview(session);
-          setDraftStatus("idle");
-          return;
+          draft = {
+            ...draft,
+            step: 1,
+            singleForm: session.type === "single" ? initialSingleForm : draft.singleForm,
+            compiledForm: session.type === "compiled" ? initialCompiledForm : draft.compiledForm,
+            extractionSession: null,
+            abstractDrafts: {},
+            manualEntryTargets: {},
+          };
+          migratedReview = true;
         }
-        const restoredMode = record.state.mode;
+        const explicitMode = entry.get("guided") === "issue" ? "compiled" : entry.get("guided") === "paper" ? "single" : null;
+        const restoredMode = explicitMode ?? draft.mode;
+        stepsByMode.current = { single: 1, compiled: 1, ...draft.stepsByMode, [draft.mode]: draft.step };
+        const restoredStep = stepsByMode.current[restoredMode];
         setMode(restoredMode);
-        setStep(record.state.step);
-        setSingleForm(record.state.singleForm);
-        if (record.state.step >= 4) setErrors(restoredMode === "single" ? validateSingleStep(record.state.singleForm, 4, !isPublisher) : validateCompiledStep(record.state.compiledForm, 4, !isPublisher));
-        setCompiledForm(record.state.compiledForm);
-        setExtractionSession(record.state.extractionSession);
-        setAbstractDrafts(record.state.abstractDrafts);
-        setManualEntryTargets(record.state.manualEntryTargets);
+        setStep(restoredStep);
+        setSingleForm(draft.singleForm);
+        if (restoredStep >= 4) setErrors(restoredMode === "single" ? validateSingleStep(draft.singleForm, 4, !isPublisher) : validateCompiledStep(draft.compiledForm, 4, !isPublisher));
+        setCompiledForm(draft.compiledForm);
+        setExtractionSession(draft.extractionSession);
+        setAbstractDrafts(draft.abstractDrafts);
+        setManualEntryTargets(draft.manualEntryTargets);
         setDraftRecovered(true);
+        setDraftChangesMissing(record.latestChangesMissing === true);
+        if (!migratedReview) restoredDraft.current = { ...draft, mode: restoredMode, step: restoredStep };
+        else saveSourcesImmediately.current = true;
         setDraftStatus("saved");
         setDraftSavedAt(record.savedAt);
         setDraftFilesIncluded(record.filesIncluded);
@@ -283,7 +312,7 @@ export function UploadDocumentPage() {
         if (active) setDraftReady(true);
       });
     return () => { active = false; };
-  }, [draftKey, userId]);
+  }, [draftKey, entry, userId]);
 
   useEffect(() => {
     if (!extractionSession) return;
@@ -331,46 +360,52 @@ export function UploadDocumentPage() {
   }, [extractionSession, extractionRefreshToken]);
 
   const busy = Boolean(submissionProgress) || Boolean(extractionSession);
-  const steps = mode === "single" ? singleSteps : compiledSteps;
+  const steps: readonly string[] = mode === "single" ? singleSteps : compiledSteps;
   const dirty = useMemo(() => isSingleFormDirty(singleForm) || isCompiledFormDirty(compiledForm), [compiledForm, singleForm]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!draftReady) return;
-    if (receipt) {
-      setDraftRecovered(false);
-      setDraftStatus("idle");
-      setDraftSavedAt(null);
-      void deleteUploadDraft(draftKey);
-      return;
-    }
     const hasRecoverableWork = dirty || Boolean(extractionSession) || Object.keys(abstractDrafts).length > 0;
     if (!hasRecoverableWork) {
+      setDraftRecovered(false);
+      saveSourcesImmediately.current = false;
       setDraftStatus("idle");
       setDraftSavedAt(null);
       void deleteUploadDraft(draftKey);
       return;
     }
 
+    const restored = restoredDraft.current;
+    restoredDraft.current = null;
+    if (restored && restored.singleForm === singleForm && restored.compiledForm === compiledForm && restored.mode === mode && restored.step === step) return;
+
     setDraftStatus("saving");
-    const timer = window.setTimeout(() => {
+    let active = true;
+    const save = () => {
       const state: UploadDraftState = {
         mode,
         step,
+        stepsByMode: { ...stepsByMode.current, [mode]: step },
         singleForm,
         compiledForm,
         extractionSession,
         abstractDrafts,
         manualEntryTargets,
       };
-      void saveUploadDraft(draftKey, extractionSession ? removeFilesFromDraft(state) : state, removeFilesFromDraft(state), draftFilesIncluded || (mode === "single" ? Boolean(singleForm.file) : Boolean(compiledForm.coverFile) && compiledForm.sections.every((section) => Boolean(section.file))))
+      void saveUploadDraft(draftKey, state, removeFilesFromDraft(state), draftFilesIncluded || Boolean(singleForm.file || compiledForm.coverFile || compiledForm.forewordFile || compiledForm.sections.some((section) => section.file)))
         .then((result) => {
+          if (!active) return;
           setDraftStatus("saved");
           setDraftSavedAt(result.savedAt);
           setDraftFilesIncluded(result.filesIncluded);
         })
-        .catch(() => setDraftStatus("error"));
-    }, extractionSession ? 0 : DRAFT_AUTOSAVE_DELAY_MS);
-    return () => window.clearTimeout(timer);
+        .catch(() => { if (active) setDraftStatus("error"); });
+    };
+    const immediate = saveSourcesImmediately.current || Boolean(extractionSession) || Boolean(receipt);
+    saveSourcesImmediately.current = false;
+    const timer = immediate ? undefined : window.setTimeout(save, DRAFT_AUTOSAVE_DELAY_MS);
+    if (immediate) save();
+    return () => { active = false; window.clearTimeout(timer); };
   }, [abstractDrafts, compiledForm, dirty, draftKey, draftReady, extractionSession, manualEntryTargets, mode, receipt, singleForm, step]);
 
   useEffect(() => {
@@ -393,17 +428,19 @@ export function UploadDocumentPage() {
     try {
       const state = { drafts: abstractDrafts, manualEntryTargets };
       await saveUploadDraft(createAbstractDraftKey(userId, extractionSession.type === "compiled" ? "compiled" : "document", id), state, state);
-      await deleteUploadDraft(draftKey);
       setSavedReview(extractionSession);
       setExtractionSession(null);
-      setSingleForm(nextSingleForm());
-      setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
+      if (extractionSession.type === "single") setSingleForm(nextSingleForm());
+      else setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
       setAbstractDrafts({});
       setManualEntryTargets({});
       setErrors({});
       setSubmissionError(null);
-      setStep(1);
+      stepsByMode.current[extractionSession.type] = 1;
+      setStep(stepsByMode.current.single);
       setMode("single");
+      writeUploadLocation(null, "single");
+      saveSourcesImmediately.current = true;
       setDraftRecovered(false);
       setDraftStatus("idle");
     } catch (error) {
@@ -439,19 +476,11 @@ export function UploadDocumentPage() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, receipt]);
-  const compiledTitle = useMemo(() => {
-    const category = compiledForm.category === "CONFLUENCE" ? "Confluence" : "Synergy";
-    const volume = compiledForm.volume ? ` Vol. ${compiledForm.volume}` : "";
-    const range = compiledForm.startYear || compiledForm.endYear
-      ? ` (${compiledForm.startYear || "?"}-${compiledForm.endYear || compiledForm.startYear || "?"})`
-      : "";
-    return `${category}${volume}${range}`;
-  }, [compiledForm]);
-
   function changeMode(nextMode: UploadMode) {
-    if (busy) return;
+    if (busy || nextMode === mode) return;
+    stepsByMode.current[mode] = step;
     setMode(nextMode);
-    setStep(1);
+    setStep(stepsByMode.current[nextMode]);
     setErrors({});
     setSubmissionError(null);
   }
@@ -461,12 +490,14 @@ export function UploadDocumentPage() {
     setDraftReady(false);
     setMode("single");
     setStep(1);
+    stepsByMode.current = { single: 1, compiled: 1 };
     setSingleForm(initialSingleForm);
     setCompiledForm({ ...initialCompiledForm, sections: [createResearchSection()] });
     setErrors({});
     setSubmissionError(null);
     setPendingFocusKey(null);
     setDraftRecovered(false);
+    setDraftChangesMissing(false);
     setDraftStatus("idle");
     setDraftSavedAt(null);
     setDraftFilesIncluded(true);
@@ -520,8 +551,6 @@ export function UploadDocumentPage() {
   }
 
   function beginExtraction(session: ExtractionSession) {
-    const state = removeFilesFromDraft({ mode: session.type, step: FINAL_UPLOAD_STEP, singleForm, compiledForm, extractionSession: session, abstractDrafts: {}, manualEntryTargets: {} });
-    void saveUploadDraft(draftKey, state, state).catch(() => setDraftStatus("error"));
     setExtractionSession(session);
     setExtractionItems([]);
     setAbstractDrafts({});
@@ -735,6 +764,7 @@ export function UploadDocumentPage() {
         completedFiles += 1;
       }
       setSubmissionProgress({ label: "Creating publication record…", value: weightedProgress(), stage: 2, detail: "PeAS is saving the publication years, volume, issue, department, and foreword information." });
+      const compiledTitle = buildCompiledTitle(compiledForm);
       const compiled = await createCompiledDocumentRecord({
         compiledDoc: {
           review_status: "pending_review",
@@ -827,102 +857,181 @@ export function UploadDocumentPage() {
     }
   }
 
-  const actionLabel = isPublisher
-    ? (mode === "single" ? "Submit document for review" : "Submit publication for review")
-    : "Upload for review";
+  const activeWorkspace = preparationFeatures.imports ? preparationMode : null;
+  const checkingWorkspace = Boolean(preparationMode && !preparationFeatures.loaded);
+  const workspaceUnavailable = Boolean(preparationMode && preparationFeatures.loaded && !preparationFeatures.imports);
+  const fileSaveMessage = draftStatus === "saving" ? "Saving latest changes…" : draftStatus === "saved" && draftFilesIncluded && !draftChangesMissing ? "File order saved on this device." : "";
+
+  function markSourceChange() {
+    saveSourcesImmediately.current = true;
+    setDraftChangesMissing(false);
+  }
+
+  function writeUploadLocation(workspace: ImportMode | null, guidedMode: UploadMode) {
+    const url = new URL(location.href);
+    url.searchParams.delete("preparation");
+    url.searchParams.delete("import_batch");
+    url.searchParams.delete("guided");
+    url.searchParams.delete("upload_review");
+    if (workspace) {
+      url.searchParams.set("preparation", workspace);
+      const batchId = batchIds.current[workspace];
+      if (batchId) url.searchParams.set("import_batch", batchId);
+    } else {
+      url.searchParams.set("guided", guidedMode === "compiled" ? "issue" : "paper");
+    }
+    history.replaceState(history.state, "", url);
+  }
+
+  function openWorkspace(workspace: ImportMode, showHistory = false) {
+    if (busy) return;
+    setShowWorkspaceHistory(showHistory);
+    setReviewId(null);
+    setOpenedWorkspaces((current) => current.includes(workspace) ? current : [...current, workspace]);
+    setPreparationMode(workspace);
+    writeUploadLocation(workspace, mode);
+  }
+
+  function openGuided(nextMode: UploadMode) {
+    if (busy) return;
+    changeMode(nextMode);
+    setReviewId(null);
+    setPreparationMode(null);
+    writeUploadLocation(null, nextMode);
+  }
+
+  function resumePreparedPaper(job: UploadJob) {
+    if (isSingleFormDirty(singleForm) && singleForm.uploadJobId !== job.id) {
+      setResumeError("Finish or discard the current paper draft before continuing with a different PDF.");
+      return;
+    }
+    setResumeError("");
+    openGuided("single");
+    if (singleForm.uploadJobId !== job.id) setSingleForm({ ...nextSingleForm(), uploadJobId: job.id });
+    setStep(2);
+    setErrors({});
+    setReceipt(null);
+  }
+
+  const savedDrafts = (
+    <UploadReviewQueue reviewId={reviewId} onResume={resumePreparedPaper}>
+      {resumeError ? <p role="alert">{resumeError}</p> : null}
+      {preparationFeatures.imports ? <Button type="button" variant="outline" disabled={busy} onClick={() => openWorkspace("single", true)}>Find a saved preparation workspace</Button> : null}
+    </UploadReviewQueue>
+  );
+  const fileStep = (mode === "single" && step === 1) || (mode === "compiled" && step === 4);
+  const fileStepError = fileStep ? Object.values(mode === "single" ? validateSingleStep(singleForm, step, !isPublisher) : validateCompiledStep(compiledForm, step, !isPublisher))[0] : undefined;
+  const actionHint = fileStepError && Object.values(errors).includes(fileStepError)
+    ? "Check the highlighted fields before continuing."
+    : fileStepError
+    ?? (step === FINAL_UPLOAD_STEP
+      ? "This creates a private repository record for review. Publication is a separate approval."
+      : fileStep
+        ? `Next: ${steps[step].toLowerCase()}. PDF preparation and internal review stay private.`
+        : `Next: ${steps[step].toLowerCase()}.`);
 
   return (
     <main className="peas-admin-island peas-upload-page">
       <PeasToaster />
       <AdminPageHeader
-        eyebrow="Repository workflow"
-        title="Upload Document"
-        description="Follow the steps to add one paper or build a compiled publication."
-        actions={<Badge tone={(preparationMode ?? mode) === "single" ? "green" : "gold"}>{preparationMode === "compiled" ? "Issue preparation" : preparationMode === "batch" ? "Batch preparation" : mode === "single" ? "Single" : "Compiled"}</Badge>}
+        title={activeWorkspace ? "Upload Document" : mode === "single" ? "Upload a paper" : "Guided journal issue upload"}
+        actions={!preparationFeatures.loaded ? undefined : activeWorkspace
+          ? <Button type="button" variant="outline" disabled={busy} onClick={() => openGuided(mode)}>Back to guided upload</Button>
+          : mode === "compiled"
+            ? <Button type="button" variant="outline" disabled={busy} onClick={() => openGuided("single")}>Back to paper upload</Button>
+            : <details className="peas-upload-review-queue">
+                <summary>{preparationFeatures.imports ? "Journal issue or batch" : "Journal issue upload"}</summary>
+                <div className="peas-preparation-actions">
+                  <Button type="button" variant="outline" disabled={busy} onClick={() => preparationFeatures.imports ? openWorkspace("compiled") : openGuided("compiled")}>Upload a journal issue</Button>
+                  {preparationFeatures.imports ? <Button type="button" variant="outline" disabled={busy} onClick={() => openWorkspace("batch")}>Import a batch</Button> : null}
+                </div>
+              </details>}
       />
 
-      {preparationFeatures.imports ? <section className="peas-preparation-summary"><h2>Prepare multiple source files</h2><p>Review source files and prepared PDFs before creating a repository record.</p><div className="peas-preparation-actions"><Button onClick={() => setPreparationMode("single")}>Prepare one paper</Button><Button onClick={() => setPreparationMode("compiled")}>Prepare a compiled volume</Button><Button onClick={() => setPreparationMode("batch")}>Open batch workspace</Button>{preparationMode ? <Button variant="outline" onClick={() => setPreparationMode(null)}>Return to existing upload</Button> : null}</div></section> : null}
-      {preparationMode && preparationFeatures.imports ? <ImportPreparationWorkspace key={preparationMode} initialMode={preparationMode} /> : <>
-      <label className="peas-preparation-check"><input type="checkbox" checked={reuseMetadata} onChange={e=>setReuseMetadata(e.target.checked)}/> Reuse date, category, authors and classification for the next paper</label>
-      <UploadReviewQueue onResume={job=>{setSingleForm({...nextSingleForm(),uploadJobId:job.id});setMode("single");setStep(2);setErrors({});setReceipt(null);}}/>
-      {savedReview ? <section className="peas-upload-draft-status" role="status"><p><strong>{savedReview.title}</strong> is saved privately. <a href={`/admin/Components/documents_list.html?status=pending_review&search=${encodeURIComponent(savedReview.title)}`}>Resume review in Documents</a></p></section> : null}
-      {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) ? (
-        <UploadDraftStatus
-          status={draftStatus}
-          recovered={draftRecovered}
-          savedAt={draftSavedAt}
-          filesIncluded={draftFilesIncluded}
-          disabled={busy}
-          onDiscard={() => void discardRecoveryDraft()}
-        />
-      ) : null}
-
-      <section className={`peas-upload-shell ${checklistExpanded ? "is-checklist-expanded" : "is-checklist-collapsed"}`}>
-        <div className="peas-upload-main">
-          <Tabs value={mode} onValueChange={(value) => changeMode(value as UploadMode)}>
-            <TabsList aria-label="Choose upload type" className="peas-upload-mode-tabs">
-              <TabsTrigger value="single" disabled={busy}>
-                <FilePlus2 aria-hidden="true" />
-                <span><strong>Single document</strong><small>One thesis or dissertation document</small></span>
-              </TabsTrigger>
-              <TabsTrigger value="compiled" disabled={busy}>
-                <ListPlus aria-hidden="true" />
-                <span><strong>Compiled publication</strong><small>Confluence or Synergy with studies</small></span>
-              </TabsTrigger>
-            </TabsList>
-
-            <UploadProgress mode={mode} step={step} steps={steps} busy={busy} onStepChange={editStep} />
-
-            <TabsContent value="single">
-              <form className="peas-upload-form" onSubmit={handleSingleSubmit} noValidate>
-                {receipt?.type === "single" ? (
-                  <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
-                ) : (
-                  <>
-                    <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => { prepareUploadDraftFiles(value); setDraftStatus("saving"); setSingleForm(value); }} onError={markError} />
-                    {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "single" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} diagnostics={diagnostics} onRetryExtraction={retryExtraction} onSaveForLater={() => void saveReviewAndStartAnother()} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} continueDisabled={(mode === "single" ? step === 1 : step === 4) && Object.keys(mode === "single" ? validateSingleStep(singleForm, 1, !isPublisher) : validateCompiledStep(compiledForm, 4, !isPublisher)).length > 0} onBack={goBack} onContinue={continueWorkflow} />}
-                  </>
-                )}
-              </form>
-            </TabsContent>
-
-            <TabsContent value="compiled">
-              <form className="peas-upload-form" onSubmit={handleCompiledSubmit} noValidate>
-                {receipt?.type === "compiled" ? (
-                  <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
-                ) : (
-                  <>
-                    <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => { prepareUploadDraftFiles(value); setDraftStatus("saving"); setCompiledForm(value); }} onError={markError} />
-                    {submissionError ? <SubmissionError message={submissionError} /> : null}
-                    {extractionSession?.type === "compiled" ? <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} diagnostics={diagnostics} onRetryExtraction={retryExtraction} onSaveForLater={() => void saveReviewAndStartAnother()} /> : <UploadActions step={step} busy={busy} progress={submissionProgress} label={actionLabel} continueDisabled={(mode === "single" ? step === 1 : step === 4) && Object.keys(mode === "single" ? validateSingleStep(singleForm, 1, !isPublisher) : validateCompiledStep(compiledForm, 4, !isPublisher)).length > 0} onBack={goBack} onContinue={continueWorkflow} />}
-                  </>
-                )}
-              </form>
-            </TabsContent>
-          </Tabs>
+      {preparationFeatures.imports ? openedWorkspaces.map((workspace) => (
+        <div key={workspace} hidden={activeWorkspace !== workspace}>
+          <ImportPreparationWorkspace
+            initialMode={workspace}
+            initialBatchId={batchIds.current[workspace]}
+            showSavedWorkspaces={workspace === "single" && showWorkspaceHistory}
+            onBatchIdChange={(id) => {
+              batchIds.current[workspace] = id;
+              if (workspace === activeWorkspace) writeUploadLocation(workspace, mode);
+            }}
+            onOpenGuidedIssue={() => openGuided("compiled")}
+          />
         </div>
+      )) : null}
 
-        {checklistExpanded ? <button type="button" className="peas-upload-checklist__backdrop" aria-label="Close upload checklist" onClick={() => setChecklistExpanded(false)} /> : null}
-        <UploadChecklist mode={mode} step={step} singleForm={singleForm} compiledForm={compiledForm} compiledTitle={compiledTitle} receipt={receipt?.type === mode ? receipt : null} expanded={checklistExpanded} onExpandedChange={setChecklistExpanded} />
-      </section>
-      </>}
+      {checkingWorkspace ? <p role="status">Checking preparation availability…</p> : null}
+      {!activeWorkspace && !checkingWorkspace ? <>
+        {workspaceUnavailable ? <p role="status">Preparation workspaces are unavailable. You can upload a paper here or use guided journal issue upload for a separate cover and separate study files.</p> : null}
+        {savedReview ? <section className="peas-upload-draft-status" role="status"><p><strong>{savedReview.title}</strong> is saved privately. <a href={`/admin/Components/documents_list.html?status=pending_review&search=${encodeURIComponent(savedReview.title)}`}>Resume review in Documents</a></p></section> : null}
+        {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) && !receipt ? (
+          <UploadDraftStatus status={draftStatus} recovered={draftRecovered} changesMissing={draftChangesMissing} savedAt={draftSavedAt} filesIncluded={draftFilesIncluded} disabled={busy} onDiscard={() => void discardRecoveryDraft()} />
+        ) : null}
+        {reviewId ? savedDrafts : null}
+
+        <section className="peas-upload-main">
+          {receipt?.type === mode ? (
+            <CompletionPanel receipt={receipt} isPublisher={isPublisher} onUploadAnother={() => { setReceipt(null); setStep(1); setErrors({}); setSubmissionError(null); }} />
+          ) : (
+            <>
+              <UploadProgress mode={mode} step={step} steps={steps} busy={busy} onStepChange={editStep} />
+              <form key={mode} className="peas-upload-form" onSubmit={mode === "single" ? handleSingleSubmit : handleCompiledSubmit} noValidate>
+                {mode === "single" ? (
+                  <SingleDocumentForm form={singleForm} step={step} errors={errors} busy={busy || !draftReady} fileSaveMessage={fileSaveMessage} nonPdfConversion={nonPdfConversion} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => {
+                    if (value.file !== singleForm.file || value.additionalFiles !== singleForm.additionalFiles) markSourceChange();
+                    prepareUploadDraftFiles(value);
+                    setSingleForm(value);
+                  }} onError={markError} />
+                ) : (
+                  <CompiledDocumentForm form={compiledForm} step={step} errors={errors} busy={busy || !draftReady} fileSaveMessage={fileSaveMessage} nonPdfConversion={nonPdfConversion} authors={authors} onAuthorCreated={(author) => setAuthors((current) => [...current, author])} onChange={(value) => {
+                    if (value.coverFile !== compiledForm.coverFile || value.forewordFile !== compiledForm.forewordFile || value.forewordAdditionalFiles !== compiledForm.forewordAdditionalFiles || value.sections.some((section, index) => section.file !== compiledForm.sections[index]?.file || section.additionalFiles !== compiledForm.sections[index]?.additionalFiles)) markSourceChange();
+                    prepareUploadDraftFiles(value);
+                    setCompiledForm(value);
+                  }} onError={markError} />
+                )}
+                {submissionError ? <SubmissionError message={submissionError} /> : null}
+                {extractionSession ? (
+                  <AbstractExtractionPanel session={extractionSession} items={extractionItems} drafts={abstractDrafts} manualEntryTargets={manualEntryTargets} manualFallbackAvailable={manualFallbackAvailable} pollError={extractionPollError} actionKey={abstractActionKey} publishing={publishingExtraction} publicationError={publicationError} onDraftChange={(key, value) => setAbstractDrafts((current) => ({ ...current, [key]: value }))} onManualEntry={(key) => setManualEntryTargets((current) => ({ ...current, [key]: true }))} onKeepWaiting={keepWaitingForExtraction} onConfirm={confirmAbstract} onRetryPoll={() => setExtractionRefreshToken((value) => value + 1)} onRetryPublication={retryPublication} diagnostics={diagnostics} onRetryExtraction={retryExtraction} onSaveForLater={() => void saveReviewAndStartAnother()} />
+                ) : (
+                  <UploadActions step={step} busy={busy || !draftReady} progress={submissionProgress} hint={actionHint} continueDisabled={Boolean(fileStepError)} onBack={goBack} onContinue={continueWorkflow} />
+                )}
+              </form>
+            </>
+          )}
+        </section>
+        {!receipt && !busy && mode === "single" && step === 1 ? (
+          <details className="peas-upload-review-queue">
+            <summary>Paper tools</summary>
+            <label className="peas-preparation-check"><input type="checkbox" checked={reuseMetadata} onChange={(event) => setReuseMetadata(event.target.checked)} /> Reuse date, category, authors and classification for the next paper</label>
+            {preparationFeatures.imports ? <Button type="button" variant="outline" onClick={() => openWorkspace("single")}>Open advanced paper preparation</Button> : null}
+          </details>
+        ) : null}
+        {!receipt && !busy && mode === "compiled" && step === 1 && preparationFeatures.imports ? (
+          <p>Have one PDF containing the whole issue? <Button type="button" variant="outline" onClick={() => openWorkspace("compiled")}>Open issue workspace</Button></p>
+        ) : null}
+        {!reviewId && !busy ? savedDrafts : null}
+      </> : null}
     </main>
   );
 }
 
-function UploadDraftStatus({ status, recovered, savedAt, filesIncluded, disabled, onDiscard }: { status: DraftPersistenceStatus; recovered: boolean; savedAt: number | null; filesIncluded: boolean; disabled: boolean; onDiscard: () => void }) {
+function UploadDraftStatus({ status, recovered, changesMissing, savedAt, filesIncluded, disabled, onDiscard }: { status: DraftPersistenceStatus; recovered: boolean; changesMissing: boolean; savedAt: number | null; filesIncluded: boolean; disabled: boolean; onDiscard: () => void }) {
   const saving = status === "saving";
   const failed = status === "error";
-  const title = failed ? "Draft recovery is unavailable" : recovered ? "Your upload draft was recovered" : saving ? "Protecting this upload…" : "This upload is protected";
+  const title = failed ? "Draft recovery is unavailable" : saving ? "Saving latest changes…" : changesMissing ? "The latest file changes could not be recovered" : recovered ? "Your upload draft was recovered" : "This upload is protected";
   const savedLabel = savedAt ? formatDraftSavedAt(savedAt) : "on this device";
   const message = failed
     ? "PeAS could not use browser storage. Keep this tab open and copy important text before leaving the page."
-    : !filesIncluded
-      ? `Form details were saved ${savedLabel}, but this browser could not preserve the selected files. Reattach any accepted files before submitting.`
-      : saving
-        ? "Saving the latest form details and selected files on this device."
-        : recovered
+    : saving
+      ? "Keep this tab open until the latest changes are saved on this device."
+      : !filesIncluded
+        ? `Form details were saved ${savedLabel}, but this browser could not preserve the selected files. Reattach any accepted files before submitting.`
+        : changesMissing
+          ? `Restored an earlier draft from ${savedLabel}. Check that every file is present and in reading order before preparing the PDF.`
+          : recovered
           ? `Restored from ${savedLabel}. New changes and selected files continue to save automatically for seven days.`
           : `Saved ${savedLabel}. Form details and selected files can be restored after a refresh or connection interruption.`;
   return (
@@ -942,11 +1051,12 @@ function UploadProgress({ mode, step, steps, busy, onStepChange }: { mode: Uploa
   useEffect(() => {
     currentStepRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [step]);
+  if (step === 1) return <p className="peas-upload-inline-hint">Step 1 of {steps.length}</p>;
   return (
     <nav className="peas-upload-progress" aria-label={`${mode === "single" ? "Single document" : "Compiled publication"} steps`}>
       <p>Step {step} of {steps.length}</p>
       <ol>
-        {steps.map((label, index) => {
+        {steps.slice(0, step).map((label, index) => {
           const number = (index + 1) as UploadStep;
           const complete = number < step;
           return (
@@ -963,7 +1073,20 @@ function UploadProgress({ mode, step, steps, busy, onStepChange }: { mode: Uploa
   );
 }
 
-function SingleDocumentForm({ form, step, errors, busy, authors, onAuthorCreated, onChange, onError }: { form: SingleFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: SingleFormState) => void; onError: (key: string, error?: string) => void }) {
+function GuidedDocumentPicker({ nonPdfConversion, ...props }: ComponentProps<typeof PeasFileDropzone> & { nonPdfConversion: boolean | null }) {
+  const formats = nonPdfConversion === true
+    ? "PDF, Word, OpenDocument, RTF, TXT, Excel, CSV, or PowerPoint. Non-PDF files convert to PDF."
+    : nonPdfConversion === null
+      ? "PDF. Checking availability of other formats…"
+      : `PDF. ${GUIDED_PDF_WORKAROUND}`;
+  return <PeasFileDropzone {...props}
+    accept={nonPdfConversion ? DOCUMENT_ACCEPT : ".pdf,application/pdf"}
+    description={`${formats} Attach files in reading order to make one PDF. Up to ${DOCUMENT_MAX_FILES} files and 100 MB combined.`}
+    selectionError={(file) => documentExtension(file.name) === "pdf" ? undefined : !isSupportedDocument(file.name) ? "Choose a supported document format." : nonPdfConversion ? undefined : nonPdfConversion === null ? "Wait for the format check or attach a PDF." : GUIDED_PDF_WORKAROUND}
+  />;
+}
+
+function SingleDocumentForm({ form, step, errors, busy, fileSaveMessage, nonPdfConversion, authors, onAuthorCreated, onChange, onError }: { form: SingleFormState; step: UploadStep; errors: FieldErrors; busy: boolean; fileSaveMessage: string; nonPdfConversion: boolean | null; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: SingleFormState) => void; onError: (key: string, error?: string) => void }) {
   step = ({1:4,2:1,3:2,4:3,5:5} as const)[step];
   const field = (key: string) => fieldA11y(key, errors[key]);
   return (
@@ -1043,10 +1166,11 @@ function SingleDocumentForm({ form, step, errors, busy, authors, onAuthorCreated
       ) : null}
 
       {step === 4 ? (
-        <WorkflowPanel title="Upload document" description="Choose one file or stitch multiple files into one document. Prepare and compare the converted PDFs before saving privately.">
+        <WorkflowPanel title="Choose your files" description="Attach your thesis or dissertation first, followed by any appendices. PeAS prepares one PDF in that order.">
           <PeasField label="Document category" required><Select value={form.category} disabled={busy} onValueChange={value=>onChange({...form,category:value as SingleCategory,uploadJobId:undefined})}><SelectTrigger aria-label="Document category"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="THESIS">Thesis</SelectItem><SelectItem value="DISSERTATION">Dissertation</SelectItem></SelectContent></Select></PeasField>
-          <PeasFileDropzone accept={DOCUMENT_ACCEPT} label="Document file" fieldKey="single.file" required file={form.file} additionalFiles={form.additionalFiles} error={errors["single.file"]} disabled={busy} description="PDF, Word, OpenDocument, RTF, TXT, Excel, CSV, or PowerPoint." onFilesChange={(files) => { onChange({ ...form, file: files[0] ?? null, additionalFiles: files.slice(1), uploadJobId: undefined }); onError("single.file", validateDocumentFiles(files)); }} />
-          <UploadFileReview files={documentFiles(form.file, form.additionalFiles)} category={form.category} jobId={form.uploadJobId} onPrepared={result=>onChange({...form,uploadJobId:result.uploadJobId})}/>
+          <GuidedDocumentPicker nonPdfConversion={nonPdfConversion} label="Document file" fieldKey="single.file" required file={form.file} additionalFiles={form.additionalFiles} error={errors["single.file"]} disabled={busy} onFilesChange={(files) => { onChange({ ...form, file: files[0] ?? null, additionalFiles: files.slice(1), uploadJobId: undefined }); onError("single.file", validateDocumentFiles(files)); }} />
+          {form.file ? <p className="peas-upload-inline-hint" role="status">{fileSaveMessage}</p> : null}
+          <UploadFileReview files={documentFiles(form.file, form.additionalFiles)} nonPdfConversion={nonPdfConversion} category={form.category} jobId={form.uploadJobId} onPrepared={result=>onChange({...form,uploadJobId:result.uploadJobId})}/>
         </WorkflowPanel>
       ) : null}
 
@@ -1055,7 +1179,7 @@ function SingleDocumentForm({ form, step, errors, busy, authors, onAuthorCreated
   );
 }
 
-function CompiledDocumentForm({ form, step, errors, busy, authors, onAuthorCreated, onChange, onError }: { form: CompiledFormState; step: UploadStep; errors: FieldErrors; busy: boolean; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: CompiledFormState) => void; onError: (key: string, error?: string) => void }) {
+function CompiledDocumentForm({ form, step, errors, busy, fileSaveMessage, nonPdfConversion, authors, onAuthorCreated, onChange, onError }: { form: CompiledFormState; step: UploadStep; errors: FieldErrors; busy: boolean; fileSaveMessage: string; nonPdfConversion: boolean | null; authors: AuthorRecord[]; onAuthorCreated: (author: AuthorRecord) => void; onChange: (form: CompiledFormState) => void; onError: (key: string, error?: string) => void }) {
   const synergy = form.category === "SYNERGY";
   const [openStudyId, setOpenStudyId] = useState<string | null>(() => form.sections[0]?.id ?? null);
   const pendingStudyTitleFocusId = useRef<string | null>(null);
@@ -1179,7 +1303,8 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, onAuthorCreat
       ) : null}
 
       {step === 4 ? (
-        <WorkflowPanel title="Upload documents" description="Choose the publication cover PDF, optional foreword, and files for every study. Multiple files for a foreword or study are converted and stitched into one PDF in reading order. Prepare and compare converted PDFs before saving privately.">
+        <WorkflowPanel title="Upload documents" description="Choose the cover PDF, optional foreword, and files for each study. Prepare and compare each PDF before saving privately.">
+          {form.coverFile || form.forewordFile || form.sections.some((section) => section.file) ? <p className="peas-upload-inline-hint" role="status">{fileSaveMessage}</p> : null}
           <PeasFileDropzone label="Front and back cover PDF" fieldKey="compiled.cover" required file={form.coverFile} disabled={busy} description="PDF with at least two pages." error={errors["compiled.cover"]} onFileChange={updateCoverFile} />
           <UploadFileReview files={form.coverFile?[form.coverFile]:[]} category={form.category} role="cover" jobId={form.coverUploadJobId} onPrepared={result=>onChange({...form,coverUploadJobId:result.uploadJobId})}/>
           {form.coverInspectionStatus === "inspecting" ? <p className="peas-upload-inline-hint" role="status">Reading the cover PDF page count…</p> : null}
@@ -1195,10 +1320,10 @@ function CompiledDocumentForm({ form, step, errors, busy, authors, onAuthorCreat
             <p className="peas-upload-inline-hint">{form.coverPageCount} pages detected. Cover pages are stored with the publication and excluded from study parsing.</p>
           </div> : null}
           {errors["compiled.coverPageCount"] ? <p className="peas-upload-inline-error" role="alert">{errors["compiled.coverPageCount"]}</p> : null}
-          <PeasFileDropzone accept={DOCUMENT_ACCEPT} label="Foreword file" fieldKey="compiled.foreword" file={form.forewordFile} additionalFiles={form.forewordAdditionalFiles} disabled={busy} description="Optional documents; automatically converted and stitched into one PDF." error={errors["compiled.foreword"]} onFilesChange={(files) => { onChange({ ...form, forewordFile: files[0] ?? null, forewordAdditionalFiles: files.slice(1), forewordUploadJobId: undefined }); onError("compiled.foreword", files.length ? validateDocumentFiles(files) : undefined); }} />
-          {form.forewordFile?<UploadFileReview files={documentFiles(form.forewordFile,form.forewordAdditionalFiles)} category={form.category} role="foreword" jobId={form.forewordUploadJobId} onPrepared={result=>onChange({...form,forewordUploadJobId:result.uploadJobId})}/>:null}
+          <GuidedDocumentPicker nonPdfConversion={nonPdfConversion} label="Foreword file" fieldKey="compiled.foreword" file={form.forewordFile} additionalFiles={form.forewordAdditionalFiles} disabled={busy} error={errors["compiled.foreword"]} onFilesChange={(files) => { onChange({ ...form, forewordFile: files[0] ?? null, forewordAdditionalFiles: files.slice(1), forewordUploadJobId: undefined }); onError("compiled.foreword", files.length ? validateDocumentFiles(files) : undefined); }} />
+          {form.forewordFile?<UploadFileReview files={documentFiles(form.forewordFile,form.forewordAdditionalFiles)} nonPdfConversion={nonPdfConversion} category={form.category} role="foreword" jobId={form.forewordUploadJobId} onPrepared={result=>onChange({...form,forewordUploadJobId:result.uploadJobId})}/>:null}
           <div className="peas-study-list">
-            {form.sections.map((section, index) => <StudyPdfCard category={form.category} key={section.id} section={section} index={index} errors={errors} busy={busy} onChange={(updates) => updateSection(section.id, updates)} onError={onError} />)}
+            {form.sections.map((section, index) => <StudyPdfCard nonPdfConversion={nonPdfConversion} category={form.category} key={section.id} section={section} index={index} errors={errors} busy={busy} onChange={(updates) => updateSection(section.id, updates)} onError={onError} />)}
           </div>
           {errors["compiled.sections"] ? <p className="peas-upload-inline-error" role="alert">{errors["compiled.sections"]}</p> : null}
         </WorkflowPanel>
@@ -1248,14 +1373,14 @@ function StudyClassificationCard({ section, index, errors, busy, onChange, onErr
   </Card>;
 }
 
-function StudyPdfCard({ section, index, errors, busy, onChange, onError, category }: { category: string; section: ResearchSection; index: number; errors: FieldErrors; busy: boolean; onChange: (updates: Partial<ResearchSection>) => void; onError: (key: string, error?: string) => void }) {
+function StudyPdfCard({ section, index, errors, busy, onChange, onError, category, nonPdfConversion }: { category: string; section: ResearchSection; index: number; errors: FieldErrors; busy: boolean; nonPdfConversion: boolean | null; onChange: (updates: Partial<ResearchSection>) => void; onError: (key: string, error?: string) => void }) {
   const fileKey = `compiled.section.${section.id}.file`;
   const ready = Boolean(section.uploadJobId);
   return <Card className="peas-study-card peas-study-card--pdf">
     <CardContent className="peas-study-card__content">
       <header className="peas-study-card__heading"><div><h3>Study {index + 1}</h3><p>{section.title || "Untitled study"}</p></div><Badge tone={ready ? "green" : "slate"}>{ready ? "Prepared" : section.file ? "Attached · needs preparation" : "Missing document"}</Badge></header>
-      <PeasFileDropzone accept={DOCUMENT_ACCEPT} label={`Study ${index + 1} file`} fieldKey={fileKey} required file={section.file} additionalFiles={section.additionalFiles} error={errors[fileKey]} disabled={busy} description="Choose files to convert and stitch into the study PDF." onFilesChange={(files) => { onChange({ file: files[0] ?? null, additionalFiles: files.slice(1), uploadJobId: undefined }); onError(fileKey, validateDocumentFiles(files)); }} />
-      <UploadFileReview files={documentFiles(section.file,section.additionalFiles)} category={category} jobId={section.uploadJobId} onPrepared={result=>onChange({uploadJobId:result.uploadJobId})}/>
+      <GuidedDocumentPicker nonPdfConversion={nonPdfConversion} label={`Study ${index + 1} file`} fieldKey={fileKey} required file={section.file} additionalFiles={section.additionalFiles} error={errors[fileKey]} disabled={busy} onFilesChange={(files) => { onChange({ file: files[0] ?? null, additionalFiles: files.slice(1), uploadJobId: undefined }); onError(fileKey, validateDocumentFiles(files)); }} />
+      <UploadFileReview files={documentFiles(section.file,section.additionalFiles)} nonPdfConversion={nonPdfConversion} category={category} jobId={section.uploadJobId} onPrepared={result=>onChange({uploadJobId:result.uploadJobId})}/>
     </CardContent>
   </Card>;
 }
@@ -1470,75 +1595,6 @@ function WorkflowPanel({ title, description, children }: { title: string; descri
   return <section className="peas-upload-panel"><header><div><h2>{title}</h2><p>{description}</p></div><span className="peas-upload-required-note"><b>*</b> Required</span></header>{children}</section>;
 }
 
-function UploadChecklist({ mode, step, singleForm, compiledForm, compiledTitle, receipt, expanded, onExpandedChange }: { mode: UploadMode; step: UploadStep; singleForm: SingleFormState; compiledForm: CompiledFormState; compiledTitle: string; receipt: UploadReceipt | null; expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
-  const isSingle = mode === "single";
-  const documentType = singleForm.category === "THESIS" ? "Thesis" : "Dissertation";
-  const detailsReady = Boolean(singleForm.title.trim() && singleForm.authors.length);
-  const publicationReady = Boolean(singleForm.pubMonth && /^\d{4}$/.test(singleForm.pubYear));
-  const topicsReady = singleForm.topicIds.length >= 1 && singleForm.topicIds.length <= 5;
-  const pdfReady = !validateDocumentFiles(documentFiles(singleForm.file, singleForm.additionalFiles));
-  const preparedStudies = compiledForm.sections.filter((section) => section.title.trim() || section.file).length;
-  const readyStudies = compiledForm.sections.filter((section) => section.title.trim() && Boolean(section.uploadJobId)).length;
-  const classifiedStudies = compiledForm.sections.filter((section) => section.topicIds.length >= 1 && section.topicIds.length <= 5).length;
-  const yearsReady = Boolean(/^\d{4}$/.test(compiledForm.startYear) && /^\d{4}$/.test(compiledForm.endYear) && Number(compiledForm.startYear) <= Number(compiledForm.endYear));
-  const allStudyDetailsReady = Boolean(compiledForm.sections.length && compiledForm.sections.every((section) => section.title.trim() && section.authors.length));
-  const allStudiesClassified = Boolean(compiledForm.sections.length && classifiedStudies === compiledForm.sections.length);
-  const allStudyPdfsReady = Boolean(compiledForm.sections.length && readyStudies === compiledForm.sections.length);
-  const coverFrontPage = safeInt(compiledForm.frontCoverPage);
-  const coverBackPage = safeInt(compiledForm.backCoverPage);
-  const coverReady = Boolean(
-    compiledForm.coverFile && isPdf(compiledForm.coverFile) && compiledForm.coverInspectionStatus === "ready" &&
-    compiledForm.coverPageCount && coverFrontPage && coverBackPage && coverFrontPage !== coverBackPage &&
-    coverFrontPage <= compiledForm.coverPageCount && coverBackPage <= compiledForm.coverPageCount
-  );
-  const stepName = (isSingle ? singleSteps : compiledSteps)[step - 1];
-  const completeItems = isSingle
-    ? [detailsReady, publicationReady, topicsReady, pdfReady].filter(Boolean).length
-    : [yearsReady, !validatePositiveInteger(compiledForm.volume), allStudyDetailsReady, allStudiesClassified, coverReady, allStudyPdfsReady, !compiledForm.forewordFile || isDocument(compiledForm.forewordFile)].filter(Boolean).length;
-  const totalItems = isSingle ? 4 : 7;
-  const checklistContentId = "upload-checklist-content";
-  return <aside className="peas-upload-preview peas-upload-checklist" aria-label="Upload checklist">
-    <header className="peas-upload-checklist__header">
-      <div className="peas-upload-checklist__header-copy">
-        <h2>{receipt ? (receipt.pendingReview ? "Files saved for review" : "Published successfully") : step === FINAL_UPLOAD_STEP ? "Ready to submit?" : "What you need to complete"}</h2>
-        {!receipt ? <><p className="peas-upload-checklist__intro">{isSingle ? `${documentType}${singleForm.title.trim() ? ` · ${singleForm.title.trim()}` : ""}` : `${compiledTitle} · ${compiledForm.sections.length} ${compiledForm.sections.length === 1 ? "study" : "studies"}`}</p><p className="peas-upload-checklist__step">Step {step} of {FINAL_UPLOAD_STEP}: {stepName}</p></> : null}
-      </div>
-      <Button type="button" variant="outline" size="sm" className="peas-upload-checklist__toggle" aria-label={`${expanded ? "Collapse" : "Expand"} upload checklist`} aria-controls={checklistContentId} aria-expanded={expanded} title={`${expanded ? "Collapse" : "Expand"} upload checklist`} onClick={() => onExpandedChange(!expanded)}>
-        <span className="peas-upload-checklist__toggle-copy"><strong>Checklist</strong><small>{receipt ? "Done" : `${completeItems}/${totalItems}`}</small></span>
-        {expanded ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}
-      </Button>
-    </header>
-    {!expanded ? <div className="peas-upload-checklist__rail-summary" aria-hidden="true"><strong>{receipt ? "Done" : `${completeItems}/${totalItems}`}</strong><span>Checklist</span></div> : null}
-    <div id={checklistContentId} className="peas-upload-checklist__content" hidden={!expanded}>
-      {receipt ? <div className="peas-upload-receipt"><CheckCircle2 aria-hidden="true" /><p>{receipt.title}</p>{receipt.pendingReview ? <p>This publication remains private until an administrator resolves the abstract review and approves it.</p> : null}<div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html?status=pending_review")}>{"View documents"}</Button></div> : <dl>
-        {isSingle ? <>
-          <ChecklistRow label="Document details" value={detailsReady ? `${singleForm.authors.length} ${singleForm.authors.length === 1 ? "author" : "authors"} added` : !singleForm.title.trim() ? "Add a title and at least one author" : "Add at least one author"} ready={detailsReady} />
-          <ChecklistRow label="Publication date" value={publicationReady ? formatPublicationDate(singleForm.pubMonth, singleForm.pubYear) : "Choose a month and four-digit year"} ready={publicationReady} />
-          <ChecklistRow label="Topics" value={topicsReady ? `${singleForm.topicIds.length} selected` : "Select 1–5 approved topics"} ready={topicsReady} />
-          <ChecklistRow label="Document file" value={pdfReady ? documentFileNames(singleForm.file, singleForm.additionalFiles) : "Attach supported document files"} ready={pdfReady} />
-        </> : <>
-          <ChecklistRow label="Publication years" value={yearsReady ? `${compiledForm.startYear}–${compiledForm.endYear}` : "Enter a valid start and end year"} ready={yearsReady} />
-          <ChecklistRow label="Publication volume" value={!validatePositiveInteger(compiledForm.volume) ? `Volume ${compiledForm.volume}` : "Enter the publication volume"} ready={!validatePositiveInteger(compiledForm.volume)} />
-          <ChecklistRow label="Study details" value={allStudyDetailsReady ? `${preparedStudies} ${preparedStudies === 1 ? "study" : "studies"} with metadata entered` : "Add a title and at least one author for every study"} ready={allStudyDetailsReady} />
-          <ChecklistRow label="Study classification" value={allStudiesClassified ? `${classifiedStudies} ${classifiedStudies === 1 ? "study" : "studies"} classified` : `${classifiedStudies} of ${compiledForm.sections.length} classified`} ready={allStudiesClassified} />
-          <ChecklistRow label="Publication covers" value={coverReady ? `Front page ${coverFrontPage} · Back page ${coverBackPage}` : compiledForm.coverInspectionStatus === "inspecting" ? "Reading the cover PDF" : "Attach a cover PDF and select two pages"} ready={coverReady} />
-          <ChecklistRow label="Study documents" value={allStudyPdfsReady ? `${readyStudies} PDFs prepared` : `${readyStudies} of ${compiledForm.sections.length} PDFs prepared; attachments still need preparation`} ready={allStudyPdfsReady} />
-          <ChecklistRow label="Foreword file" value={documentFileNames(compiledForm.forewordFile, compiledForm.forewordAdditionalFiles, "Optional")} ready={!compiledForm.forewordFile || !validateDocumentFiles(documentFiles(compiledForm.forewordFile, compiledForm.forewordAdditionalFiles))} optional />
-        </>}
-      </dl>
-      }
-    </div>
-  </aside>;
-}
-
-function ChecklistRow({ label, value, ready, optional = false }: { label: string; value: string; ready: boolean; optional?: boolean }) {
-  return <div className={`peas-upload-checklist__row ${ready ? "is-ready" : "needs-action"}`}>
-    <dt>{label}</dt>
-    <dd>{value}</dd>
-    <span className="peas-upload-checklist__status">{ready ? <Check aria-hidden="true" /> : null}{optional ? "Optional" : ready ? "Complete" : "Action needed"}</span>
-  </div>;
-}
-
 function CompletionPanel({ receipt, isPublisher, onUploadAnother }: { receipt: UploadReceipt; isPublisher: boolean; onUploadAnother: () => void }) {
   return <section className="peas-upload-completion"><CheckCircle2 aria-hidden="true" /><h2>{receipt.pendingReview ? "Files saved for review" : "Your upload is published"}</h2><p><strong>{receipt.title}</strong> has been processed successfully.</p><p>{receipt.pendingReview ? "The publication remains private until an administrator resolves every required abstract and approves it." : "The document is now available in the repository."}</p><div className="peas-upload-receipt__facts">{receipt.documentId ? <span>Document ID: {receipt.documentId}</span> : null}{receipt.compiledDocumentId ? <span>Publication ID: {receipt.compiledDocumentId}</span> : null}{receipt.childDocumentIds ? <span>{receipt.childDocumentIds.length} studies</span> : null}</div><div className="peas-upload-completion__actions"><Button type="button" variant="outline" onClick={onUploadAnother}>Upload another</Button>{!isPublisher ? <Button type="button" onClick={() => window.location.assign("/admin/Components/documents_list.html?status=pending_review")}>View documents</Button> : null}</div></section>;
 }
@@ -1738,11 +1794,12 @@ function SubmissionError({ message }: { message: string }) {
   return <div className="peas-upload-alert" role="alert"><strong>We couldn’t finish this upload.</strong><span>{readableMessage} Your entered details are still here. Check the highlighted fields and try again.</span></div>;
 }
 
-function UploadActions({ step, busy, progress, label, continueDisabled, onBack, onContinue }: { step: UploadStep; busy: boolean; progress: SubmissionProgress | null; label: string; continueDisabled?: boolean; onBack: () => void; onContinue: () => void }) {
+function UploadActions({ step, busy, progress, hint, continueDisabled, onBack, onContinue }: { step: UploadStep; busy: boolean; progress: SubmissionProgress | null; hint: string; continueDisabled?: boolean; onBack: () => void; onContinue: () => void }) {
   return <div className="peas-upload-actions">
     {progress ? <UploadProgressDetails progress={progress} /> : null}
+    <p className="peas-upload-inline-hint">{hint}</p>
     {step > 1 ? <Button type="button" variant="outline" disabled={busy} onClick={(event) => { event.preventDefault(); onBack(); }}><ChevronLeft aria-hidden="true" /> Back</Button> : null}
-    {step < FINAL_UPLOAD_STEP ? <Button type="button" disabled={busy || continueDisabled} onClick={(event) => { event.preventDefault(); onContinue(); }}>Continue <ChevronRight aria-hidden="true" /></Button> : <Button type="submit" disabled={busy} onClick={(event) => { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }}><UploadCloud aria-hidden="true" />{busy ? "Working…" : label}</Button>}
+    {step < FINAL_UPLOAD_STEP ? <Button type="button" disabled={busy || continueDisabled} onClick={(event) => { event.preventDefault(); onContinue(); }}>Continue <ChevronRight aria-hidden="true" /></Button> : <Button type="submit" disabled={busy} onClick={(event) => { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }}><UploadCloud aria-hidden="true" />{busy ? "Working…" : "Save privately for review"}</Button>}
   </div>;
 }
 

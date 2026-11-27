@@ -1,3 +1,4 @@
+import { formatFileSize } from "../../components/forms/PeasFileDropzone";
 import { ReviewNoteFields } from "./UploadFileReview";
 import { IssueRangeEditor } from "./IssueRangeEditor";
 import { IssueOutputReview } from "./IssueOutputReview";
@@ -60,6 +61,7 @@ type LocalSource = {
   group: string;
   selected: boolean;
   status: string;
+  formatError?: string;
   role?: "paper" | "front_matter";
 };
 type Catalog = {
@@ -116,7 +118,13 @@ function Check(
 }
 
 export function ImportPreparationWorkspace(
-  { initialMode = "batch" }: { initialMode?: ImportMode },
+  { initialMode = "batch", initialBatchId, showSavedWorkspaces, onBatchIdChange, onOpenGuidedIssue }: {
+    initialMode?: ImportMode;
+    initialBatchId?: string | null;
+    showSavedWorkspaces?: boolean;
+    onBatchIdChange?: (id: string | null) => void;
+    onOpenGuidedIssue?: () => void;
+  },
 ) {
   const { userId, role } = useAdminIdentity();
   const staff = role === "repository_assistant";
@@ -141,7 +149,7 @@ export function ImportPreparationWorkspace(
   const [pendingAction, setPendingAction] = useState("");
   const [outputRefreshKey, setOutputRefreshKey] = useState(0);
   const [diagnostic, setDiagnostic] = useState("");
-  const [wordConversionReady, setWordConversionReady] = useState(false);
+  const [wordConversionReady, setWordConversionReady] = useState<boolean | null>(null);
   const [authors, setAuthors] = useState<AuthorChoice[]>([]);
   const [topics, setTopics] = useState<Array<{ id: number; name: string }>>([]);
   const [dirtyPapers, setDirtyPapers] = useState<Record<string, boolean>>({});
@@ -154,14 +162,23 @@ export function ImportPreparationWorkspace(
   const unsavedChanges = !!unsavedPaperChanges || collectionDirty;
   const [arrangement, setArrangement] = useState<"complete_issue" | "separate_papers">("complete_issue");
   const completeSource = mode === "compiled" && (batch?.collection?.sourceArrangement ?? (batch?.items.length ? "separate_papers" : arrangement)) === "complete_issue";
-  useEffect(()=>{const id=new URLSearchParams(location.search).get("import_batch");if(id)void fetchImport(id).then(b=>{setBatch(b);setMode(b.mode);}).catch(e=>setError(getErrorMessage(e)));},[]);
+  useEffect(() => {
+    const id = initialBatchId === undefined ? new URLSearchParams(location.search).get("import_batch") : initialBatchId;
+    if (id) void fetchImport(id).then((current) => { setBatch(current); setMode(current.mode); }).catch((cause) => setError(getErrorMessage(cause)));
+  }, []);
+  useEffect(() => {
+    if (batch) onBatchIdChange?.(batch.id);
+  }, [batch?.id]);
   const [recent, setRecent] = useState<
       ImportBatchSummary[]
     >([]),
     [archive, setArchive] = useState(""),
     [publishConfirmed, setPublishConfirmed] = useState(false),
     [newKey, setNewKey] = useState("");
-  const folderRef = useRef<HTMLInputElement>(null);
+  const sourceFormatsId = useId();
+  const hasStagedPdf = Boolean(batch?.assets.some((asset) => asset.kind === "pdf"));
+  const stageInDisclosure = completeSource && hasStagedPdf;
+  const SourceSection = stageInDisclosure ? "details" : "section";
   const action = async (fn: () => Promise<void>, label = "Saving changes…") => {
     setPendingAction(label);
     setBusy(true);
@@ -186,7 +203,6 @@ export function ImportPreparationWorkspace(
     return null;
   };
   useEffect(() => {
-    folderRef.current?.setAttribute("webkitdirectory", "");
     if (!staff) void fetchAuthors().then(setAuthors).catch(() => undefined);
     const approvedTopics = staff
       ? apiFetch<Array<{ id: number; name: string }>>("/api/staff/topics")
@@ -201,7 +217,7 @@ export function ImportPreparationWorkspace(
           ? d.message
           : "The preparation worker is offline. Staging and metadata review remain available.",
       );
-    }).catch(() => undefined);
+    }).catch(() => setWordConversionReady(false));
     void apiFetch<typeof recent>(importBase).then(setRecent).catch((e) =>
       setError(getErrorMessage(e))
     );
@@ -228,24 +244,26 @@ export function ImportPreparationWorkspace(
     } catch { /* Server drafts remain available in the workspace list. */ }
   }, [batch?.id, selectedId, recoveryKey]);
   const discover = (files: FileList | null) => {
-    if (!files) return;
+    if (!files?.length) return;
     setError("");
     setArchive("");
     try {
-      let total = 0;
       const paths = new Set<string>();
       const discovered = [...files].map((file) => {
         const path = file.webkitRelativePath || file.name,
           key = importPathKey(path),
           kind = importFileKind(path);
-        if (kind) total += file.size;
         if (paths.has(key)) {
           throw new Error(
             "Two files have the same normalized path. Rename one before selecting them.",
           );
         }
         paths.add(key);
-        const selected = !!kind && file.size > 0 &&
+        const formatError = !kind ? "Ignored: backup, temporary or unsupported file. Upload a PDF instead."
+          : (kind === "doc" || kind === "docx") && wordConversionReady !== true
+          ? wordConversionReady === null ? "Wait for the Word conversion check, or export and select a PDF." : "Word conversion is unavailable. Export and select a PDF."
+          : undefined;
+        const selected = !formatError && file.size > 0 &&
           file.size <=
             (kind === "catalog"
               ? IMPORT_LIMITS.catalogBytes
@@ -260,24 +278,29 @@ export function ImportPreparationWorkspace(
           path,
           group,
           selected,
+          formatError,
           status: selected
             ? "Not staged"
-            : !kind
-            ? "Ignored: backup, temporary or unsupported file"
-            : "Ignored: empty or oversized file",
+            : formatError ?? "Ignored: empty or oversized file",
         };
       });
-      if (discovered.filter((s) => s.selected).length > IMPORT_LIMITS.files) {
+      const preserveSelection = discovered.some((source) => source.formatError) || sources.some((source) => source.formatError);
+      const next = preserveSelection ? [...new Map<string, LocalSource>([
+        ...discovered.map((source) => [importPathKey(source.path), source] as const),
+        ...sources.filter((source) => !source.formatError).map((source) => [importPathKey(source.path), source] as const),
+      ]).values()] : discovered;
+      const selected = next.filter((source) => source.selected);
+      if (selected.length > IMPORT_LIMITS.files) {
         throw new Error("Choose no more than 500 supported files.");
       }
-      if (total > IMPORT_LIMITS.batchBytes) {
+      if (selected.reduce((total, source) => total + source.file.size, 0) > IMPORT_LIMITS.batchBytes) {
         throw new Error(
           "The selection exceeds 1 GB. Choose a smaller collection.",
         );
       }
-      setSources(discovered);
+      setSources(next);
       setMessage(
-        "Discovery stays on this device until you choose Stage selected files.",
+        discovered.find((source) => source.formatError)?.formatError ?? "Files stay on this device until you stage them privately.",
       );
     } catch (e) {
       setError(getErrorMessage(e));
@@ -339,7 +362,7 @@ export function ImportPreparationWorkspace(
     await Promise.all([transfer(), transfer()]);
     current = (await refresh(current.id))!;
     if (completeSource || current.revisionTarget) {
-      setMessage("Sources attached. Assign the main issue and cover roles in collection details, then add paper ranges. File count does not determine paper count.");
+      setMessage("Sources staged privately.");
       if (failures.length) throw new Error(failures.join("\n"));
       return;
     }
@@ -406,87 +429,40 @@ export function ImportPreparationWorkspace(
     });
     setArchive(`${base(batch!.id)}/exports/${result.id}`);
   };
+  const sourceFormatHelp = (
+    <p>
+      {wordConversionReady === true
+        ? "PDF, DOC and DOCX are available for paper files. Review the layout after Word conversion."
+        : wordConversionReady === null
+          ? "PDF is available. Checking Word conversion…"
+          : "PDF is available. Word conversion is unavailable. Export your Word files as PDFs before selecting them."}
+      {" "}An optional XLSX catalog can guide grouping (10 MB limit). Up to 500 files and 1 GB per workspace,
+      100 MB per source PDF or Word file, and 20 files or 100 MB combined per paper group.
+    </p>
+  );
+  const folderPicker = (
+    <Field label="Choose a folder">
+      <input
+        ref={(node) => { node?.setAttribute("webkitdirectory", ""); }}
+        type="file"
+        multiple
+        aria-describedby={sourceFormatsId}
+        onChange={(e) => { discover(e.target.files); e.target.value = ""; }}
+        disabled={busy}
+      />
+    </Field>
+  );
   return (
     <section
       className="peas-preparation"
       aria-label="Document preparation workspace"
     >
       <header>
-        <h2>Prepare documents</h2>
-        <p>{staff ? "Review the originals, assemble each paper’s PDF, and submit the workspace." : "Review the originals, assemble one PDF for each paper, then approve publication."}</p>
+        <h2>{mode === "compiled" ? "Upload a journal issue" : mode === "single" ? "Prepare one paper" : "Import a batch"}</h2>
       </header>
-      {!batch && recoverable
-        ? (
-          <Button
-            disabled={busy}
-            variant="outline"
-            onClick={() =>
-              void action(async () => {
-                await refresh(recoverable.batchId);
-                setSelectedId(recoverable.itemId || "");
-                setRecoverable(null);
-                setMessage(
-                  "Workspace recovered. Reselect source files to retry any incomplete transfers. Completed files are matched by their hashes.",
-                );
-              })}
-          >
-            Resume last preparation workspace
-          </Button>
-        )
-        : null}
-      {diagnostic
-        ? <p className="peas-preparation-notice">{diagnostic}</p>
-        : null}
-      {error
-        ? <p className="peas-preparation-notice" role="alert">{error}</p>
-        : null}
+      {error ? <p className="peas-preparation-notice" role="alert">{error}</p> : null}
       {message ? <p role="status">{message}</p> : null}
-      {mode === "compiled" && !batch ? <fieldset disabled={busy || sources.length > 0}><legend>How are your issue files arranged?</legend><div className="peas-preparation-actions"><label><input type="radio" name="issue-arrangement" checked={arrangement === "complete_issue"} onChange={() => setArrangement("complete_issue")} /> Upload a complete issue</label><label><input type="radio" name="issue-arrangement" checked={arrangement === "separate_papers"} onChange={() => setArrangement("separate_papers")} /> Upload separate research papers</label></div><p>Keep covers and front matter separate from paper records. Start a new workspace for a different issue.</p></fieldset> : null}
-      {!batch
-        ? (
-          <>
-            <div className="peas-preparation-grid">
-              <Field label="Preparation type">
-                <select
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value as ImportMode)}
-                  disabled={sources.length > 0}
-                >
-                  <option value="single">
-                    Single paper — multiple source files
-                  </option>
-                  <option value="compiled">
-                    Compiled volume — a group for each paper
-                  </option>
-                  {staff ? null : <option value="batch">Batch workspace — independent papers</option>}
-                </select>
-              </Field>
-              {recent.length
-                ? (
-                  <Field label="Resume a workspace">
-                    <select
-                      defaultValue=""
-                      onChange={(e) =>
-                        void action(async () => {
-                          await refresh(e.target.value);
-                          setSources([]);
-                        })}
-                    >
-                      <option value="" disabled>
-                        Select a saved workspace
-                      </option>
-                      {recent.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.mode} · {r.submitted_at && r.status === "draft" ? "Submitted for review" : importWorkspaceStatus(r.status, r.committedPapers, r.includedPapers)} · {r.id.slice(0, 8)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )
-                : null}
-            </div>
-          </>
-        )
+      {!batch ? null
         : (
           <div className="peas-preparation-summary">
             <strong>
@@ -506,7 +482,9 @@ export function ImportPreparationWorkspace(
               </time>. Keep a downloaded source archive in your own storage.
               Committed source originals, component previews, repository PDFs and provenance remain in PeAS.
             </p>
-            <div className="peas-preparation-actions">
+            <details>
+              <summary>Workspace tools</summary>
+              <div className="peas-preparation-actions">
               <Button
                 disabled={busy || batch.status === "expired"}
                 onClick={() => void action(() => exportSources())}
@@ -529,7 +507,9 @@ export function ImportPreparationWorkspace(
                 variant="outline"
                 disabled={busy}
                 onClick={() => {
+                  if ((unsavedChanges || sources.some((source) => source.selected && source.status === "Not staged")) && !window.confirm("Start another workspace and leave these unstaged or unsaved changes?")) return;
                   setBatch(null);
+                  onBatchIdChange?.(null);
                   requestKey.current = crypto.randomUUID();
                   setRecoverable(null);
                   setSources([]);
@@ -538,41 +518,36 @@ export function ImportPreparationWorkspace(
                   void apiFetch<typeof recent>(importBase).then(setRecent);
                 }}
               >
-                Choose another workspace
+                Start another workspace
               </Button>
-            </div>
+              </div>
+            </details>
           </div>
         )}
       {(!batch || editable)
         ? (
-          <section className="peas-preparation-surface">
-            <h3>1. Discover and stage files</h3>
-            {completeSource ? <p>Attach the main issue PDF and any separate cover PDF. Assign their roles in collection details, then identify each paper by its physical page range. The 100 MB per-source and prepared-output limit applies; the workspace accepts up to 500 files totaling 1 GB. Each paper group accepts up to 20 files totaling 100 MB.</p> : <p>
-              {wordConversionReady ? "Select a folder or multiple PDF, DOC and DOCX files." : "Select a folder or multiple PDF files. Word conversion is unavailable."} An XLSX
-              catalog is optional. Missing manuscripts are ignored. Use the same
-              group name to combine components of one paper; change it to split
-              papers.
-            </p>}
+          <SourceSection className="peas-preparation-surface">
+            {stageInDisclosure ? <summary>Manage staged files</summary> : <h3>{completeSource ? "1. Select the issue PDF" : "Select source files"}</h3>}
+            {completeSource ? <p>Attach the main issue PDF and any separate cover or foreword PDFs. Assign their roles in collection details, then give each paper a physical page range.</p> : <p>Use the same group name for a manuscript and its appendices. Use separate groups for independent papers.</p>}
+            {completeSource ? <p id={sourceFormatsId}>Each issue, cover or foreword PDF can be up to 100 MB.</p> : <div id={sourceFormatsId}>{sourceFormatHelp}</div>}
             <div className="peas-preparation-grid">
-              <Field label="Choose a folder">
-                <input
-                  ref={folderRef}
-                  type="file"
-                  multiple
-                  onChange={(e) => discover(e.target.files)}
-                  disabled={busy}
-                />
-              </Field>
-              <Field label="Choose multiple files">
+              {!completeSource ? folderPicker : null}
+              <Field label={completeSource ? "Issue, cover or foreword files" : "Choose multiple files"}>
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.doc,.docx,.xlsx"
-                  onChange={(e) => discover(e.target.files)}
+                  accept={wordConversionReady ? ".pdf,.doc,.docx,.xlsx" : ".pdf,.xlsx"}
+                  aria-describedby={sourceFormatsId}
+                  onChange={(e) => { discover(e.target.files); e.target.value = ""; }}
                   disabled={busy}
                 />
               </Field>
             </div>
+            {completeSource ? <details>
+              <summary>Folder and other supported formats</summary>
+              {sourceFormatHelp}
+              {folderPicker}
+            </details> : null}
             {sources.length
               ? (
                 <>
@@ -582,7 +557,7 @@ export function ImportPreparationWorkspace(
                         <Check
                           label={s.path}
                           checked={s.selected}
-                          disabled={busy || !importFileKind(s.path)}
+                          disabled={busy || Boolean(s.formatError)}
                           onChange={(value) =>
                             setSources((list) =>
                               list.map((x, i) =>
@@ -591,7 +566,7 @@ export function ImportPreparationWorkspace(
                             )}
                         />
                         <small>
-                          {(s.file.size / 1_000_000).toFixed(2)} MB · {s.status}
+                          {formatFileSize(s.file.size)} · {s.status}
                         </small>
                         {mode === "compiled" && !completeSource && s.selected ? <Field label={`Source role for ${s.path}`}><select value={s.role || "paper"} disabled={busy} onChange={e => setSources(list => list.map((x, i) => i === index ? { ...x, role: e.target.value as LocalSource["role"] } : x))}><option value="paper">Research paper component</option><option value="front_matter">Cover or front matter (no paper record)</option></select></Field> : null}
                         {s.selected && importFileKind(s.path) !== "catalog" && !completeSource && s.role !== "front_matter"
@@ -651,9 +626,49 @@ export function ImportPreparationWorkspace(
                 </div>
               )
               : null}
-          </section>
+            {!batch && mode === "compiled" ? (
+              <details>
+                <summary>Have separate paper files?</summary>
+                <fieldset disabled={busy}>
+                  <legend>Issue source arrangement</legend>
+                  <div className="peas-preparation-actions">
+                    <label><input type="radio" name={`issue-arrangement-${sourceFormatsId}`} checked={arrangement === "complete_issue"} onChange={() => setArrangement("complete_issue")} /> Upload a complete issue</label>
+                    <label><input type="radio" name={`issue-arrangement-${sourceFormatsId}`} checked={arrangement === "separate_papers"} onChange={() => setArrangement("separate_papers")} /> Upload separate research papers</label>
+                  </div>
+                </fieldset>
+                {onOpenGuidedIssue ? <Button type="button" variant="outline" disabled={busy} onClick={onOpenGuidedIssue}>Open guided issue upload</Button> : null}
+              </details>
+            ) : null}
+          </SourceSection>
         )
         : null}
+      {!batch && staff ? <details>
+        <summary>{mode === "single" ? "Upload a journal issue instead" : "Upload one paper instead"}</summary>
+        <Button type="button" variant="outline" disabled={busy || sources.length > 0} onClick={() => setMode(mode === "single" ? "compiled" : "single")}>{mode === "single" ? "Upload a journal issue" : "Upload a paper"}</Button>
+        {sources.length ? <p>Stage the current files before switching tasks.</p> : null}
+      </details> : null}
+      {!batch && (recent.length || recoverable) ? <details className="peas-preparation-surface" open={showSavedWorkspaces || undefined}>
+        <summary>Saved preparation workspaces</summary>
+        {recoverable ? <Button disabled={busy || sources.length > 0} variant="outline" onClick={() => void action(async () => {
+          await refresh(recoverable.batchId);
+          setSelectedId(recoverable.itemId || "");
+          setRecoverable(null);
+          setMessage("Workspace recovered. Staged files are ready to use.");
+        })}>Resume last preparation workspace</Button> : null}
+        {recent.length ? <Field label="Resume a workspace">
+          <select defaultValue="" disabled={busy || sources.length > 0} onChange={(event) => {
+            const id = event.currentTarget.value;
+            void action(async () => { await refresh(id); });
+          }}>
+            <option value="" disabled>Select a saved workspace</option>
+            {recent.map((recentBatch) => <option key={recentBatch.id} value={recentBatch.id}>
+              {recentBatch.mode} · {recentBatch.submitted_at && recentBatch.status === "draft" ? "Submitted for review" : importWorkspaceStatus(recentBatch.status, recentBatch.committedPapers, recentBatch.includedPapers)} · {recentBatch.id.slice(0, 8)}
+            </option>)}
+          </select>
+        </Field> : null}
+        {sources.length ? <p>Stage your selected files before opening a saved workspace.</p> : null}
+      </details> : null}
+      {diagnostic && !diagnostic.startsWith("Word conversion") ? <p className="peas-preparation-notice">{diagnostic}</p> : null}
       {batch?.assets.some((a) => a.kind === "catalog") && editable
         ? (
           <CatalogMapping
@@ -663,9 +678,10 @@ export function ImportPreparationWorkspace(
           />
         )
         : null}
-      {batch?.mode === "compiled" && editable
+      {batch?.mode === "compiled" && editable && (!completeSource || hasStagedPdf)
         ? (
           <CollectionEditor
+            key={batch.id}
             batch={batch}
             arrangement={completeSource ? "complete_issue" : "separate_papers"}
             onDirtyChange={setCollectionDirty}
@@ -675,7 +691,7 @@ export function ImportPreparationWorkspace(
           />
         )
         : null}
-      {batch?.mode === "compiled" && completeSource && editable && batch.collection ? <IssueRangeEditor batch={batch} busy={busy} run={action} onChanged={() => refresh().then(() => undefined)} /> : null}
+      {batch?.mode === "compiled" && completeSource && editable && batch.collection?.mainAssetId ? <IssueRangeEditor batch={batch} busy={busy} run={action} onChanged={() => refresh().then(() => undefined)} /> : null}
       {staff && batch && !editable && includedPapers.length ? <section className="peas-preparation-surface">
         <h3>Submitted papers</h3>
         <ul>{includedPapers.map(paper => <li key={paper.id}><a href={`${base(batch.id)}/items/${paper.id}/preview`} target="_blank" rel="noreferrer">{paper.metadata.title}</a></li>)}</ul>
@@ -683,7 +699,7 @@ export function ImportPreparationWorkspace(
       {batch?.items.length && (!staff || editable)
         ? (
           <section className="peas-preparation-surface">
-            <h3>2. Prepare and review each paper</h3>
+            <h3>{completeSource ? "4. Prepare and review each paper" : "Prepare and review each paper"}</h3>
             <div className="peas-preparation-grid">
               <Field label="Paper to prepare">
                 <select
@@ -1849,7 +1865,7 @@ function CollectionEditor(
   const pdfs = batch.assets.filter((a) => a.kind === "pdf");
   const orderedIds = [...collection.paperOrder ?? [], ...batch.items.filter(i => i.state !== "ignored" && !collection.paperOrder?.includes(i.id)).map(i => i.id)];
   return (
-    <details className="peas-preparation-surface">
+    <details className="peas-preparation-surface" open={arrangement === "complete_issue" && !batch.collection?.mainAssetId || undefined}>
       <summary>Collection metadata, covers and foreword</summary>
       <fieldset disabled={busy || !!batch.compiledDocumentId}>
         <div className="peas-preparation-grid">

@@ -2,6 +2,7 @@ import { formatPublicationDate } from "../../lib/formatters/date";
 import { ArrowUpRight, BookOpen, CalendarDays, Files, UserRound } from "lucide-react";
 import { useId } from "react";
 import { CategoryIcon } from "../documents/CategoryIcon";
+import { PublicSearchMatch } from "./PublicSearchMatch";
 import type { SessionResponse } from "../../lib/api/auth";
 import type { DocumentRecord } from "../../lib/api/types";
 import { getCategoryMeta } from "../../lib/constants/categories";
@@ -12,6 +13,7 @@ interface PublicDocumentResultCardProps {
   showDescription?: boolean;
   variant?: "default" | "recent" | "search";
   isNewest?: boolean;
+  searchQuery?: string;
 }
 
 export function PublicDocumentResultCard({
@@ -20,6 +22,7 @@ export function PublicDocumentResultCard({
   showDescription = false,
   variant = "default",
   isNewest = false,
+  searchQuery,
 }: PublicDocumentResultCardProps) {
   const publicationId = useId();
   const category = getCategoryMeta(document.category);
@@ -43,16 +46,16 @@ export function PublicDocumentResultCard({
 
         <div className="peas-public-search-result-card__content">
           <div className="peas-public-search-result-card__labels">
-            <span>{category.label} · {document.isCompiled ? "Issue" : "Paper"}</span>
+            <span><PublicSearchMatch text={category.label} query={searchQuery} /> · {document.isCompiled ? "Issue" : "Paper"}</span>
             {document.isCompiled && document.childCount > 0 ? (
               <small><Files aria-hidden="true" /> {document.childCount} {document.childCount === 1 ? "work" : "works"}</small>
             ) : null}
           </div>
-          <h3>{document.title}</h3>
-          {document.parentIssue ? <p id={publicationId} className="peas-public-search-result-card__publication">Published in {document.parentIssue.label}</p> : null}
-          {showDescription && document.description ? <em>{document.description}</em> : null}
+          <h3><PublicSearchMatch text={document.title} query={searchQuery} /></h3>
+          {document.parentIssue ? <p id={publicationId} className="peas-public-search-result-card__publication">Published in <PublicSearchMatch text={document.parentIssue.label} query={searchQuery} /></p> : null}
+          {showDescription && document.description ? <em><PublicSearchMatch text={document.description} query={searchQuery} /></em> : null}
           <div className="peas-public-search-result-card__meta">
-            <span><UserRound aria-hidden="true" /> {document.authorsText}</span>
+            <span><UserRound aria-hidden="true" /><span><PublicSearchMatch text={document.authorsText} query={searchQuery} /></span></span>
             <span><CalendarDays aria-hidden="true" /> {formatPublicationDate(document.publicationDate, document.datePrecision)}</span>
           </div>
         </div>

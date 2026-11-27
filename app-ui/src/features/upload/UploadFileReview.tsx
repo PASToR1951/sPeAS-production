@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiFetch, getErrorMessage } from "../../lib/api/http";
 import {
   type UploadedFileResult,
   uploadFile,
   type UploadTransferProgress,
+  GUIDED_PDF_WORKAROUND,
 } from "../../lib/api/upload";
+import { documentExtension } from "../../../../shared/documentFormats";
 import {
   emptyUploadReview,
   type UploadJob,
@@ -22,12 +24,14 @@ export function UploadFileReview({
   role = "document",
   jobId,
   onPrepared,
+  nonPdfConversion = true,
 }: {
   files: File[];
   category: string;
   role?: "document" | "cover" | "foreword";
   jobId?: string;
   onPrepared: (result: UploadedFileResult) => void;
+  nonPdfConversion?: boolean | null;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -36,6 +40,7 @@ export function UploadFileReview({
   // A cover or foreword can legitimately be reused in another publication.
   const assetReviewContext = useRef(crypto.randomUUID());
   latest.current = { files, category, onPrepared };
+  const blockedFile = nonPdfConversion !== true && files.find((file) => documentExtension(file.name) !== "pdf");
   async function prepare() {
     setBusy(true);
     setError("");
@@ -78,11 +83,12 @@ export function UploadFileReview({
             </p>
             <Button
               type="button"
-              disabled={busy || !files.length}
+              disabled={busy || Boolean(blockedFile) || !files.length}
               onClick={() => void prepare()}
             >
               {busy ? "Preparing PDFs…" : "Prepare and preview PDFs"}
             </Button>
+            {blockedFile && nonPdfConversion === false ? <p role="alert">{blockedFile.name}. {GUIDED_PDF_WORKAROUND}</p> : null}
           </>
         )
         : null}
@@ -403,29 +409,26 @@ export function ReviewNoteFields(
   );
 }
 export function UploadReviewQueue(
-  { onResume }: { onResume?: (job: UploadJob) => void },
+  { onResume, reviewId, children }: { onResume?: (job: UploadJob) => void; reviewId?: string | null; children?: ReactNode },
 ) {
   const [jobs, setJobs] = useState<UploadJob[]>([]),
-    [selected, setSelected] = useState(
-      new URLSearchParams(location.search).get("upload_review") || "",
-    ),
+    [selected, setSelected] = useState(reviewId ?? ""),
     [error, setError] = useState("");
+  const [opened, setOpened] = useState(Boolean(reviewId));
+  const load = () => void apiFetch<UploadJob[]>(base).then(setJobs).catch((e) => setError(getErrorMessage(e)));
   useEffect(() => {
-    void apiFetch<UploadJob[]>(base).then(setJobs).catch((e) =>
-      setError(getErrorMessage(e))
-    );
-  }, []);
+    if (opened) load();
+  }, [opened]);
   return (
-    <details className="peas-upload-review-queue" open={!!selected}>
-      <summary>Upload queue and saved conversion reviews</summary>
+    <details className="peas-upload-review-queue" open={reviewId ? true : undefined} onToggle={(event) => { if (event.currentTarget.open) setOpened(true); }}>
+      <summary>Resume a draft</summary>
+      {opened ? <>
+      {children}
       {error ? <p role="alert">{error}</p> : null}
       <Button
         type="button"
         variant="outline"
-        onClick={() =>
-          void apiFetch<UploadJob[]>(base).then(setJobs).catch((e) =>
-            setError(getErrorMessage(e))
-          )}
+        onClick={load}
       >
         Refresh queue
       </Button>
@@ -468,6 +471,7 @@ export function UploadReviewQueue(
           </p>
         )}
       {selected ? <SavedUploadReview key={selected} jobId={selected} /> : null}
+      </> : null}
     </details>
   );
 }

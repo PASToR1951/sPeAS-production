@@ -9002,7 +9002,7 @@ body:has(#react-public-root) {
 .peas-public-search-hero__copy > span,
 .peas-public-results-head > div > span {
   align-items: center;
-  color: #f4c34d;
+  color: var(--public-search-yellow);
   display: inline-flex;
   font-size: 0.78rem;
   font-weight: 900;
@@ -9056,7 +9056,7 @@ body:has(#react-public-root) {
 }
 
 .peas-public-search-hero__summary > div > svg {
-  color: #f4c34d;
+  color: var(--public-search-yellow);
   height: 24px;
   width: 24px;
 }
@@ -9430,6 +9430,19 @@ body:has(#react-public-root) {
 .peas-public-search-results-list {
   display: grid;
   gap: 14px;
+}
+
+.peas-public-search-match {
+  background: linear-gradient(
+    177deg,
+    color-mix(in srgb, var(--public-search-yellow) 30%, var(--surface)),
+    color-mix(in srgb, var(--public-search-yellow) 48%, var(--surface))
+  );
+  border-radius: 0.12em 0.07em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  color: var(--academic-navy);
+  padding-inline: 0.06em;
 }
 
 .peas-public-search-result-card {
