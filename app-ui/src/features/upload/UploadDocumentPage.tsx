@@ -204,7 +204,6 @@ export function UploadDocumentPage() {
   const [openedWorkspaces, setOpenedWorkspaces] = useState<ImportMode[]>(initialPreparation ? [initialPreparation] : []);
   const batchIds = useRef<Partial<Record<ImportMode, string | null>>>(initialPreparation ? { [initialPreparation]: entry.get("import_batch") } : {});
   const [showWorkspaceHistory, setShowWorkspaceHistory] = useState(false);
-  const [resumeError, setResumeError] = useState("");
   const [reviewId, setReviewId] = useState(() => entry.get("upload_review"));
   const { role, userId } = useAdminIdentity();
   const isPublisher = false;
@@ -902,23 +901,16 @@ export function UploadDocumentPage() {
 
   function resumePreparedPaper(job: UploadJob) {
     if (isSingleFormDirty(singleForm) && singleForm.uploadJobId !== job.id) {
-      setResumeError("Finish or discard the current paper draft before continuing with a different PDF.");
-      return;
+      return "Finish or discard the current paper draft before continuing with a different PDF.";
     }
-    setResumeError("");
     openGuided("single");
     if (singleForm.uploadJobId !== job.id) setSingleForm({ ...nextSingleForm(), uploadJobId: job.id });
     setStep(2);
     setErrors({});
     setReceipt(null);
+    setPendingFocusKey("single.title");
   }
 
-  const savedDrafts = (
-    <UploadReviewQueue reviewId={reviewId} onResume={resumePreparedPaper}>
-      {resumeError ? <p role="alert">{resumeError}</p> : null}
-      {preparationFeatures.imports ? <Button type="button" variant="outline" disabled={busy} onClick={() => openWorkspace("single", true)}>Find a saved preparation workspace</Button> : null}
-    </UploadReviewQueue>
-  );
   const fileStep = (mode === "single" && step === 1) || (mode === "compiled" && step === 4);
   const fileStepError = fileStep ? Object.values(mode === "single" ? validateSingleStep(singleForm, step, !isPublisher) : validateCompiledStep(compiledForm, step, !isPublisher))[0] : undefined;
   const actionHint = fileStepError && Object.values(errors).includes(fileStepError)
@@ -939,8 +931,13 @@ export function UploadDocumentPage() {
           ? <Button type="button" variant="outline" disabled={busy} onClick={() => openGuided(mode)}>Back to guided upload</Button>
           : mode === "compiled"
             ? <Button type="button" variant="outline" disabled={busy} onClick={() => openGuided("single")}>Back to paper upload</Button>
-            : <details className="peas-upload-review-queue">
-                <summary>{preparationFeatures.imports ? "Journal issue or batch" : "Journal issue upload"}</summary>
+            : <details className="peas-upload-task-options">
+                <summary>
+                  <span>{preparationFeatures.imports ? "Journal issue or batch" : "Journal issue upload"}</span>
+                  <span className="peas-ui-switch" aria-hidden="true">
+                    <span className="peas-ui-switch-thumb" />
+                  </span>
+                </summary>
                 <div className="peas-preparation-actions">
                   <Button type="button" variant="outline" disabled={busy} onClick={() => preparationFeatures.imports ? openWorkspace("compiled") : openGuided("compiled")}>Upload a journal issue</Button>
                   {preparationFeatures.imports ? <Button type="button" variant="outline" disabled={busy} onClick={() => openWorkspace("batch")}>Import a batch</Button> : null}
@@ -970,7 +967,14 @@ export function UploadDocumentPage() {
         {draftReady && (dirty || draftRecovered || draftStatus === "error" || extractionSession) && !receipt ? (
           <UploadDraftStatus status={draftStatus} recovered={draftRecovered} changesMissing={draftChangesMissing} savedAt={draftSavedAt} filesIncluded={draftFilesIncluded} disabled={busy} onDiscard={() => void discardRecoveryDraft()} />
         ) : null}
-        {reviewId ? savedDrafts : null}
+        {reviewId || !busy ? (
+          <UploadReviewQueue
+            reviewId={reviewId}
+            disabled={busy || !draftReady}
+            onResume={resumePreparedPaper}
+            onBrowseWorkspaces={preparationFeatures.imports ? () => openWorkspace("single", true) : undefined}
+          />
+        ) : null}
 
         <section className="peas-upload-main">
           {receipt?.type === mode ? (
@@ -1012,7 +1016,6 @@ export function UploadDocumentPage() {
         {!receipt && !busy && mode === "compiled" && step === 1 && preparationFeatures.imports ? (
           <p>Have one PDF containing the whole issue? <Button type="button" variant="outline" onClick={() => openWorkspace("compiled")}>Open issue workspace</Button></p>
         ) : null}
-        {!reviewId && !busy ? savedDrafts : null}
       </> : null}
     </main>
   );

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { source as axeSource } from "axe-core";
+import { emptyUploadReview, type UploadJob } from "../../../shared/uploadReview";
 
 function createPdf(pageCount = 2) {
   const pageIds = Array.from({ length: pageCount }, (_, index) => index + 3);
@@ -675,11 +676,64 @@ test.describe("guided upload workflow", () => {
     await page.goto("/admin/Components/upload_document.html");
     await waitForWorkspace(page);
     await expect(page.getByRole("heading", { name: "Upload a paper" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload a journal issue" })).toBeHidden();
+    const toggle = page.locator("summary").filter({ hasText: "Journal issue upload" });
+    const issue = page.getByRole("button", { name: "Upload a journal issue" });
+    await expect(issue).toBeHidden();
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(issue).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(issue).toBeHidden();
     await openGuidedIssue(page);
     await expect(page.locator("#compiled-start-year")).toBeVisible();
     await page.getByRole("button", { name: "Back to paper upload" }).click();
     await expect(page.getByLabel("Document file", { exact: true })).toBeEnabled();
+  });
+
+  test("resumes a prepared PDF from above the upload form", async ({ page }) => {
+    const now = new Date().toISOString();
+    const draft: UploadJob = {
+      id: "prepared-draft",
+      state: "ready",
+      createdAt: now,
+      updatedAt: now,
+      components: [{ name: "thesis-draft.pdf", state: "ready", size: 100, sha256: "fixture", pages: 2 }],
+      review: emptyUploadReview(),
+      error: null,
+    };
+    const filed: UploadJob = {
+      ...draft,
+      id: "filed-paper",
+      documentId: 49,
+      components: [{ ...draft.components[0], name: "filed-paper.pdf" }],
+    };
+    mockJobs.get(page)!.set(draft.id, draft);
+    mockJobs.get(page)!.set(filed.id, filed);
+
+    await page.goto("/admin/Components/upload_document.html");
+    await waitForWorkspace(page);
+    const drafts = page.locator(".peas-upload-drafts");
+    const chooseFiles = page.getByRole("heading", { name: "Choose your files" });
+    await expect(drafts).toBeInViewport();
+    await expect(chooseFiles).toBeVisible();
+    expect((await drafts.boundingBox())!.y).toBeLessThan((await chooseFiles.boundingBox())!.y);
+
+    await drafts.getByText("Resume a draft", { exact: true }).click();
+    await expect(drafts.getByText("Ready for document details")).toBeVisible();
+    const filedReview = drafts.getByRole("button", { name: "Review PDF for filed-paper.pdf" });
+    await expect(filedReview).toBeHidden();
+    await drafts.getByText("Past PDF reviews").click();
+    await expect(drafts.getByText("Attached to a document")).toBeVisible();
+    await filedReview.click();
+    await expect(drafts.getByRole("region", { name: "Converted PDF review" })).toBeVisible();
+
+    await page.goto("/admin/Components/upload_document.html?upload_review=filed-paper");
+    await expect(drafts).toHaveJSProperty("open", true);
+    await expect(drafts.getByRole("region", { name: "Converted PDF review" })).toBeVisible();
+    await drafts.getByRole("button", { name: "Continue draft for thesis-draft.pdf" }).click();
+    await expect(drafts).toHaveJSProperty("open", false);
+    await expect(page.getByRole("heading", { name: "Document details" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Title" })).toBeFocused();
   });
 
   test("PDF-only upload explains how to use a Word source and keeps accepted files", async ({ page }) => {
@@ -703,10 +757,10 @@ test.describe("guided upload workflow", () => {
 
   test("mobile upload page has no critical accessibility issues or overflow", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript({ content: axeSource });
     await page.goto("/admin/Components/upload_document.html");
     await waitForWorkspace(page);
     await expect(page.locator(".peas-file-dropzone").first()).toBeInViewport();
-    await page.addScriptTag({ content: axeSource });
     const critical = await page.evaluate(async () => (await (window as any).axe.run(document)).violations.filter((item: any) => item.impact === "critical"));
     expect(critical).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

@@ -3343,7 +3343,7 @@ body:has([id^="react-"][id$="-admin-root"]) {
 }
 
 .peas-ui-switch {
-  background: #cbd5e1;
+  background: var(--muted-foreground);
   border: 0;
   border-radius: 999px;
   cursor: pointer;
@@ -3353,12 +3353,13 @@ body:has([id^="react-"][id$="-admin-root"]) {
   width: 44px;
 }
 
-.peas-ui-switch[data-state="checked"] {
+.peas-ui-switch[data-state="checked"],
+.peas-upload-task-options[open] > summary .peas-ui-switch {
   background: var(--primary);
 }
 
 .peas-ui-switch-thumb {
-  background: #E6E6E6;
+  background: var(--primary-foreground);
   border-radius: 999px;
   box-shadow: var(--shadow-xs);
   display: block;
@@ -3368,8 +3369,22 @@ body:has([id^="react-"][id$="-admin-root"]) {
   width: 20px;
 }
 
-.peas-ui-switch[data-state="checked"] .peas-ui-switch-thumb {
+.peas-ui-switch[data-state="checked"] .peas-ui-switch-thumb,
+.peas-upload-task-options[open] > summary .peas-ui-switch-thumb {
   transform: translateX(20px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peas-ui-switch, .peas-ui-switch-thumb { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .peas-ui-switch { background: ButtonText; forced-color-adjust: none; }
+  .peas-ui-switch-thumb { background: ButtonFace; }
+  .peas-ui-switch[data-state="checked"],
+  .peas-upload-task-options[open] > summary .peas-ui-switch { background: Highlight; }
+  .peas-ui-switch[data-state="checked"] .peas-ui-switch-thumb,
+  .peas-upload-task-options[open] > summary .peas-ui-switch-thumb { background: HighlightText; }
 }
 
 .peas-ui-tabs-list {

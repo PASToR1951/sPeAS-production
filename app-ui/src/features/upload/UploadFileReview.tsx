@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, FolderOpen } from "lucide-react";
 import { apiFetch, getErrorMessage } from "../../lib/api/http";
 import {
   type UploadedFileResult,
@@ -408,70 +409,144 @@ export function ReviewNoteFields(
     </fieldset>
   );
 }
-export function UploadReviewQueue(
-  { onResume, reviewId, children }: { onResume?: (job: UploadJob) => void; reviewId?: string | null; children?: ReactNode },
-) {
-  const [jobs, setJobs] = useState<UploadJob[]>([]),
-    [selected, setSelected] = useState(reviewId ?? ""),
-    [error, setError] = useState("");
-  const [opened, setOpened] = useState(Boolean(reviewId));
-  const load = () => void apiFetch<UploadJob[]>(base).then(setJobs).catch((e) => setError(getErrorMessage(e)));
+const draftStatus: Record<UploadJob["state"], string> = {
+  staging: "Receiving files",
+  processing: "Preparing PDF",
+  ready: "Ready for document details",
+  failed: "PDF preparation needs attention",
+};
+
+function attachedToRecord(job: UploadJob) {
+  return Boolean(job.documentId || job.compiledDocumentId);
+}
+
+export function UploadReviewQueue({
+  onResume, onBrowseWorkspaces, reviewId, disabled,
+}: {
+  onResume: (job: UploadJob) => string | undefined;
+  onBrowseWorkspaces?: () => void;
+  reviewId: string | null;
+  disabled: boolean;
+}) {
+  const [jobs, setJobs] = useState<UploadJob[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(reviewId);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [resumeError, setResumeError] = useState<string>();
+  const [open, setOpen] = useState(Boolean(reviewId));
+  const preview = useRef<HTMLDivElement>(null);
+
+  async function load() {
+    if (loading) return;
+    setLoading(true);
+    setLoadError("");
+    try {
+      setJobs(await apiFetch<UploadJob[]>(base));
+    } catch (error) {
+      setLoadError(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    if (opened) load();
-  }, [opened]);
+    if (open) void load();
+  }, [open]);
+
+  useEffect(() => {
+    if (selected) preview.current?.focus();
+  }, [selected]);
+
+  function resume(job: UploadJob) {
+    const error = onResume(job);
+    setResumeError(error);
+    if (error) return;
+    setOpen(false);
+    setSelected(null);
+  }
+
+  function renderJob(job: UploadJob) {
+    const filename = job.components[0]?.name || "Untitled upload";
+    const attached = attachedToRecord(job);
+    const status = attached
+      ? job.documentId ? "Attached to a document" : "Attached to a publication"
+      : draftStatus[job.state];
+    const reviewAction = job.state === "ready" ? "Review PDF" : job.state === "failed" ? "View problem" : "Check progress";
+
+    return (
+      <li className="peas-upload-drafts__row" key={job.id}>
+        <div className="peas-upload-drafts__copy">
+          <strong>{filename}</strong>
+          <small>{status}</small>
+        </div>
+        <div className="peas-upload-drafts__actions">
+          <Button type="button" variant="ghost" size="sm" aria-label={`${reviewAction} for ${filename}`} onClick={() => {
+            if (selected === job.id) preview.current?.focus();
+            else setSelected(job.id);
+          }}>
+            {reviewAction}
+          </Button>
+          {!attached && job.state === "ready" ? (
+            <Button type="button" size="sm" disabled={disabled} aria-label={`Continue draft for ${filename}`} onClick={() => resume(job)}>
+              Continue draft
+            </Button>
+          ) : null}
+        </div>
+      </li>
+    );
+  }
+
+  const drafts = jobs?.filter((job) => !attachedToRecord(job));
+  const pastReviews = jobs?.filter(attachedToRecord) ?? [];
+
   return (
-    <details className="peas-upload-review-queue" open={reviewId ? true : undefined} onToggle={(event) => { if (event.currentTarget.open) setOpened(true); }}>
-      <summary>Resume a draft</summary>
-      {opened ? <>
-      {children}
-      {error ? <p role="alert">{error}</p> : null}
-      <Button
-        type="button"
-        variant="outline"
-        onClick={load}
-      >
-        Refresh queue
-      </Button>
-      {jobs.length
-        ? (
-          <ul>
-            {jobs.map((j) => (
-              <li key={j.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(j.id)}
-                >
-                  {j.components[0]?.name || "Upload"} · {j.state}
-                  {j.documentId
-                    ? ` · Document ${j.documentId}`
-                    : j.compiledDocumentId
-                    ? ` · Publication ${j.compiledDocumentId}`
-                    : " · awaiting metadata"}
-                </button>
-                {j.state === "ready" && !j.documentId &&
-                    !j.compiledDocumentId && onResume
-                  ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onResume(j)}
-                    >
-                      Continue metadata for this PDF
-                    </Button>
-                  )
-                  : null}
-              </li>
-            ))}
-          </ul>
-        )
-        : (
-          <p>
-            Prepared uploads appear here. Retrying a matching source set reuses
-            its saved conversion.
-          </p>
-        )}
-      {selected ? <SavedUploadReview key={selected} jobId={selected} /> : null}
-      </> : null}
+    <details className="peas-upload-drafts" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <FolderOpen className="peas-upload-drafts__icon" aria-hidden="true" />
+        <span className="peas-upload-drafts__copy">
+          <strong>Resume a draft</strong>
+          <small>{onBrowseWorkspaces ? "Continue a prepared PDF or reopen a saved workspace." : "Continue an upload from a PDF PeAS already prepared."}</small>
+        </span>
+        <ChevronDown className="peas-upload-drafts__chevron" aria-hidden="true" />
+      </summary>
+      <div className="peas-upload-drafts__content">
+        {resumeError ? <p role="alert">{resumeError}</p> : null}
+        {selected ? (
+          <div ref={preview} tabIndex={-1} role="group" aria-label="Saved PDF review">
+            <SavedUploadReview key={selected} jobId={selected} />
+          </div>
+        ) : null}
+        <section aria-label="Prepared PDF drafts">
+          <div className="peas-upload-drafts__toolbar">
+            <h2>Prepared PDFs</h2>
+            <Button type="button" variant="ghost" size="sm" disabled={loading} onClick={() => void load()}>
+              {loading ? "Refreshing…" : "Refresh drafts"}
+            </Button>
+          </div>
+          {loadError ? <p role="alert">Couldn’t load the saved PDFs. {loadError}</p> : null}
+          {!jobs && !loadError ? <p role="status">Loading saved PDFs…</p> : null}
+          {drafts?.length ? <ul role="list">{drafts.map(renderJob)}</ul> : null}
+          {drafts?.length === 0 ? <p>No prepared PDF drafts waiting to be continued.</p> : null}
+        </section>
+        {onBrowseWorkspaces ? (
+          <div className="peas-upload-drafts__row">
+            <div className="peas-upload-drafts__copy">
+              <h2>Saved workspaces</h2>
+              <small>Reopen a paper, journal issue, or batch with files already staged.</small>
+            </div>
+            <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onBrowseWorkspaces}>Browse workspaces</Button>
+          </div>
+        ) : null}
+        {pastReviews.length ? (
+          <details className="peas-upload-drafts__history">
+            <summary>
+              Past PDF reviews
+              <ChevronDown className="peas-upload-drafts__chevron" aria-hidden="true" />
+            </summary>
+            <ul role="list">{pastReviews.map(renderJob)}</ul>
+          </details>
+        ) : null}
+      </div>
     </details>
   );
 }
